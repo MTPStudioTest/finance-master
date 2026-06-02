@@ -240,12 +240,14 @@ function renderTransaction(): string {
 
 function renderSettings(): string {
   const settings = Store.getFinanceSettings();
+  const uiSettings = Store.getUiSettings();
   const latestImport = Store.getImportState().batches.slice(-1)[0];
   const readModel = Store.getFinancialReadModel();
+  const displayMode = uiSettings.appearance === 'bright' ? 'bright' : 'dark';
   return `
     <div class="modal-form">
       <h2 id="modal-title">Settings</h2>
-      <p class="modal-copy">Keep this operational: currency, entities by scope, cash accounts, reserve buckets, recurring costs, debt, and local data.</p>
+      <p class="modal-copy">Keep this operational: currency, display, entities by scope, cash accounts, reserve buckets, recurring costs, debt, and local data.</p>
       <div class="modal-grid-two">
         <div class="form-group">
           <label for="modal-settings-currency">Base currency</label>
@@ -257,6 +259,17 @@ function renderSettings(): string {
           <label for="modal-settings-forecast">Forecast horizon</label>
           <select id="modal-settings-forecast">
             ${[30, 60, 90, 180].map((days) => `<option value="${days}"${settings.forecastDays === days ? ' selected' : ''}>${days} days</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="modal-section">
+        <div class="ui-title">Display</div>
+        <p class="modal-copy">A tiny accessibility switch only. The treasury workflow stays the same.</p>
+        <div class="form-group">
+          <label for="modal-settings-display">Mode</label>
+          <select id="modal-settings-display">
+            <option value="dark"${displayMode === 'dark' ? ' selected' : ''}>Calm dark</option>
+            <option value="bright"${displayMode === 'bright' ? ' selected' : ''}>Bright</option>
           </select>
         </div>
       </div>
@@ -753,6 +766,7 @@ function saveFinanceModal(type: string): void {
   const timestamp = new Date().toISOString();
   if (type === 'settings') {
     Store.saveFinanceSettings({ baseCurrency: value('modal-settings-currency'), forecastDays: Number(value('modal-settings-forecast')) });
+    Store.saveUiSettings({ appearance: value('modal-settings-display') === 'bright' ? 'bright' : 'aurora' });
     applyAppearance(Store);
     closeModal();
     return;
