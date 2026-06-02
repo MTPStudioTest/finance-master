@@ -145,14 +145,15 @@ function renderOverview(): string {
   return `
     <div class="modal-form">
       <h2 id="modal-title">Transactions</h2>
+      <p class="modal-copy">A searchable raw log. Use it as evidence for the Observatory, not as the center of the product.</p>
       <div class="modal-grid-two">
         ${[
-          ['Real balance', money(snapshot.realBalance)],
-          ['Projected balance', money(snapshot.projectedBalance)],
-          ['Weighted pipeline', money(snapshot.weightedPipeline)],
+          ['Truly available', money(snapshot.trulyAvailableCash ?? snapshot.realBalance)],
+          ['Reserved', money(snapshot.reservedCash ?? 0)],
+          ['Total cash', money(snapshot.totalCash ?? snapshot.realBalance)],
           ['Monthly burn', money(snapshot.monthlyBurn)],
           ['Runway', snapshot.runwayMonths == null ? 'Unknown' : `${Number(snapshot.runwayMonths).toFixed(1)} months`],
-          ['Confidence', `${Math.round((Number(snapshot.confidenceScore) || 0) * 100)}%`],
+          ['Debt remaining', money(snapshot.debtRemaining ?? snapshot.totalDebt)],
         ].map(([label, fieldValue]) => `
           <div class="form-group"><label>${label}</label><input aria-label="${label}" value="${escapeHtml(fieldValue)}" readonly /></div>
         `).join('')}
@@ -205,15 +206,15 @@ function renderOverview(): string {
 function renderQuickAdd(): string {
   return `
     <div class="modal-form">
-      <h2 id="modal-title">Add to Finance Master</h2>
-      <p class="modal-copy">Capture today quickly or add a planning input.</p>
+      <h2 id="modal-title">Add entry</h2>
+      <p class="modal-copy">Capture only what changes available cash, obligations, reserves, debt, or income clarity.</p>
       <div class="quick-add-grid">
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'transaction'"><strong>Transaction</strong><span>Record income or an expense</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'income'"><strong>Income</strong><span>Confirmed, expected, or risky</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'transaction'"><strong>Cost / cash movement</strong><span>Record received income or paid cost</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'expense'"><strong>Obligation</strong><span>Recurring fixed cost or due item</span></button>
         <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'fiatAccount'"><strong>Cash account</strong><span>Add an account balance</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'expense'"><strong>Recurring cost</strong><span>Improve runway accuracy</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'income'"><strong>Pipeline item</strong><span>Add expected income</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'goal'"><strong>Savings goal</strong><span>Track a buffer or target</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'csvImport'"><strong>Import CSV</strong><span>Map a bank statement</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'debtAdd'"><strong>Debt item</strong><span>Track repayment pressure</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'csvImport'"><strong>Import local CSV</strong><span>Bring in transactions for review</span></button>
       </div>
     </div>
   `;
@@ -239,11 +240,12 @@ function renderTransaction(): string {
 
 function renderSettings(): string {
   const settings = Store.getFinanceSettings();
-  const ui = Store.getUiSettings();
   const latestImport = Store.getImportState().batches.slice(-1)[0];
+  const readModel = Store.getFinancialReadModel();
   return `
     <div class="modal-form">
-      <h2 id="modal-title">Finance Master settings</h2>
+      <h2 id="modal-title">Settings</h2>
+      <p class="modal-copy">Keep this operational: currency, entities by scope, cash accounts, reserve buckets, recurring costs, debt, and local data.</p>
       <div class="modal-grid-two">
         <div class="form-group">
           <label for="modal-settings-currency">Base currency</label>
@@ -252,49 +254,52 @@ function renderSettings(): string {
           </select>
         </div>
         <div class="form-group">
-          <label for="modal-settings-forecast">Projection horizon</label>
+          <label for="modal-settings-forecast">Forecast horizon</label>
           <select id="modal-settings-forecast">
             ${[30, 60, 90, 180].map((days) => `<option value="${days}"${settings.forecastDays === days ? ' selected' : ''}>${days} days</option>`).join('')}
           </select>
         </div>
-        <div class="form-group">
-          <label for="modal-settings-appearance">Appearance</label>
-          <select id="modal-settings-appearance">
-            <option value="aurora"${ui.appearance === 'aurora' ? ' selected' : ''}>Aurora</option>
-            <option value="midnight"${ui.appearance === 'midnight' ? ' selected' : ''}>Midnight</option>
-            <option value="bright"${ui.appearance === 'bright' ? ' selected' : ''}>Bright</option>
-          </select>
-        </div>
-        <label class="settings-check">
-          <input id="modal-settings-motion" type="checkbox"${ui.reducedMotion ? ' checked' : ''} />
-          <span>Reduce motion</span>
-        </label>
       </div>
       <div class="modal-section">
-        <div class="ui-title">Scenario assumptions</div>
-        <div class="modal-grid-three">
-          <div class="form-group"><label for="modal-settings-market">Market shift %</label><input id="modal-settings-market" type="number" min="-50" max="50" value="${ui.scenario.marketMajors}" /></div>
-          <div class="form-group"><label for="modal-settings-burn">Burn delta %</label><input id="modal-settings-burn" type="number" min="-30" max="30" value="${ui.scenario.burnDelta}" /></div>
-          <div class="form-group"><label for="modal-settings-floor">Probability floor %</label><input id="modal-settings-floor" type="number" min="0" max="100" value="${ui.scenario.probFloor}" /></div>
-        </div>
+        <div class="ui-title">Entities</div>
+        <p class="modal-copy">MVP entities are represented by scope: Personal, Freelance / Business, and Shared studio obligations.</p>
       </div>
-      <div class="modal-section settings-reset-panel">
-        <div>
-          <div class="ui-title">Wallet valuations</div>
-          <p>Keep wallet pricing manual or opt into a read-only CoinGecko refresh. Manual overrides are never replaced.</p>
-        </div>
+      <div class="modal-section">
+        <div class="ui-title">Accounts and reserve buckets</div>
+        ${(readModel.fiatAccounts || []).length ? (readModel.fiatAccounts || []).map((account: Record<string, unknown>) => `
+          <div class="modal-list-row">
+            <span><strong>${escapeHtml(account.name)}</strong><br><small>${escapeHtml(account.bucket || 'available')} · ${escapeHtml(account.scope || 'shared')}</small></span>
+            <span>${money(account.balance)}</span>
+            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'fiatAccount', '${escapeHtml(account.id)}'">Edit</button>
+          </div>
+        `).join('') : '<div class="fin-compact-empty">No cash accounts yet.</div>'}
+        <button class="ui-btn ui-btn--secondary" type="button" data-action="openEditModal" data-action-args="'fiatAccount'">Add cash or reserve account</button>
+      </div>
+      <div class="modal-section">
+        <div class="ui-title">Recurring fixed costs and debt</div>
+        ${(readModel.recurringExpenses || []).length ? (readModel.recurringExpenses || []).map((expense: Record<string, unknown>) => `
+          <div class="modal-list-row">
+            <span><strong>${escapeHtml(expense.category)}</strong><br><small>Due day ${escapeHtml(expense.dueDay)} · ${escapeHtml(expense.scope || 'shared')}</small></span>
+            <span>${money(expense.monthlyAmount)}</span>
+            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'expense', '${escapeHtml(expense.id)}'">Edit</button>
+          </div>
+        `).join('') : '<div class="fin-compact-empty">No recurring costs yet.</div>'}
+        ${(readModel.debtAccounts || []).length ? (readModel.debtAccounts || []).map((debt: Record<string, unknown>) => `
+          <div class="modal-list-row">
+            <span><strong>${escapeHtml(debt.name)}</strong><br><small>Debt item · ${escapeHtml(debt.scope || 'shared')}</small></span>
+            <span>${money(debt.outstanding)}</span>
+            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'debtAdd', '${escapeHtml(debt.id)}'">Edit</button>
+          </div>
+        `).join('') : ''}
         <div class="settings-reset-actions">
-          <select id="modal-settings-wallet-prices" aria-label="Wallet valuation source">
-            <option value="manual"${ui.walletPriceSource === 'manual' ? ' selected' : ''}>Manual only</option>
-            <option value="coingecko"${ui.walletPriceSource === 'coingecko' ? ' selected' : ''}>CoinGecko read-only</option>
-          </select>
-          <button class="ui-btn ui-btn--secondary" type="button" data-action="refreshCryptoPrices">Refresh wallet prices</button>
+          <button class="ui-btn ui-btn--secondary" type="button" data-action="openEditModal" data-action-args="'expense'">Add recurring cost</button>
+          <button class="ui-btn ui-btn--secondary" type="button" data-action="openEditModal" data-action-args="'debtAdd'">Add debt item</button>
         </div>
       </div>
       <div class="modal-section settings-reset-panel">
         <div>
           <div class="ui-title">Data portability</div>
-          <p>Download a complete local backup or restore one after previewing its contents.</p>
+          <p>Download a complete local backup or restore one after previewing its contents. No backend is used.</p>
           ${latestImport ? `<p>Latest CSV batch: ${escapeHtml(latestImport.sourceFile)} · ${latestImport.fingerprints.length} row${latestImport.fingerprints.length === 1 ? '' : 's'} · ${formatDate(latestImport.importedAt)}</p>` : ''}
         </div>
         <div class="settings-reset-actions">
@@ -307,7 +312,7 @@ function renderSettings(): string {
       <div class="modal-section settings-reset-panel">
         <div>
           <div class="ui-title">Sample data</div>
-          <p>Restore the original demo ledger or clear it for an empty dashboard. Your appearance, layout, and finance settings stay untouched.</p>
+          <p>Restore the fictional sample ledger or clear it for an empty Observatory. Settings stay untouched.</p>
         </div>
         <div class="settings-reset-actions">
           <button class="ui-btn ui-btn--secondary" type="button" data-action="resetDemoData">Restore sample data</button>
@@ -447,7 +452,7 @@ function renderCsvImport(): string {
   return `
     <div class="modal-form">
       <h2 id="modal-title">Import transactions from CSV</h2>
-      <p class="modal-copy">Choose a bank export or paste CSV data. Map a signed amount column, or separate debit and credit columns, before importing.</p>
+      <p class="modal-copy">Choose a local transaction CSV or paste CSV data. Map a signed amount column, or separate debit and credit columns, before importing.</p>
       <div class="csv-source-grid">
         <div class="form-group">
           <label for="modal-csv-file">CSV file</label>
@@ -523,9 +528,7 @@ function renderBackupRestore(): string {
           <div><span>Pipeline items</span><strong>${counts.pipelineItems || 0}</strong></div>
           <div><span>Goals</span><strong>${counts.goals || 0}</strong></div>
           <div><span>CSV batches</span><strong>${counts.importBatches || 0}</strong></div>
-          <div><span>Cached quotes</span><strong>${counts.cachedQuotes || 0}</strong></div>
-          <div><span>Appearance</span><strong>${escapeHtml((pendingBackup as Record<string, any>)?.uiSettings?.appearance || 'aurora')}</strong></div>
-          <div><span>Scope filter</span><strong>${escapeHtml((pendingBackup as Record<string, any>)?.uiSettings?.scopeFilter || 'all')}</strong></div>
+          <div><span>Cached local values</span><strong>${counts.cachedQuotes || 0}</strong></div>
         </div>
       ` : `
         <div class="csv-validation-list csv-validation-list--error" role="alert">
@@ -555,14 +558,15 @@ function renderIncome(id = ''): string {
   const item = (Store.getFinancialReadModel().pipelineDeals || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
   return `
     <div class="modal-form">
-      <h2 id="modal-title">${item ? 'Edit pipeline item' : 'Add pipeline item'}</h2>
+      <h2 id="modal-title">${item ? 'Edit income' : 'Add income'}</h2>
+      <p class="modal-copy">Use status to separate reality from hope: confirmed, expected, or risky.</p>
       <input id="modal-income-id" type="hidden" value="${escapeHtml(item?.id || '')}" />
       <div class="form-group"><label for="modal-income-title">Source</label><input id="modal-income-title" value="${escapeHtml(item?.title || '')}" placeholder="Client or opportunity" /></div>
       <div class="modal-grid-two">
         <div class="form-group"><label for="modal-income-amount">Amount</label><input id="modal-income-amount" type="number" step="0.01" value="${escapeHtml(item?.value || '')}" /></div>
-        <div class="form-group"><label for="modal-income-probability">Probability</label><input id="modal-income-probability" type="number" min="0" max="1" step="0.05" value="${escapeHtml(item?.probability ?? 0.5)}" /></div>
+        <div class="form-group"><label for="modal-income-probability">Probability</label><input id="modal-income-probability" type="number" min="0" max="1" step="0.05" value="${escapeHtml(item?.probability ?? 0.65)}" /></div>
         <div class="form-group"><label for="modal-income-date">Expected date</label><input id="modal-income-date" type="date" value="${escapeHtml(item?.expectedDateISO || today())}" /></div>
-        <div class="form-group"><label for="modal-income-status">Stage</label><select id="modal-income-status">${['open', 'proposal', 'signed'].map((status) => `<option${item?.status === status ? ' selected' : ''}>${status}</option>`).join('')}</select></div>
+        <div class="form-group"><label for="modal-income-status">Status</label><select id="modal-income-status">${['confirmed', 'expected', 'risky'].map((status) => `<option${item?.status === status ? ' selected' : ''}>${status}</option>`).join('')}</select></div>
         <div class="form-group"><label for="modal-income-scope">Scope</label><select id="modal-income-scope">${scopeOptions(String(item?.scope || 'business'))}</select></div>
       </div>
       <div class="form-group"><label for="modal-income-account">Settlement account</label><select id="modal-income-account">${accountOptions(String(item?.destinationAccountId || ''))}</select></div>
@@ -579,7 +583,21 @@ function renderFiatAccount(id = ''): string {
       <input id="modal-fiat-id" type="hidden" value="${escapeHtml(item?.id || '')}" />
       <div class="form-group"><label for="modal-fiat-name">Name</label><input id="modal-fiat-name" value="${escapeHtml(item?.name || '')}" placeholder="Operating cash" /></div>
       <div class="form-group"><label for="modal-fiat-balance">Balance</label><input id="modal-fiat-balance" type="number" step="0.01" value="${escapeHtml(item?.balance || '')}" /></div>
-      <div class="form-group"><label for="modal-fiat-scope">Scope</label><select id="modal-fiat-scope">${scopeOptions(String(item?.scope || 'business'))}</select></div>
+      <div class="modal-grid-two">
+        <div class="form-group"><label for="modal-fiat-scope">Scope</label><select id="modal-fiat-scope">${scopeOptions(String(item?.scope || 'business'))}</select></div>
+        <div class="form-group"><label for="modal-fiat-bucket">Bucket</label><select id="modal-fiat-bucket">
+          ${[
+            ['available', 'Available cash'],
+            ['tax_reserve', 'Tax reserve'],
+            ['vat_reserve', 'VAT reserve'],
+            ['health_insurance', 'Health insurance'],
+            ['debt_repayment', 'Debt repayment'],
+            ['personal_survival', 'Personal survival'],
+            ['business_operating_costs', 'Business operating costs'],
+            ['buffer', 'Buffer'],
+          ].map(([bucket, label]) => `<option value="${bucket}"${String(item?.bucket || 'available') === bucket ? ' selected' : ''}>${label}</option>`).join('')}
+        </select></div>
+      </div>
       <div class="modal-actions">
         ${deactivateButton('deactivateFiatAccount', Boolean(item))}
         <span class="modal-actions-spacer"></span>
@@ -590,51 +608,14 @@ function renderFiatAccount(id = ''): string {
   `;
 }
 
-function renderWeb3(id = ''): string {
-  const item = (Store.getFinancialReadModel().web3Positions || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
-  return `
-    <div class="modal-form">
-      <h2 id="modal-title">${item ? 'Edit Web3 position' : 'Add Web3 position'}</h2>
-      <input id="modal-web3-id" type="hidden" value="${escapeHtml(item?.id || '')}" />
-      <div class="modal-grid-two">
-        <div class="form-group"><label for="modal-web3-symbol">Asset</label><input id="modal-web3-symbol" value="${escapeHtml(item?.symbolOrName || '')}" placeholder="ETH" /></div>
-        <div class="form-group"><label for="modal-web3-chain">Chain</label><input id="modal-web3-chain" value="${escapeHtml(item?.chain || '')}" placeholder="Ethereum" /></div>
-        <div class="form-group"><label for="modal-web3-amount">Units</label><input id="modal-web3-amount" type="number" step="0.0001" value="${escapeHtml(item?.amount || '')}" /></div>
-        <div class="form-group"><label for="modal-web3-price">Price</label><input id="modal-web3-price" type="number" step="0.01" value="${escapeHtml(item?.price || '')}" /></div>
-        <div class="form-group"><label for="modal-web3-liquidity">Liquidity</label><select id="modal-web3-liquidity">${['high', 'med', 'low'].map((liquidity) => `<option${item?.liquidity === liquidity ? ' selected' : ''}>${liquidity}</option>`).join('')}</select></div>
-        <div class="form-group"><label for="modal-web3-scope">Scope</label><select id="modal-web3-scope">${scopeOptions(String(item?.scope || 'shared'))}</select></div>
-      </div>
-      <label class="settings-check"><input id="modal-web3-manual" type="checkbox"${item?.manualPriceOverride !== false ? ' checked' : ''} /><span>Keep this position on a manual price override</span></label>
-      <div class="modal-actions">${deactivateButton('deactivateWeb3Position', Boolean(item))}<span class="modal-actions-spacer"></span>${formActions('web3Position', Boolean(item)).replace('<div class="modal-actions">', '').replace('</div>', '')}</div>
-    </div>
-  `;
-}
-
-function renderDefi(id = ''): string {
-  const item = (Store.getFinancialReadModel().defiPositions || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
-  return `
-    <div class="modal-form">
-      <h2 id="modal-title">${item ? 'Edit DeFi strategy' : 'Add DeFi strategy'}</h2>
-      <input id="modal-defi-id" type="hidden" value="${escapeHtml(item?.id || '')}" />
-      <div class="form-group"><label for="modal-defi-protocol">Protocol</label><input id="modal-defi-protocol" value="${escapeHtml(item?.protocol || '')}" placeholder="Aave" /></div>
-      <div class="modal-grid-two">
-        <div class="form-group"><label for="modal-defi-collateral">Collateral value</label><input id="modal-defi-collateral" type="number" step="0.01" value="${escapeHtml(item?.collateralValue || '')}" /></div>
-        <div class="form-group"><label for="modal-defi-debt">Debt value</label><input id="modal-defi-debt" type="number" step="0.01" value="${escapeHtml(item?.debtValue || '')}" /></div>
-        <div class="form-group"><label for="modal-defi-risk">Risk</label><select id="modal-defi-risk">${['Low', 'Medium', 'High'].map((risk) => `<option${item?.riskScore === risk ? ' selected' : ''}>${risk}</option>`).join('')}</select></div>
-        <div class="form-group"><label for="modal-defi-scope">Scope</label><select id="modal-defi-scope">${scopeOptions(String(item?.scope || 'shared'))}</select></div>
-      </div>
-      <div class="modal-actions">${deactivateButton('deactivateDefiPosition', Boolean(item))}<span class="modal-actions-spacer"></span>${formActions('defiPosition', Boolean(item)).replace('<div class="modal-actions">', '').replace('</div>', '')}</div>
-    </div>
-  `;
-}
-
 function renderExpense(id = ''): string {
   const item = (Store.getFinancialReadModel().recurringExpenses || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
   return `
     <div class="modal-form">
-      <h2 id="modal-title">${item ? 'Edit recurring expense' : 'Add recurring expense'}</h2>
+      <h2 id="modal-title">${item ? 'Edit recurring cost' : 'Add recurring cost'}</h2>
+      <p class="modal-copy">Recurring costs become upcoming obligations and shape runway.</p>
       <input id="modal-expense-id" type="hidden" value="${escapeHtml(item?.id || '')}" />
-      <div class="form-group"><label for="modal-expense-category">Category</label><input id="modal-expense-category" value="${escapeHtml(item?.category || '')}" placeholder="Housing" /></div>
+      <div class="form-group"><label for="modal-expense-category">Name</label><input id="modal-expense-category" value="${escapeHtml(item?.category || '')}" placeholder="Health insurance or studio rent" /></div>
       <div class="form-group"><label for="modal-expense-amount">Monthly amount</label><input id="modal-expense-amount" type="number" step="0.01" value="${escapeHtml(item?.monthlyAmount || '')}" /></div>
       <div class="modal-grid-two">
         <div class="form-group"><label for="modal-expense-due-day">Due day</label><input id="modal-expense-due-day" type="number" min="1" max="28" value="${escapeHtml(item?.dueDay || 1)}" /></div>
@@ -684,8 +665,7 @@ function renderModal(type: string, id = ''): string {
   if (type === 'settleIncome') return renderSettleIncome(id);
   if (type === 'income') return renderIncome(id);
   if (type === 'fiatAccount') return renderFiatAccount(id);
-  if (type === 'web3Position') return renderWeb3(id);
-  if (type === 'defiPosition') return renderDefi(id);
+  if (type === 'web3Position' || type === 'defiPosition') return '<div class="modal-form"><h2 id="modal-title">Postponed</h2><p class="modal-copy">Market portfolio tracking is outside the focused treasury MVP.</p></div>';
   if (type === 'expense') return renderExpense(id);
   if (type === 'debtAdd' || type === 'debtPayment') return renderDebt(type, id);
   return '<div class="modal-form"><h2 id="modal-title">Nothing to edit</h2></div>';
@@ -773,16 +753,6 @@ function saveFinanceModal(type: string): void {
   const timestamp = new Date().toISOString();
   if (type === 'settings') {
     Store.saveFinanceSettings({ baseCurrency: value('modal-settings-currency'), forecastDays: Number(value('modal-settings-forecast')) });
-    Store.saveUiSettings({
-      appearance: value('modal-settings-appearance') as FinanceUiSettings['appearance'],
-      reducedMotion: checked('modal-settings-motion'),
-      walletPriceSource: value('modal-settings-wallet-prices') as FinanceUiSettings['walletPriceSource'],
-      scenario: {
-        marketMajors: Number(value('modal-settings-market')),
-        burnDelta: Number(value('modal-settings-burn')),
-        probFloor: Number(value('modal-settings-floor')),
-      },
-    });
     applyAppearance(Store);
     closeModal();
     return;
@@ -813,15 +783,22 @@ function saveFinanceModal(type: string): void {
   if (type === 'fiatAccount') {
     const balance = Number(value('modal-fiat-balance'));
     if (!value('modal-fiat-name') || !Number.isFinite(balance)) return;
-    append({ type: 'asset.account_set', amount: balance, currency, timestamp, related_entity_id: value('modal-fiat-id') || financeId('cash'), metadata: { name: value('modal-fiat-name'), balance, active: true, scope: value('modal-fiat-scope') } }, 'modal.fiatAccount');
-    return;
-  }
-  if (type === 'web3Position') {
-    append({ type: 'asset.position_set', amount: 0, currency, timestamp, related_entity_id: value('modal-web3-id') || financeId('web3'), metadata: { symbolOrName: value('modal-web3-symbol'), chain: value('modal-web3-chain'), amount: Number(value('modal-web3-amount')), price: Number(value('modal-web3-price')), liquidity: value('modal-web3-liquidity'), scope: value('modal-web3-scope'), priceSource: 'manual', priceUpdatedAt: timestamp, manualPriceOverride: checked('modal-web3-manual') } }, 'modal.web3Position');
-    return;
-  }
-  if (type === 'defiPosition') {
-    append({ type: 'asset.defi_set', amount: 0, currency, timestamp, related_entity_id: value('modal-defi-id') || financeId('defi'), metadata: { protocol: value('modal-defi-protocol'), collateralValue: Number(value('modal-defi-collateral')), debtValue: Number(value('modal-defi-debt')), riskScore: value('modal-defi-risk'), scope: value('modal-defi-scope') } }, 'modal.defiPosition');
+    const bucket = value('modal-fiat-bucket') || 'available';
+    append({
+      type: 'asset.account_set',
+      amount: balance,
+      currency,
+      timestamp,
+      related_entity_id: value('modal-fiat-id') || financeId('cash'),
+      metadata: {
+        name: value('modal-fiat-name'),
+        balance,
+        active: true,
+        scope: value('modal-fiat-scope'),
+        bucket,
+        reserved: bucket !== 'available',
+      },
+    }, 'modal.fiatAccount');
     return;
   }
   if (type === 'expense') {
@@ -926,8 +903,6 @@ Object.assign(window, {
   },
   deactivateFiatAccount: () => confirmDeactivate('deactivateFiatAccount', 'modal-fiat-id'),
   deactivateRecurringExpense: () => confirmDeactivate('deactivateRecurringExpense', 'modal-expense-id'),
-  deactivateWeb3Position: () => confirmDeactivate('deactivateWeb3Position', 'modal-web3-id'),
-  deactivateDefiPosition: () => confirmDeactivate('deactivateDefiPosition', 'modal-defi-id'),
   deactivateDebtAccount: () => confirmDeactivate('deactivateDebtAccount', 'modal-debt-id'),
   resetDemoData: () => {
     if (!window.confirm('Restore the original Finance Master sample data? Your finance entries will be replaced.')) return;
@@ -972,18 +947,6 @@ Object.assign(window, {
     if (!id || !window.confirm('Delete this savings goal?')) return;
     Store.deleteGoal(id);
     openEditModal('goals');
-  },
-  refreshCryptoPrices: async () => {
-    try {
-      const result = await Store.refreshCryptoPrices();
-      const message = result.source === 'manual'
-        ? 'Wallet pricing is set to manual only. Choose CoinGecko read-only and save settings to enable refreshes.'
-        : `Refreshed ${result.updated} wallet position${result.updated === 1 ? '' : 's'} from ${result.source}.`;
-      window.alert(message);
-      openEditModal('settings');
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Could not refresh wallet prices.');
-    }
   },
   exportFinanceBackup: () => downloadBackup(),
   chooseFinanceBackup: () => document.querySelector<HTMLInputElement>('#modal-backup-file')?.click(),

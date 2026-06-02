@@ -11,6 +11,7 @@ window.FinancialMode = (function () {
     let currentMetrics = null;
     let currentDiagnostics = null;
     let currentReview = null;
+    let currentTreasury = null;
     let currentHasFinanceData = false;
     let labState = { marketMajors: 0, burnDelta: 0, probFloor: 50 };
     let adviceExpanded = false;
@@ -182,7 +183,7 @@ window.FinancialMode = (function () {
         const signal = resolveFinancialHeroSignal();
         heroSlot.innerHTML = window.CoreDashboardHero.renderHero({
             domain: 'financial',
-            headline: 'Finance',
+            headline: 'Finance Observatory',
             signalText: signal.text,
             signalTone: signal.tone,
             signalIcon: signal.icon,
@@ -377,6 +378,7 @@ window.FinancialMode = (function () {
         const context = window.Store.computeFinanceContext(true, scope);
         currentSnapshot = context.snapshot;
         currentData = context.readModel;
+        currentTreasury = context.treasury || {};
         currentDiagnostics = context.diagnostics || {};
         currentReview = window.Store.getReviewState();
         currentHasFinanceData = Number(currentData && currentData.eventsCount) > 0;
@@ -388,39 +390,300 @@ window.FinancialMode = (function () {
 
         if (!elements.content) return;
 
-        const focusMode = getFocusMode();
         const sections = [
-            renderSnapshot(focusMode),
-            renderSetupChecklist(),
-            renderCashCalendar(),
-            renderGoals()
+            renderObservatoryHeader(),
+            renderTreasurySnapshot(),
+            renderReserveBuckets(),
+            renderIncomePipeline(),
+            renderObligations(),
+            renderReviewQueue(),
+            renderScenarioOutcomes(),
+            renderLeanRecords()
         ];
 
-        if (!focusMode) {
-            sections.push(
-                renderHybridTreasury(),
-                renderOperationsInvestmentsRow(),
-                renderPipelineTabs(),
-                renderTensionSignals(),
-                renderProjection(),
-                renderScenarioLab()
-            );
-        } else {
-            sections.push(renderTensionSignals());
-        }
-
-        elements.content.classList.toggle('fin-focus-mode', focusMode);
+        elements.content.classList.toggle('fin-focus-mode', false);
         elements.content.innerHTML = sections.join('');
 
         // Post-render attachments
-        attachCharts();
-        attachLabListeners();
         if (window.CoreDashboardLayout && typeof window.CoreDashboardLayout.refresh === 'function') {
             window.CoreDashboardLayout.refresh();
         }
     }
 
     /* --- IA Layer Renderers --- */
+
+    function treasuryArray(key) {
+        return safeArray(currentTreasury && currentTreasury[key]);
+    }
+
+    function treasuryNumber(key, fallback = 0) {
+        const value = Number(currentTreasury && currentTreasury[key]);
+        return Number.isFinite(value) ? value : fallback;
+    }
+
+    function statusLabel(value) {
+        const raw = String(value || '').replace(/_/g, ' ');
+        return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Review';
+    }
+
+    function renderStatusPill(status) {
+        const safe = String(status || 'needs_review').toLowerCase();
+        return `<span class="fin-status-pill fin-status-pill--${escapeHtml(safe)}">${escapeHtml(statusLabel(safe))}</span>`;
+    }
+
+    function renderObservatoryHeader() {
+        return `
+            <section class="fin-section">
+                <div class="fin-ui-toolbar">
+                    <div>
+                        <div class="fin-ui-toolbar-copy">Local-first treasury cockpit. Start with what is real, reserved, due, and unclear.</div>
+                        <div class="fin-operating-meta">Last updated ${formatShortDate(currentDiagnostics.latestEventTimestamp)} · Last reviewed ${formatShortDate(currentReview && currentReview.lastReviewedAt)}</div>
+                    </div>
+                    <div class="fin-toolbar-actions">
+                        <select id="fin-scope-filter" class="fin-scope-filter" aria-label="Treasury scope">${scopeFilterOptions(window.Store.getUiSettings().scopeFilter || 'all')}</select>
+                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'quickAdd'">Add entry</button>
+                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">Review</button>
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderTreasurySnapshot() {
+        const totalCash = treasuryNumber('totalCash', Number(currentSnapshot && currentSnapshot.realBalance) || 0);
+        const reservedCash = treasuryNumber('reservedCash', Number(currentSnapshot && currentSnapshot.reservedCash) || 0);
+        const availableCash = treasuryNumber('trulyAvailableCash', totalCash - reservedCash);
+        const monthlyBurn = treasuryNumber('totalMonthlyBurn', Number(currentSnapshot && currentSnapshot.monthlyBurn) || 0);
+        const runway = currentTreasury && currentTreasury.runwayMonths != null
+            ? currentTreasury.runwayMonths
+            : currentSnapshot.runwayMonths;
+        const runwayLabel = runway == null ? 'Unknown' : `${Number(runway).toFixed(1)} mo`;
+        const runwayClass = runway == null || Number(runway) < 3 ? 'stress-high' : (Number(runway) < 6 ? 'stress-medium' : 'stress-low');
+        return `
+            <section class="fin-section">
+                <div class="fin-snapshot-grid fin-snapshot-grid--treasury">
+                    <div class="widget ui-card glass fin-tile fin-tile-primary">
+                        <div class="fin-tile-label">Truly available</div>
+                        <div class="fin-tile-value">${currentHasFinanceData ? formatCurrency(availableCash) : '—'}</div>
+                        <div class="fin-tile-subline">Cash after reserved buckets</div>
+                    </div>
+                    <div class="widget ui-card glass fin-tile">
+                        <div class="fin-tile-label">Total cash</div>
+                        <div class="fin-tile-value">${currentHasFinanceData ? formatCurrency(totalCash) : '—'}</div>
+                        <div class="fin-tile-subline">Cash accounts only</div>
+                    </div>
+                    <div class="widget ui-card glass fin-tile">
+                        <div class="fin-tile-label">Reserved</div>
+                        <div class="fin-tile-value">${currentHasFinanceData ? formatCurrency(reservedCash) : '—'}</div>
+                        <div class="fin-tile-subline">Taxes, health, debt, buffer</div>
+                    </div>
+                    <div class="widget ui-card glass fin-tile">
+                        <div class="fin-tile-label">Monthly burn</div>
+                        <div class="fin-tile-value">${monthlyBurn > 0 ? formatCurrency(monthlyBurn) : '—'}</div>
+                        <div class="fin-tile-subline">Personal ${formatCurrency(treasuryNumber('monthlyPersonalBurn'))} · Business ${formatCurrency(treasuryNumber('monthlyBusinessBurn'))}</div>
+                    </div>
+                    <div class="widget ui-card glass fin-tile fin-tile-runway">
+                        <div class="fin-tile-label">Runway</div>
+                        <div class="fin-tile-value ${runwayClass}">${runwayLabel}</div>
+                        <div class="fin-tile-subline">Based on truly available cash</div>
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderReserveBuckets() {
+        const buckets = treasuryArray('reserveBuckets')
+            .filter((bucket) => ['tax_reserve', 'vat_reserve', 'health_insurance', 'debt_repayment', 'buffer'].includes(String(bucket.bucket)));
+        return `
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card">
+                    <div class="widget-title ui-title">Reserves</div>
+                    <div class="fin-helper-text">Money that exists, but is not emotionally or operationally available.</div>
+                    <div class="fin-reserve-grid">
+                        ${buckets.map((bucket) => `
+                            <div class="fin-reserve-item">
+                                <span>${escapeHtml(bucket.label)}</span>
+                                <strong>${formatCurrency(bucket.amount)}</strong>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button class="fin-action-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'fiatAccount'">Add or adjust reserve account</button>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderIncomePipeline() {
+        const income = treasuryArray('income');
+        const groups = ['confirmed', 'expected', 'risky'];
+        const totals = groups.reduce((acc, status) => {
+            acc[status] = income
+                .filter((entry) => String(entry.status) === status)
+                .reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
+            return acc;
+        }, {});
+        return `
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Income Pipeline</div>
+                            <div class="fin-helper-text">Classify future income by decision quality, not optimism.</div>
+                        </div>
+                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'income'">Add income</button>
+                    </div>
+                    <div class="fin-status-grid">
+                        ${groups.map((status) => `
+                            <div class="fin-status-card">
+                                ${renderStatusPill(status)}
+                                <strong>${formatCurrency(totals[status])}</strong>
+                                <span>This month: ${formatCurrency(Number(currentTreasury?.incomeThisMonth?.[status]) || 0)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="fin-table-wrap">
+                        ${income.length ? `
+                            <table class="fin-table fin-table--compact">
+                                <thead><tr><th>Source</th><th>Status</th><th>Due</th><th>Amount</th><th style="text-align:right">Actions</th></tr></thead>
+                                <tbody>
+                                    ${income.slice(0, 8).map((entry) => `
+                                        <tr>
+                                            <td>${escapeHtml(entry.title)}</td>
+                                            <td>${renderStatusPill(entry.status)}</td>
+                                            <td>${entry.dueDate ? formatShortDate(entry.dueDate) : 'No date'}</td>
+                                            <td>${formatCurrency(entry.amount)}</td>
+                                            <td style="text-align:right">
+                                                <button class="fin-mini-btn" data-action="FinancialMode.openAddModal" data-action-args="'income', '${escapeActionArg(entry.id)}'">Edit</button>
+                                                <button class="fin-mini-btn" data-action="markAsPaid" data-action-args="'${escapeActionArg(entry.id)}'">Received</button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        ` : renderCompactEmpty('No future income has been added yet.')}
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderObligations() {
+        const overdue = treasuryArray('overdueObligations');
+        const dueSoon = treasuryArray('dueSoonObligations');
+        const upcoming = treasuryArray('upcomingObligations');
+        const obligations = overdue.concat(dueSoon).concat(upcoming).slice(0, 10);
+        return `
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Obligations</div>
+                            <div class="fin-helper-text">Costs that are already spoken for. Overdue first, then the next 90 days.</div>
+                        </div>
+                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense'">Add recurring cost</button>
+                    </div>
+                    <div class="fin-status-grid">
+                        <div class="fin-status-card">${renderStatusPill('overdue')}<strong>${overdue.length}</strong><span>${formatCurrency(overdue.reduce((sum, item) => sum + Number(item.amount || 0), 0))}</span></div>
+                        <div class="fin-status-card">${renderStatusPill('due_soon')}<strong>${dueSoon.length}</strong><span>Within 7 days</span></div>
+                        <div class="fin-status-card">${renderStatusPill('upcoming')}<strong>${upcoming.length}</strong><span>Next 90 days</span></div>
+                    </div>
+                    ${obligations.length ? obligations.map((entry) => `
+                        <div class="modal-list-row">
+                            <span><strong>${escapeHtml(entry.title)}</strong><br><small>${entry.dueDate ? formatShortDate(entry.dueDate) : 'No due date'} · ${escapeHtml(entry.scope || 'shared')}</small></span>
+                            <span>${renderStatusPill(entry.status)} ${formatCurrency(entry.amount)}</span>
+                        </div>
+                    `).join('') : renderCompactEmpty('Add recurring costs or debt items to see upcoming obligations.')}
+                </div>
+            </section>
+        `;
+    }
+
+    function renderReviewQueue() {
+        const queue = treasuryArray('reviewQueue');
+        const reviewDue = isWeeklyReviewDue();
+        return `
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Review Queue</div>
+                            <div class="fin-helper-text">Only items that need a classification, decision, or check.</div>
+                        </div>
+                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">${reviewDue ? 'Start review' : 'Open review'}</button>
+                    </div>
+                    ${queue.length ? queue.map((item) => `
+                        <div class="modal-list-row">
+                            <span><strong>${escapeHtml(item.title)}</strong><br><small>${escapeHtml(item.reason)}</small></span>
+                            ${renderStatusPill(item.tone === 'urgent' ? 'overdue' : 'needs_review')}
+                        </div>
+                    `).join('') : renderCompactEmpty('Nothing needs review right now.')}
+                </div>
+            </section>
+        `;
+    }
+
+    function renderScenarioOutcomes() {
+        const scenarios = currentTreasury && currentTreasury.incomeScenarios || {};
+        return `
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card">
+                    <div class="widget-title ui-title">Scenarios</div>
+                    <div class="fin-helper-text">No sliders. Just three operating truths for the next 90 days.</div>
+                    <div class="fin-status-grid">
+                        <div class="fin-status-card">
+                            <span class="fin-muted">Conservative</span>
+                            <strong>${formatCurrency(scenarios.conservative)}</strong>
+                            <span>Confirmed income only</span>
+                        </div>
+                        <div class="fin-status-card">
+                            <span class="fin-muted">Expected</span>
+                            <strong>${formatCurrency(scenarios.expected)}</strong>
+                            <span>Confirmed + expected</span>
+                        </div>
+                        <div class="fin-status-card">
+                            <span class="fin-muted">Optimistic</span>
+                            <strong>${formatCurrency(scenarios.optimistic)}</strong>
+                            <span>Confirmed + expected + risky</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderLeanRecords() {
+        return `
+            <section class="fin-section">
+                <div class="fin-operational-row">
+                    <div class="widget ui-card glass fin-card">
+                        <div class="widget-title ui-title">Cash Accounts</div>
+                        ${safeArray(currentData && currentData.fiatAccounts).length ? safeArray(currentData && currentData.fiatAccounts).map((account) => `
+                            <div class="modal-list-row">
+                                <span><strong>${escapeHtml(account.name)}</strong><br><small>${escapeHtml(account.bucket || 'available')} · ${escapeHtml(account.scope || 'shared')}</small></span>
+                                <span>${formatCurrency(account.balance)}</span>
+                            </div>
+                        `).join('') : renderCompactEmpty('No cash accounts yet.')}
+                        <button class="fin-action-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'fiatAccount'">Add cash account</button>
+                    </div>
+                    <div class="widget ui-card glass fin-card">
+                        <div class="widget-title ui-title">Recurring Costs & Debt</div>
+                        ${safeArray(currentData && currentData.recurringExpenses).slice(0, 5).map((expense) => `
+                            <div class="modal-list-row">
+                                <span><strong>${escapeHtml(expense.category)}</strong><br><small>Due day ${escapeHtml(expense.dueDay)} · ${escapeHtml(expense.scope || 'shared')}</small></span>
+                                <span>${formatCurrency(expense.monthlyAmount)}</span>
+                            </div>
+                        `).join('') || renderCompactEmpty('No recurring costs yet.')}
+                        ${treasuryNumber('debtRemaining') > 0 ? `<div class="fin-subdivider"></div><div class="modal-list-row"><span><strong>Debt remaining</strong><br><small>Tracked debt items</small></span><span>${formatCurrency(treasuryNumber('debtRemaining'))}</span></div>` : ''}
+                        <div class="fin-action-row">
+                            <button class="fin-action-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense'">Add cost</button>
+                            <button class="fin-action-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'debtAdd'">Add debt</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        `;
+    }
 
     function renderSnapshot(focusMode) {
         const stressClass = `stress-${String(currentMetrics.stressLevel || '').toLowerCase()}`;
@@ -630,20 +893,12 @@ window.FinancialMode = (function () {
     function computeHybridTotals() {
         const fiatTotal = safeArray(currentData && currentData.fiatAccounts)
             .reduce((sum, account) => sum + (Number(account && account.balance) || 0), 0);
-        const web3Total = safeArray(currentData && currentData.web3Positions)
-            .reduce((sum, position) => sum + ((Number(position && position.amount) || 0) * (Number(position && position.price) || 0)), 0);
-        const defiNet = safeArray(currentData && currentData.defiPositions)
-            .reduce((sum, position) => sum + ((Number(position && position.collateralValue) || 0) - (Number(position && position.debtValue) || 0)), 0);
-        const totalAssets = fiatTotal + web3Total + defiNet;
         const liabilities = Math.max(0, Number(currentSnapshot && currentSnapshot.totalDebt) || 0);
-        const netWorth = totalAssets - liabilities;
         return {
             fiatTotal,
-            web3Total,
-            defiNet,
-            totalAssets,
             liabilities,
-            netWorth
+            availableCash: Number(currentSnapshot && currentSnapshot.trulyAvailableCash) || fiatTotal,
+            reservedCash: Number(currentSnapshot && currentSnapshot.reservedCash) || 0
         };
     }
 
@@ -655,33 +910,33 @@ window.FinancialMode = (function () {
                 <div class="fin-ledger-grid">
                     <div class="widget ui-card glass fin-card">
                         <div class="drag-handle">⋮⋮</div>
-                        <div class="widget-title ui-title">Allocation Breakdown</div>
+                        <div class="widget-title ui-title">Cash Position</div>
                         <div class="fin-stack-lg">
-                            ${renderAllocationItem('Safe', currentMetrics.allocation.safe, 'safe')}
-                            ${renderAllocationItem('Growth', currentMetrics.allocation.growth, 'growth')}
-                            ${renderAllocationItem('Speculative', currentMetrics.allocation.speculative, 'spec')}
+                            ${renderAllocationItem('Available', totals.availableCash, 'safe')}
+                            ${renderAllocationItem('Reserved', totals.reservedCash, 'growth')}
+                            ${renderAllocationItem('Debt', totals.liabilities, 'spec')}
                         </div>
                     </div>
                     <div class="widget ui-card glass fin-card">
                         <div class="drag-handle">⋮⋮</div>
-                        <div class="widget-title ui-title">Net Worth Summary</div>
+                        <div class="widget-title ui-title">Treasury Summary</div>
                         <div class="fin-summary-grid">
                             <div class="fin-summary-row">
-                                <span class="fin-muted">Total Assets</span>
-                                <span>${formatCurrency(totals.totalAssets)}</span>
+                                <span class="fin-muted">Total Cash</span>
+                                <span>${formatCurrency(totals.fiatTotal)}</span>
                             </div>
                             <div class="fin-summary-row">
-                                <span class="fin-muted">Total Liabilities</span>
+                                <span class="fin-muted">Debt Remaining</span>
                                 <span class="fin-val-neg">${liabilitiesLabel}</span>
                             </div>
                             <hr class="fin-divider">
                             <div class="fin-summary-row fin-summary-row--strong">
-                                <span>Total Net Worth</span>
-                                <span>${formatCurrency(totals.netWorth)}</span>
+                                <span>Truly Available</span>
+                                <span>${formatCurrency(totals.availableCash)}</span>
                             </div>
                             <div class="fin-summary-row fin-summary-row--sub">
-                                <span class="fin-muted">Real Balance (Live Assets)</span>
-                                <span>${formatCurrency(currentSnapshot.realBalance)}</span>
+                                <span class="fin-muted">Reserved Cash</span>
+                                <span>${formatCurrency(totals.reservedCash)}</span>
                             </div>
                             <div class="fin-summary-row fin-summary-row--sub">
                                 <span class="fin-muted">Projected Cashflow (${window.Store.getFinanceSettings().forecastDays}d)</span>
@@ -696,12 +951,7 @@ window.FinancialMode = (function () {
 
     function renderOperationalLedgerCard() {
         const fiatAccounts = safeArray(currentData && currentData.fiatAccounts);
-        const walletPositions = safeArray(currentData && currentData.web3Positions);
-        const defiPositions = safeArray(currentData && currentData.defiPositions);
-
         const fiatTotal = fiatAccounts.reduce((sum, account) => sum + (Number(account && account.balance) || 0), 0);
-        const walletTotal = walletPositions.reduce((sum, position) => sum + ((Number(position && position.amount) || 0) * (Number(position && position.price) || 0)), 0);
-        const defiNet = defiPositions.reduce((sum, position) => sum + ((Number(position && position.collateralValue) || 0) - (Number(position && position.debtValue) || 0)), 0);
 
         const fiatBody = fiatAccounts.length
             ? `
@@ -722,72 +972,17 @@ window.FinancialMode = (function () {
             `
             : renderCompactEmpty('No accounts yet.');
 
-        const walletBody = walletPositions.length
-            ? `
-                <table class="fin-table fin-table--compact">
-                    <thead><tr><th>Asset</th><th>Amount</th><th>Value</th><th style="text-align:right">Actions</th></tr></thead>
-                    <tbody>
-                        ${walletPositions.map((position) => `
-                            <tr>
-                                <td>${position.symbolOrName}<small>${position.priceSource || 'manual'} · ${formatShortDate(position.priceUpdatedAt)}</small></td>
-                                <td>${position.amount}</td>
-                                <td class="fin-val-accent">${formatCurrency((Number(position.amount) || 0) * (Number(position.price) || 0))}</td>
-                                <td style="text-align:right">
-                                    <button class="fin-mini-btn" data-action="FinancialMode.openAddModal" data-action-args="'web3Position', '${escapeActionArg(position.id)}'" title="Edit">${renderSAGGlyph('edit', { size: 'xs', tone: 'muted' })}</button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `
-            : renderCompactEmpty('No wallet positions yet.');
-
-        const defiBody = defiPositions.length
-            ? `
-                <table class="fin-table fin-table--compact">
-                    <thead><tr><th>Protocol</th><th>Net Value</th><th>Risk</th><th style="text-align:right">Actions</th></tr></thead>
-                    <tbody>
-                        ${defiPositions.map((position) => `
-                            <tr>
-                                <td>${position.protocol}</td>
-                                <td class="fin-val-accent">${formatCurrency((Number(position.collateralValue) || 0) - (Number(position.debtValue) || 0))}</td>
-                                <td>${position.riskScore || 'Low'}</td>
-                                <td style="text-align:right">
-                                    <button class="fin-mini-btn" data-action="FinancialMode.openAddModal" data-action-args="'defiPosition', '${escapeActionArg(position.id)}'" title="Edit">${renderSAGGlyph('edit', { size: 'xs', tone: 'muted' })}</button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `
-            : renderCompactEmpty('No DeFi strategies yet.');
-
         return `
                 <div class="widget ui-card glass fin-card">
                     <div class="drag-handle">⋮⋮</div>
-                    <div class="widget-title ui-title">Assets</div>
+                    <div class="widget-title ui-title">Cash Accounts</div>
                     ${renderCollapsible(
-            'fiat-accounts',
-            'Fiat Accounts',
-            `${pluralize(fiatAccounts.length, 'account')} · ${formatCurrency(fiatTotal)} total`,
-            `${fiatBody}
-            <button class="fin-action-btn" data-action="FinancialMode.openAddModal" data-action-args="'fiatAccount'">+ Add Account</button>`
-        )}
-                    ${renderCollapsible(
-            'wallet-positions',
-            'Wallet Positions',
-            `${pluralize(walletPositions.length, 'position')} · ${formatCurrency(walletTotal)} total`,
-            `${walletBody}
-            <button class="fin-action-btn" data-action="FinancialMode.openAddModal" data-action-args="'web3Position'">+ Add Position</button>`
-        )}
-                    <div class="fin-subdivider"></div>
-                    ${renderCollapsible(
-            'defi-strategies',
-            'DeFi Strategies',
-            `${pluralize(defiPositions.length, 'strategy', 'strategies')} · ${formatCurrency(defiNet)} net`,
-            `${defiBody}
-            <button class="fin-action-btn" data-action="FinancialMode.openAddModal" data-action-args="'defiPosition'">+ Add Strategy</button>`
-        )}
+                'fiat-accounts',
+                'Accounts',
+                `${pluralize(fiatAccounts.length, 'account')} · ${formatCurrency(fiatTotal)} total`,
+                `${fiatBody}
+                <button class="fin-action-btn" data-action="FinancialMode.openAddModal" data-action-args="'fiatAccount'">+ Add Account</button>`
+            )}
                 </div>
         `;
     }

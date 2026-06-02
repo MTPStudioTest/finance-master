@@ -112,6 +112,121 @@ test('read model preserves account, scope, category, and recurring schedule meta
   assert.equal(result.snapshot.runwayMonths, 4);
 });
 
+test('treasury model separates reserved cash from truly available cash', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-02T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-available',
+      type: 'asset.account_set',
+      amount: 5000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-available',
+      metadata: { name: 'Operating cash', balance: 5000, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'cash-tax',
+      type: 'asset.account_set',
+      amount: 1800,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-tax',
+      metadata: { name: 'Tax reserve', balance: 1800, scope: 'business', bucket: 'tax_reserve', reserved: true },
+    },
+    {
+      id: 'rent-recurring',
+      type: 'expense.recurring_set',
+      amount: 1000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'rent-recurring',
+      metadata: { category: 'Studio rent', monthlyAmount: 1000, dueDay: 8, frequency: 'monthly', scope: 'business' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(result.treasury.totalCash, 6800);
+  assert.equal(result.treasury.reservedCash, 1800);
+  assert.equal(result.treasury.trulyAvailableCash, 5000);
+  assert.equal(result.treasury.totalMonthlyBurn, 1000);
+  assert.equal(result.treasury.runwayMonths, 5);
+  assert.equal(result.snapshot.realBalance, 6800);
+  assert.equal(result.snapshot.trulyAvailableCash, 5000);
+});
+
+test('treasury model classifies income scenarios and review items', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-02T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-main',
+      type: 'asset.account_set',
+      amount: 4000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating cash', balance: 4000, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'cost-overdue',
+      type: 'expense.recurring_set',
+      amount: 500,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cost-overdue',
+      metadata: { category: 'Workspace', monthlyAmount: 500, dueDay: 1, frequency: 'monthly', scope: 'business' },
+    },
+    {
+      id: 'income-confirmed',
+      type: 'pipeline.created',
+      amount: 1200,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'income-confirmed',
+      metadata: { title: 'Signed project', value: 1200, probability: 0.9, status: 'confirmed', expectedDateISO: '2026-06-20', scope: 'business' },
+    },
+    {
+      id: 'income-expected',
+      type: 'pipeline.created',
+      amount: 800,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'income-expected',
+      metadata: { title: 'Likely advisory', value: 800, probability: 0.65, status: 'expected', expectedDateISO: '2026-06-22', scope: 'business' },
+    },
+    {
+      id: 'income-risky',
+      type: 'pipeline.created',
+      amount: 2000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'income-risky',
+      metadata: { title: 'Unclear collaboration', value: 2000, probability: 0.35, status: 'risky', expectedDateISO: '2026-06-24', scope: 'business' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(result.treasury.incomeThisMonth.confirmed, 1200);
+  assert.equal(result.treasury.incomeThisMonth.expected, 800);
+  assert.equal(result.treasury.incomeThisMonth.risky, 2000);
+  assert.equal(result.treasury.incomeScenarios.conservative, 3700);
+  assert.equal(result.treasury.incomeScenarios.expected, 4500);
+  assert.equal(result.treasury.incomeScenarios.optimistic, 6500);
+  assert.equal(result.treasury.overdueObligations[0].title, 'Workspace');
+  assert.equal(result.treasury.reviewQueue.some((item) => item.reason === 'Risky income assumption'), true);
+});
+
 test('reversals remove their target from active events and derived balances', () => {
   const finance = loadFinance();
   const nowIso = '2026-06-02T10:00:00.000Z';

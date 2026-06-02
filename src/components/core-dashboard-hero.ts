@@ -1,20 +1,20 @@
 import { STORAGE_KEYS } from '../settings/storage-keys';
 
 const COPY = {
-  contextLabel: 'Material Ground',
-  headline: 'Finance',
-  subline: 'Where reality becomes clear and supportive.',
+  contextLabel: 'Local-first treasury',
+  headline: 'Finance Observatory',
+  subline: 'See what is real, what is reserved, what is due, and what needs a decision.',
   welcome: [
-    'Welcome to material ground.',
-    'This space turns numbers into steadier footing.',
-    'You are not here to panic or predict perfectly.',
-    'Clarity, even when incomplete, is already support.',
+    'Welcome to the treasury cockpit.',
+    'This space separates cash from commitments.',
+    'You are not here to forecast perfectly.',
+    'You are here to reduce anxiety enough to make the next real decision.',
   ],
   faq: [
-    ['What is this space for?', 'To see financial reality and choose calm next steps.'],
-    ['When should I come here?', 'Weekly, and before major spending or commitments.'],
-    ['What should I focus on first?', 'Review Real Balance and Runway, then Tension Signals.'],
-    ['What if I ignore it for a while?', 'Return with one ledger event; the view will re-stabilize.'],
+    ['What is this space for?', 'To see available cash, reserves, obligations, runway, and review items.'],
+    ['When should I come here?', 'Weekly, and before major spending, debt, tax, or project-income decisions.'],
+    ['What should I focus on first?', 'Truly available cash, reserved money, overdue obligations, then runway.'],
+    ['What if I ignore it for a while?', 'Return with one cash account or transaction; the Observatory will re-ground.'],
   ],
 };
 

@@ -362,6 +362,8 @@
                     currency: event.currency,
                     active: metadata.active !== false,
                     scope: String(metadata.scope || 'shared'),
+                    bucket: String(metadata.bucket || metadata.reserveBucket || 'available'),
+                    reserved: Boolean(metadata.reserved) || (metadata.bucket && String(metadata.bucket) !== 'available'),
                     updatedAt: event.timestamp
                 };
                 return;

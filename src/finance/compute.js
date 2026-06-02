@@ -58,6 +58,292 @@
         return Events.roundMoney(value);
     }
 
+    var RESERVE_BUCKETS = [
+        'tax_reserve',
+        'vat_reserve',
+        'health_insurance',
+        'debt_repayment',
+        'personal_survival',
+        'business_operating_costs',
+        'investment_growth',
+        'buffer'
+    ];
+
+    function normalizeBucket(value) {
+        var raw = String(value || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+        if (!raw) return 'available';
+        if (raw === 'tax' || raw === 'taxes') return 'tax_reserve';
+        if (raw === 'vat') return 'vat_reserve';
+        if (raw === 'health' || raw === 'insurance') return 'health_insurance';
+        if (raw === 'debt') return 'debt_repayment';
+        if (raw === 'survival') return 'personal_survival';
+        if (raw === 'business' || raw === 'operating') return 'business_operating_costs';
+        if (raw === 'growth' || raw === 'investment') return 'investment_growth';
+        if (raw === 'safety_buffer' || raw === 'safety') return 'buffer';
+        return raw;
+    }
+
+    function labelBucket(bucket) {
+        var labels = {
+            available: 'Available',
+            tax_reserve: 'Tax reserve',
+            vat_reserve: 'VAT reserve',
+            health_insurance: 'Health insurance',
+            debt_repayment: 'Debt repayment',
+            personal_survival: 'Personal survival',
+            business_operating_costs: 'Business operating costs',
+            investment_growth: 'Investment growth',
+            buffer: 'Buffer'
+        };
+        return labels[bucket] || String(bucket || 'available').replace(/_/g, ' ');
+    }
+
+    function addDays(base, days) {
+        var date = new Date(base);
+        date.setDate(date.getDate() + days);
+        return date;
+    }
+
+    function dateOnly(value) {
+        var ts = Date.parse(String(value || ''));
+        if (!Number.isFinite(ts)) return '';
+        return new Date(ts).toISOString().slice(0, 10);
+    }
+
+    function startOfMonth(value) {
+        var date = new Date(value);
+        return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+    }
+
+    function endOfMonth(value) {
+        var date = new Date(value);
+        return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+    }
+
+    function classifyIncomeStatus(deal) {
+        var status = String(deal && deal.status || '').toLowerCase();
+        var probability = Events.clampProbability(deal && deal.probability);
+        if (status === 'received' || status === 'paid') return 'received';
+        if (status === 'cancelled' || status === 'lost' || status === 'closed') return 'cancelled';
+        if (status === 'confirmed' || status === 'signed' || probability >= 0.8) return 'confirmed';
+        if (status === 'risky' || status === 'open' || probability < 0.5) return 'risky';
+        return 'expected';
+    }
+
+    function classifyObligationStatus(dueDate, nowTs) {
+        var dueTs = Date.parse(String(dueDate || ''));
+        if (!Number.isFinite(dueTs)) return 'needs_review';
+        if (dueTs < nowTs) return 'overdue';
+        if (dueTs <= addDays(nowTs, 7).getTime()) return 'due_soon';
+        return 'upcoming';
+    }
+
+    function buildTreasuryModel(readModel, snapshotSeed, cfg, nowTs) {
+        var fiatAccounts = safeArray(readModel.fiatAccounts);
+        var recurringExpenses = safeArray(readModel.recurringExpenses);
+        var pipelineDeals = safeArray(readModel.pipelineDeals).filter(function (deal) {
+            return isPipelineIncluded(deal && deal.status);
+        });
+        var transactions = safeArray(readModel.transactions);
+        var debtAccounts = safeArray(readModel.debtAccounts);
+        var monthStart = startOfMonth(nowTs).getTime();
+        var monthEnd = endOfMonth(nowTs).getTime();
+        var forecastEndTs = addDays(nowTs, cfg.forecastDays).getTime();
+
+        var reserveMap = Object.create(null);
+        var totalCash = 0;
+        var reservedCash = 0;
+
+        fiatAccounts.forEach(function (account) {
+            var amount = Number(account && account.balance) || 0;
+            var bucket = normalizeBucket(account && account.bucket);
+            var isReserved = bucket !== 'available' || Boolean(account && account.reserved);
+            totalCash += amount;
+            if (isReserved) {
+                reservedCash += amount;
+                if (!reserveMap[bucket]) {
+                    reserveMap[bucket] = { bucket: bucket, label: labelBucket(bucket), amount: 0 };
+                }
+                reserveMap[bucket].amount += amount;
+            }
+        });
+
+        RESERVE_BUCKETS.forEach(function (bucket) {
+            if (!reserveMap[bucket]) reserveMap[bucket] = { bucket: bucket, label: labelBucket(bucket), amount: 0 };
+        });
+
+        var reserveBuckets = Object.keys(reserveMap)
+            .map(function (bucket) {
+                return {
+                    bucket: bucket,
+                    label: reserveMap[bucket].label,
+                    amount: round(reserveMap[bucket].amount)
+                };
+            })
+            .sort(function (a, b) {
+                var idxA = RESERVE_BUCKETS.indexOf(a.bucket);
+                var idxB = RESERVE_BUCKETS.indexOf(b.bucket);
+                if (idxA !== idxB) return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+                return String(a.label).localeCompare(String(b.label));
+            });
+
+        var personalBurn = recurringExpenses
+            .filter(function (expense) { return String(expense && expense.scope || '').toLowerCase() === 'personal' || String(expense && expense.scope || '').toLowerCase() === 'shared'; })
+            .reduce(function (sum, expense) { return sum + (Number(expense && expense.monthlyAmount) || 0); }, 0);
+        var businessBurn = recurringExpenses
+            .filter(function (expense) { return String(expense && expense.scope || '').toLowerCase() === 'business' || String(expense && expense.scope || '').toLowerCase() === 'shared'; })
+            .reduce(function (sum, expense) { return sum + (Number(expense && expense.monthlyAmount) || 0); }, 0);
+        var totalBurn = recurringExpenses
+            .reduce(function (sum, expense) { return sum + (Number(expense && expense.monthlyAmount) || 0); }, 0);
+
+        var obligations = [];
+        recurringExpenses.forEach(function (expense) {
+            var dueDay = Math.max(1, Math.min(28, Number(expense && expense.dueDay) || 1));
+            for (var monthOffset = 0; monthOffset < 4; monthOffset += 1) {
+                var due = new Date(new Date(nowTs).getFullYear(), new Date(nowTs).getMonth() + monthOffset, dueDay, 12, 0, 0, 0);
+                if (due.getTime() > forecastEndTs) continue;
+                if (monthOffset > 0 || due.getTime() >= addDays(nowTs, -30).getTime()) {
+                    obligations.push({
+                        id: String((expense && expense.id) || 'expense') + '-' + due.toISOString().slice(0, 7),
+                        title: String((expense && expense.category) || 'Recurring cost'),
+                        type: 'recurring_cost',
+                        amount: round(Number(expense && expense.monthlyAmount) || 0),
+                        dueDate: due.toISOString().slice(0, 10),
+                        status: classifyObligationStatus(due.toISOString(), nowTs),
+                        scope: String((expense && expense.scope) || 'shared')
+                    });
+                }
+            }
+        });
+        debtAccounts.forEach(function (debt) {
+            var outstanding = Number(debt && debt.outstanding) || 0;
+            if (outstanding <= 0) return;
+            obligations.push({
+                id: String((debt && debt.id) || 'debt'),
+                title: String((debt && debt.name) || 'Debt repayment'),
+                type: 'debt',
+                amount: round(outstanding),
+                dueDate: '',
+                status: 'needs_review',
+                scope: String((debt && debt.scope) || 'shared')
+            });
+        });
+        obligations.sort(function (a, b) {
+            var tsA = Date.parse(a.dueDate || '') || Number.MAX_SAFE_INTEGER;
+            var tsB = Date.parse(b.dueDate || '') || Number.MAX_SAFE_INTEGER;
+            return tsA - tsB;
+        });
+
+        var income = pipelineDeals.map(function (deal) {
+            var status = classifyIncomeStatus(deal);
+            return {
+                id: String((deal && deal.id) || ''),
+                title: String((deal && deal.title) || 'Income'),
+                amount: round(Number(deal && deal.value) || 0),
+                dueDate: dateOnly(deal && deal.expectedDateISO),
+                status: status,
+                probability: Events.clampProbability(deal && deal.probability),
+                scope: String((deal && deal.scope) || 'shared')
+            };
+        }).filter(function (entry) {
+            return entry.status !== 'received' && entry.status !== 'cancelled';
+        });
+
+        var incomeThisMonth = { confirmed: 0, expected: 0, risky: 0, received: 0 };
+        income.forEach(function (entry) {
+            var ts = Date.parse(entry.dueDate || '');
+            if (!Number.isFinite(ts) || ts < monthStart || ts > monthEnd) return;
+            if (entry.status === 'confirmed') incomeThisMonth.confirmed += entry.amount;
+            if (entry.status === 'expected') incomeThisMonth.expected += entry.amount;
+            if (entry.status === 'risky') incomeThisMonth.risky += entry.amount;
+        });
+        transactions.forEach(function (entry) {
+            var ts = Date.parse(entry && entry.timestamp || '');
+            if (!Number.isFinite(ts) || ts < monthStart || ts > monthEnd) return;
+            if (String(entry && entry.type) === 'income.received') {
+                incomeThisMonth.received += Number(entry && entry.amount) || 0;
+            }
+        });
+
+        var confirmed90 = income.filter(function (entry) { return entry.status === 'confirmed'; })
+            .reduce(function (sum, entry) { return sum + entry.amount; }, 0);
+        var expected90 = income.filter(function (entry) { return entry.status === 'expected'; })
+            .reduce(function (sum, entry) { return sum + entry.amount; }, 0);
+        var risky90 = income.filter(function (entry) { return entry.status === 'risky'; })
+            .reduce(function (sum, entry) { return sum + entry.amount; }, 0);
+        var scheduled90 = obligations
+            .reduce(function (sum, entry) { return sum + (Number(entry.amount) || 0); }, 0);
+        var trulyAvailable = round(totalCash - reservedCash);
+
+        var reviewQueue = [];
+        obligations.filter(function (entry) { return entry.status === 'overdue' || entry.status === 'needs_review'; }).slice(0, 6).forEach(function (entry) {
+            reviewQueue.push({
+                id: entry.id,
+                title: entry.title,
+                reason: entry.status === 'overdue' ? 'Overdue obligation' : 'Needs a due date or payment plan',
+                tone: entry.status === 'overdue' ? 'urgent' : 'review'
+            });
+        });
+        income.filter(function (entry) { return entry.status === 'risky'; }).slice(0, 4).forEach(function (entry) {
+            reviewQueue.push({
+                id: entry.id,
+                title: entry.title,
+                reason: 'Risky income assumption',
+                tone: 'review'
+            });
+        });
+        transactions.filter(function (entry) {
+            return String(entry && entry.categoryId || '').toLowerCase() === 'uncategorized';
+        }).slice(0, 4).forEach(function (entry) {
+            reviewQueue.push({
+                id: String(entry && entry.id || ''),
+                title: String(entry && entry.description || 'Transaction'),
+                reason: 'Uncategorized transaction',
+                tone: 'review'
+            });
+        });
+        if (!fiatAccounts.length) {
+            reviewQueue.unshift({ id: 'missing-cash', title: 'Cash baseline', reason: 'Add at least one cash account', tone: 'urgent' });
+        }
+        if (!recurringExpenses.length) {
+            reviewQueue.push({ id: 'missing-burn', title: 'Monthly burn', reason: 'Add recurring fixed costs', tone: 'review' });
+        }
+
+        return {
+            totalCash: round(totalCash),
+            reservedCash: round(reservedCash),
+            trulyAvailableCash: trulyAvailable,
+            reserveBuckets: reserveBuckets,
+            monthlyPersonalBurn: round(personalBurn),
+            monthlyBusinessBurn: round(businessBurn),
+            totalMonthlyBurn: round(totalBurn),
+            runwayMonths: totalBurn > 0 ? round(trulyAvailable / totalBurn) : null,
+            obligations: obligations,
+            overdueObligations: obligations.filter(function (entry) { return entry.status === 'overdue'; }),
+            dueSoonObligations: obligations.filter(function (entry) { return entry.status === 'due_soon'; }),
+            upcomingObligations: obligations.filter(function (entry) { return entry.status === 'upcoming'; }),
+            income: income,
+            incomeThisMonth: {
+                confirmed: round(incomeThisMonth.confirmed),
+                expected: round(incomeThisMonth.expected),
+                risky: round(incomeThisMonth.risky),
+                received: round(incomeThisMonth.received)
+            },
+            incomeScenarios: {
+                conservative: round(trulyAvailable + confirmed90 - scheduled90),
+                expected: round(trulyAvailable + confirmed90 + expected90 - scheduled90),
+                optimistic: round(trulyAvailable + confirmed90 + expected90 + risky90 - scheduled90)
+            },
+            reviewQueue: reviewQueue.slice(0, 10),
+            debtRemaining: round(debtAccounts.reduce(function (sum, debt) {
+                return sum + (Number(debt && debt.outstanding) || 0);
+            }, 0)),
+            reserveGaps: reserveBuckets.filter(function (bucket) {
+                return RESERVE_BUCKETS.indexOf(bucket.bucket) !== -1 && Number(bucket.amount) <= 0;
+            })
+        };
+    }
+
     function computeFinancialContext(events, settings) {
         var cfg = normalizeSettings(settings);
         var sortedEvents = Events.sortFinancialEvents(safeArray(events));
@@ -138,7 +424,7 @@
         }, 0));
         var assetsTotalMinor = fiatCashMinor + web3AssetsMinor + defiNetMinor;
         var hasAssetAnchor = fiatAccounts.length > 0 || web3Positions.length > 0 || defiPositions.length > 0;
-        var realBalanceMinor = hasAssetAnchor ? assetsTotalMinor : realBalanceFromEventsMinor;
+        var realBalanceMinor = fiatAccounts.length > 0 ? fiatCashMinor : (hasAssetAnchor ? assetsTotalMinor : realBalanceFromEventsMinor);
 
         var weightedPipelineMinor = 0;
         var forecastExpectedPipelineMinor = 0;
@@ -182,6 +468,8 @@
 
         var breakEvenRevenue = monthlyBurn;
 
+        var treasury = buildTreasuryModel(readModel, {}, cfg, nowTs);
+
         var snapshot = {
             realBalance: Events.fromMinor(realBalanceMinor),
             projectedBalance: Events.fromMinor(projectedBalanceMinor),
@@ -193,8 +481,25 @@
             totalDebt: Events.fromMinor(totalDebtMinor),
             confidenceScore: 1,
             missingInputs: [],
-            lastComputedAt: nowIso
+            lastComputedAt: nowIso,
+            totalCash: treasury.totalCash,
+            reservedCash: treasury.reservedCash,
+            trulyAvailableCash: treasury.trulyAvailableCash,
+            monthlyPersonalBurn: treasury.monthlyPersonalBurn,
+            monthlyBusinessBurn: treasury.monthlyBusinessBurn,
+            totalMonthlyBurn: treasury.totalMonthlyBurn,
+            availableRunwayMonths: treasury.runwayMonths,
+            confirmedIncomeThisMonth: treasury.incomeThisMonth.confirmed,
+            expectedIncomeThisMonth: treasury.incomeThisMonth.expected,
+            riskyIncomeThisMonth: treasury.incomeThisMonth.risky,
+            debtRemaining: treasury.debtRemaining
         };
+
+        if (treasury.totalMonthlyBurn > 0) {
+            snapshot.monthlyBurn = treasury.totalMonthlyBurn;
+            snapshot.runwayMonths = treasury.runwayMonths;
+            snapshot.breakEvenRevenue = treasury.totalMonthlyBurn;
+        }
 
         var missingInputs = [];
         if ((readModel.recurringExpenses || []).length === 0) {
@@ -244,6 +549,7 @@
         return {
             snapshot: snapshot,
             readModel: readModel,
+            treasury: treasury,
             invariants: invariantResult,
             confidence: confidenceResult,
             diagnostics: {

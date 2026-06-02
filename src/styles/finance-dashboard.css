@@ -211,6 +211,99 @@ body.mode-financial .financial-dashboard {
     color: var(--fin-accent);
 }
 
+.fin-snapshot-grid--treasury {
+    grid-template-columns: minmax(260px, 1.35fr) repeat(4, minmax(180px, 1fr));
+}
+
+.fin-tile-primary {
+    border: 1px solid rgba(168, 230, 207, 0.28);
+    background: linear-gradient(145deg, rgba(168, 230, 207, 0.11), rgba(255, 255, 255, 0.035));
+}
+
+.fin-section-heading-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 18px;
+    margin-bottom: 18px;
+}
+
+.fin-reserve-grid,
+.fin-status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+}
+
+.fin-reserve-item,
+.fin-status-card {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.032);
+    border-radius: 16px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 86px;
+}
+
+.fin-reserve-item span,
+.fin-status-card span {
+    color: var(--text-tertiary);
+    font-size: 0.75rem;
+    line-height: 1.35;
+}
+
+.fin-reserve-item strong,
+.fin-status-card strong {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 1.12rem;
+}
+
+.fin-status-pill {
+    align-self: flex-start;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    padding: 4px 9px;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.fin-status-pill--confirmed,
+.fin-status-pill--paid,
+.fin-status-pill--received {
+    border-color: rgba(168, 230, 207, 0.26);
+    color: var(--fin-safe);
+}
+
+.fin-status-pill--expected,
+.fin-status-pill--upcoming,
+.fin-status-pill--due_soon {
+    border-color: rgba(178, 226, 242, 0.24);
+    color: var(--fin-accent);
+}
+
+.fin-status-pill--risky,
+.fin-status-pill--needs_review {
+    border-color: rgba(226, 192, 68, 0.26);
+    color: var(--fin-stress-med);
+}
+
+.fin-status-pill--overdue {
+    border-color: rgba(241, 185, 167, 0.3);
+    color: var(--fin-stress-high);
+}
+
+.fin-table-wrap {
+    overflow-x: auto;
+}
+
 .fin-liquidity-actions {
     display: flex;
     flex-wrap: wrap;

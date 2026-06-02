@@ -51,11 +51,14 @@
                 });
             }
         } else {
-            var expectedRunway = round((Number(snapshot.realBalance) || 0) / (Number(snapshot.monthlyBurn) || 1));
+            var runwayBase = Number.isFinite(Number(snapshot.trulyAvailableCash))
+                ? Number(snapshot.trulyAvailableCash)
+                : Number(snapshot.realBalance);
+            var expectedRunway = round((runwayBase || 0) / (Number(snapshot.monthlyBurn) || 1));
             if (!almostEqual(snapshot.runwayMonths, expectedRunway, 0.01)) {
                 violations.push({
                     id: 'runway-formula',
-                    message: 'Runway is inconsistent with balance / burn.',
+                    message: 'Runway is inconsistent with available cash / burn.',
                     expected: expectedRunway,
                     actual: round(snapshot.runwayMonths),
                     severity: 'high'

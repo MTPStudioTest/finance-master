@@ -1,8 +1,8 @@
 # Finance Master
 
-Finance Master is a focused standalone extraction of the Finance Board from Life-OS / Dashi. It keeps the calm Aurora-inspired visual language while turning the dashboard into a local-first operating cockpit for solo operators, freelancers, founders, and independent creatives.
+Finance Master is a local-first financial clarity cockpit for a creative entrepreneur or small creative studio ecosystem. Its job is not bookkeeping completeness. Its job is to reduce financial anxiety by showing what cash is real, what is already reserved, what obligations are coming, what income is reliable, and how much runway remains.
 
-The app opens directly into the finance dashboard. It has no authentication layer, bank credential integration, or backend.
+The app opens directly into the Finance Observatory. It has no authentication layer, backend, bank sync, automatic account linking, invoice generation, receipt scanning, tax filing logic, AI insights, or collaboration system.
 
 ## Run Locally
 
@@ -16,7 +16,7 @@ npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173/`.
+Open the local URL shown by Vite, usually `http://127.0.0.1:5173/finance-master/`.
 
 Verification commands:
 
@@ -29,28 +29,29 @@ npm run build
 
 ## Core Workflow
 
-- Record account-aware income and expenses from the global `+ Add` action.
-- Organize accounts, transactions, recurring costs, and pipeline items as Personal, Business, or Shared.
-- Use the setup checklist until accounts, recurring costs, and pipeline inputs are complete.
-- Scan liquidity, runway, the 30/60/90-day low point, and the next three material cash events.
-- Track savings and emergency-buffer goals from linked cash-account balances.
-- Run a weekly review from the top bar, reconcile each cash account, confirm operating checks, and leave a short note.
-- Choose a CSV file or paste transactions, map common bank-export columns, preview accepted, duplicate, and rejected rows, import as a batch, and reverse the latest batch from Settings.
-- Export or restore a versioned JSON backup with a validated in-app preview before replacement.
+- Start in the Finance Observatory.
+- Check truly available cash before making decisions.
+- Compare total cash against reserved cash for taxes, VAT, health insurance, debt repayment, and buffer.
+- Scan overdue, due-soon, and upcoming obligations.
+- Classify future income as confirmed, expected, or risky.
+- Use Conservative, Expected, and Optimistic scenarios to understand the next 90 days.
+- Use Transactions as a searchable raw log, not the emotional center of the app.
+- Use Review to resolve unclear, overdue, risky, or uncategorized items.
+- Use Settings only for currency, forecast horizon, entities by scope, cash accounts, reserve buckets, recurring costs, debt, local import/export, and reset.
 
 ## Included
 
-- Liquidity, runway, monthly cash flow, allocation, debt, investment, Web3, and DeFi views
-- Pipeline history, expected dates, confidence states, and cash-flow projections
-- Baseline, Conservative, and Stretch scenario presets
-- Currency, projection horizon, scope filter, and Aurora / Midnight / Bright appearance settings
-- Finance ledger events, reversals, invariant checks, confidence helpers, and focused regression tests
-- Local demo data with independent Restore sample data and Delete sample data controls
-- Optional read-only CoinGecko wallet valuation refresh with local cache, timestamps, and per-position manual overrides
-- Accessible modal focus handling, visible focus states, keyboard navigation, and responsive capture layouts
-- Playwright browser regressions for the core local-first workflows
-- Savings and buffer goals with live linked-account progress and scope filtering
-- Weekly account reconciliation with review timestamps, checklist state, notes, and dashboard due prompts
+- Treasury Snapshot: total cash, reserved cash, truly available cash, monthly burn, runway
+- Reserves: tax reserve, VAT reserve, health insurance, debt repayment, buffer
+- Income Pipeline: confirmed, expected, risky
+- Obligations: overdue, due soon, upcoming
+- Review Queue for unclear, risky, overdue, or uncategorized items
+- Scenario outcomes: Conservative, Expected, Optimistic
+- Local-first IndexedDB persistence
+- Local CSV transaction import with duplicate/rejected row preview
+- Versioned JSON backup export/restore with validation
+- Fictional sample data that demonstrates reserves, obligations, debt, and unstable project income
+- Pure calculation tests for treasury separation and income scenarios
 
 ## Persistence
 
@@ -58,33 +59,29 @@ Finance Master uses IndexedDB database `finance-master` as its primary data stor
 
 | Key | Purpose |
 | --- | --- |
-| `finance-master.ledger.v1` | Finance ledger events, transactions, and demo records |
-| `finance-master.settings.v1` | Base currency and projection horizon |
-| `finance-master.ui.v1` | Appearance, motion, scope filter, scenarios, and wallet price source |
-| `finance-master.review.v1` | Weekly review reconciliation, checklist state, notes, and completion timestamp |
-| `finance-master.goals.v1` | Savings and buffer goals linked to cash accounts |
+| `finance-master.ledger.v1` | Local ledger events, cash accounts, obligations, income, debt, and transaction records |
+| `finance-master.settings.v1` | Base currency and forecast horizon |
+| `finance-master.ui.v1` | Scope filter and legacy UI preferences |
+| `finance-master.review.v1` | Review reconciliation, checklist state, notes, and completion timestamp |
+| `finance-master.goals.v1` | Legacy buffer/savings targets, retained for backup compatibility |
 | `finance-master.imports.v1` | Reversible CSV import batch metadata |
-| `finance-master.prices.v1` | Cached opt-in wallet price quotes |
-| `finance-master.layout.focus-mode` | Quiet-view preference |
-| `finance-master.layout.pipeline-tab` | Selected pipeline tab |
-| `finance-master.layout.collapsed.*` | Collapsed dashboard section state |
-| `finance-master.layout.hero-details` | Liquidity-card detail expansion |
+| `finance-master.prices.v1` | Legacy cached local values, retained for backup compatibility |
+| `finance-master.layout.hero-details` | Hero detail expansion |
 | `finance-master.demo-seeded.v1` | First-run demo seed marker |
 
-New backups use the versioned `FinanceBackupV2` shape and include ledger events, goals, finance settings, UI preferences, review state, CSV import metadata, and cached prices. Existing `FinanceBackupV1` files remain restorable through a V1-to-V2 migration reader.
+New backups use the versioned `FinanceBackupV2` shape and include ledger events, finance settings, UI preferences, review state, import metadata, and compatibility fields. Existing `FinanceBackupV1` files remain restorable through a V1-to-V2 migration reader.
 
 ## Structure
 
 ```text
 src/
-  components/    Dashboard shell, modal workflows, and icon helpers
-  dashboard/     Extracted Finance Board renderer and finance engine
-  data/          Standalone demo ledger data
-  finance/       Ledger, compute, CSV mapping, commands, invariants, and event helpers
-  integrations/  Optional read-only price providers
+  components/    Dashboard shell and modal workflows
+  dashboard/     Finance Observatory renderer and compatibility engine
+  data/          Fictional demo ledger data
+  finance/       Ledger, treasury compute, CSV mapping, commands, invariants, and event helpers
   persistence/   IndexedDB repositories, backup validation, and namespaced store
-  settings/      Appearance and storage-key configuration
-  styles/        Shared tokens and extracted finance dashboard styles
+  settings/      Storage-key and legacy appearance helpers
+  styles/        Shared tokens and Observatory styles
   types/         Standalone TypeScript interfaces
 tests/
   finance-ledger.test.mjs
@@ -94,11 +91,10 @@ tests/
 
 ## Intentionally Excluded
 
-Vision Mode, Personal Mode, Ritual / Slow Life Mode, Archive, Listening Room, walk and forest logs, gratitude widgets, unrelated dashboards, experiments, authentication, backend services, and bank aggregation are not part of this repository.
+Bank sync, PSD2 integration, automatic account linking, double-entry accounting, balance sheets, full P&L reports, DATEV export, tax filing, invoice generation, receipt upload, OCR, document archive, multi-user collaboration, permissions, comments, approvals, gamified budgeting, daily spending limits, complex category budgeting, advanced chart dashboards, AI insights, notifications, and overbuilt profile/theme settings are outside this MVP.
 
-## Future Improvements
+## Future Decisions
 
-- Add reusable bank-specific CSV mapping templates if repeated imports justify them.
-- Add encrypted multi-device sync only after the local weekly ritual is proven.
-- Consider read-only invoice or bank imports after local backup and review habits are established.
-- Add functional drag-and-drop widget ordering only when its layout persistence model is ready.
+- Whether reserve rules should become explicit percentage/fixed-amount objects or remain account bucket based.
+- Whether debt items need due dates and minimum monthly payment fields in the add flow.
+- Whether entities need a first-class editor beyond the current Personal / Business / Shared scope model.
