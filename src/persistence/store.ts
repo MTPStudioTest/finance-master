@@ -327,6 +327,9 @@ export const Store = {
     importBatchId?: string;
     fingerprint?: string;
     sourceFile?: string;
+    obligationId?: string;
+    obligationDueDate?: string;
+    obligationTitle?: string;
   }): FinanceEvent[] {
     const account = (this.getFinancialReadModel().fiatAccounts || [])
       .find((entry: Record<string, unknown>) => String(entry.id) === String(input.accountId || ''));
@@ -347,6 +350,9 @@ export const Store = {
       importBatchId: input.importBatchId || undefined,
       fingerprint: input.fingerprint || undefined,
       sourceFile: input.sourceFile || undefined,
+      obligationId: input.obligationId || undefined,
+      obligationDueDate: input.obligationDueDate || undefined,
+      obligationTitle: input.obligationTitle || undefined,
     };
     return this.appendFinanceEvents([
       {
@@ -377,6 +383,78 @@ export const Store = {
         },
       },
     ], { source: input.source || 'recordTransaction' });
+  },
+
+  reviewObligation(input: {
+    id: string;
+    status: 'paid' | 'deferred' | 'needs_review';
+    accountId?: string;
+    paidAt?: string;
+    deferredUntil?: string;
+    amount?: number;
+    notes?: string;
+  }): FinanceEvent[] {
+    const treasury = this.computeFinanceContext(true).treasury || {};
+    const obligation = ((treasury.obligations || []) as Array<Record<string, unknown>>)
+      .find((entry) => String(entry.id || '') === String(input.id || ''));
+    if (!obligation) throw new Error('This obligation could not be found.');
+    const status = input.status;
+    if (status !== 'paid' && status !== 'deferred' && status !== 'needs_review') {
+      throw new Error('Choose a valid obligation status.');
+    }
+    const currency = this.getFinanceSettings().baseCurrency;
+    const amount = Math.abs(Number(input.amount ?? obligation.amount));
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error('Obligation amount must be positive.');
+    let transactionId = '';
+    let accountId = '';
+    let accountName = '';
+    const scopeValue = scope(obligation.scope);
+    if (status === 'paid') {
+      if (!input.accountId) throw new Error('Choose the account that paid this obligation.');
+      const account = (this.getFinancialReadModel().fiatAccounts || [])
+        .find((entry: Record<string, unknown>) => String(entry.id) === String(input.accountId));
+      if (!account) throw new Error('Choose a valid payment account.');
+      accountId = String(account.id);
+      accountName = String(account.name || 'Account');
+      const transactionEvents = this.recordTransaction({
+        description: `Paid ${String(obligation.title || 'obligation')}`,
+        amount: -amount,
+        timestamp: toTransactionIso(String(input.paidAt || obligation.dueDate || new Date().toISOString()).slice(0, 10)),
+        accountId,
+        categoryId: 'obligation',
+        scope: scopeValue,
+        source: 'obligation.review',
+        obligationId: String(obligation.id),
+        obligationDueDate: String(obligation.dueDate || ''),
+        obligationTitle: String(obligation.title || 'Obligation'),
+      });
+      transactionId = String(transactionEvents[0]?.related_entity_id || transactionEvents[0]?.id || '');
+    }
+    if (status === 'deferred' && !input.deferredUntil) {
+      throw new Error('Choose a new due date for this deferred obligation.');
+    }
+    const timestamp = financeTimestamp(String(input.id));
+    const review = this.appendFinanceEvent({
+      type: 'obligation.reviewed',
+      amount,
+      currency,
+      timestamp,
+      related_entity_id: String(input.id),
+      metadata: {
+        status,
+        title: String(obligation.title || 'Obligation'),
+        dueDate: String(obligation.dueDate || ''),
+        originalDueDate: String(obligation.originalDueDate || obligation.dueDate || ''),
+        paidAt: status === 'paid' ? toTransactionIso(String(input.paidAt || obligation.dueDate || new Date().toISOString()).slice(0, 10)) : undefined,
+        deferredUntil: status === 'deferred' ? input.deferredUntil : undefined,
+        accountId,
+        accountName,
+        transactionId,
+        scope: scopeValue,
+        notes: input.notes || '',
+      },
+    }, { source: 'reviewObligation' });
+    return review ? [review] : [];
   },
 
   deactivateFiatAccount(id: string): FinanceEvent[] {

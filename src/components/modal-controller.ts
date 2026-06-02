@@ -693,6 +693,44 @@ function renderDebt(type: 'debtAdd' | 'debtPayment', id = ''): string {
   `;
 }
 
+function findTreasuryObligation(id: string): Record<string, unknown> | null {
+  const treasury = Store.computeFinanceContext(true).treasury || {};
+  return ((treasury.obligations || []) as Array<Record<string, unknown>>)
+    .find((entry) => String(entry.id || '') === String(id || '')) || null;
+}
+
+function renderObligationPayment(id = ''): string {
+  const obligation = findTreasuryObligation(id);
+  return `
+    <div class="modal-form">
+      <h2 id="modal-title">Mark obligation paid</h2>
+      <p class="modal-copy">${escapeHtml(obligation?.title || 'Obligation')} · ${money(obligation?.amount)} · due ${formatDate(obligation?.dueDate)}</p>
+      <input id="modal-obligation-id" type="hidden" value="${escapeHtml(id)}" />
+      <div class="modal-grid-two">
+        <div class="form-group"><label for="modal-obligation-account">Paid from account</label><select id="modal-obligation-account">${accountOptions('', false)}</select></div>
+        <div class="form-group"><label for="modal-obligation-paid-at">Payment date</label><input id="modal-obligation-paid-at" type="date" value="${escapeHtml(String(obligation?.dueDate || today()).slice(0, 10))}" /></div>
+        <div class="form-group"><label for="modal-obligation-amount">Amount</label><input id="modal-obligation-amount" type="number" step="0.01" value="${escapeHtml(obligation?.amount || '')}" /></div>
+      </div>
+      <div class="form-group"><label for="modal-obligation-notes">Review note</label><textarea id="modal-obligation-notes" rows="2" placeholder="Optional note for the review trail"></textarea></div>
+      ${formActions('obligationPayment')}
+    </div>
+  `;
+}
+
+function renderObligationDefer(id = ''): string {
+  const obligation = findTreasuryObligation(id);
+  return `
+    <div class="modal-form">
+      <h2 id="modal-title">Defer obligation</h2>
+      <p class="modal-copy">${escapeHtml(obligation?.title || 'Obligation')} · current due date ${formatDate(obligation?.dueDate)}</p>
+      <input id="modal-obligation-id" type="hidden" value="${escapeHtml(id)}" />
+      <div class="form-group"><label for="modal-obligation-deferred-until">New due date</label><input id="modal-obligation-deferred-until" type="date" value="${today()}" /></div>
+      <div class="form-group"><label for="modal-obligation-notes">Review note</label><textarea id="modal-obligation-notes" rows="2" placeholder="Why is this deferred?"></textarea></div>
+      ${formActions('obligationDefer')}
+    </div>
+  `;
+}
+
 function renderModal(type: string, id = ''): string {
   if (type === 'quickAdd') return renderQuickAdd();
   if (type === 'transaction') return renderTransaction();
@@ -709,6 +747,8 @@ function renderModal(type: string, id = ''): string {
   if (type === 'web3Position' || type === 'defiPosition') return '<div class="modal-form"><h2 id="modal-title">Postponed</h2><p class="modal-copy">Market portfolio tracking is outside the focused treasury MVP.</p></div>';
   if (type === 'expense') return renderExpense(id);
   if (type === 'debtAdd' || type === 'debtPayment') return renderDebt(type, id);
+  if (type === 'obligationPayment') return renderObligationPayment(id);
+  if (type === 'obligationDefer') return renderObligationDefer(id);
   return '<div class="modal-form"><h2 id="modal-title">Nothing to edit</h2></div>';
 }
 
@@ -894,6 +934,45 @@ function saveFinanceModal(type: string): void {
     append({ type: 'debt.payment_made', amount, currency, timestamp, related_entity_id: value('modal-debt-payment-id'), metadata: {} }, 'modal.debtPayment');
     return;
   }
+  if (type === 'obligationPayment') {
+    const amount = Math.abs(Number(value('modal-obligation-amount')));
+    if (!value('modal-obligation-id') || !value('modal-obligation-account') || !Number.isFinite(amount) || amount <= 0) {
+      showModalError('Choose an obligation, payment account, and positive amount.');
+      return;
+    }
+    try {
+      Store.reviewObligation({
+        id: value('modal-obligation-id'),
+        status: 'paid',
+        accountId: value('modal-obligation-account'),
+        paidAt: value('modal-obligation-paid-at'),
+        amount,
+        notes: value('modal-obligation-notes'),
+      });
+      closeModal();
+    } catch (error) {
+      showModalError(error instanceof Error ? error.message : 'Could not mark this obligation paid.');
+    }
+    return;
+  }
+  if (type === 'obligationDefer') {
+    if (!value('modal-obligation-id') || !value('modal-obligation-deferred-until')) {
+      showModalError('Choose an obligation and a new due date.');
+      return;
+    }
+    try {
+      Store.reviewObligation({
+        id: value('modal-obligation-id'),
+        status: 'deferred',
+        deferredUntil: value('modal-obligation-deferred-until'),
+        notes: value('modal-obligation-notes'),
+      });
+      closeModal();
+    } catch (error) {
+      showModalError(error instanceof Error ? error.message : 'Could not defer this obligation.');
+    }
+    return;
+  }
   if (type === 'transaction') {
     addTransactionFromFields('modal-fast-txn');
     return;
@@ -979,6 +1058,13 @@ Object.assign(window, {
     if (!window.confirm('Archive this pipeline or settlement entry?')) return;
     const invoice = (Store.getFinancialReadModel().invoices || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
     Store.deleteInvoice(id, { reverseSettlement: String(invoice?.status || '').toLowerCase() === 'paid' });
+  },
+  markObligationNeedsReview: (id: string) => {
+    try {
+      Store.reviewObligation({ id, status: 'needs_review' });
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not update this obligation.');
+    }
   },
   deactivateFiatAccount: () => confirmDeactivate('deactivateFiatAccount', 'modal-fiat-id'),
   deactivateRecurringExpense: () => confirmDeactivate('deactivateRecurringExpense', 'modal-expense-id'),

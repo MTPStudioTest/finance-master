@@ -480,7 +480,7 @@ window.FinancialMode = (function () {
             return [nav, renderSectionHeading('Planning', 'Pipeline, goals, obligations, debts, cash calendar, and scenario work.'), renderPipelineTabs(), renderGoals(), renderCashCalendar(), renderOperationsInvestmentsRow(), renderProjection(), renderScenarioLab()];
         }
         if (activeSection === 'review') {
-            return [nav, renderSectionHeading('Review', 'Resolve unclear items, reconcile accounts, and keep the operating ritual alive.'), renderReviewQueue(), renderTensionSignals(), renderWeeklyReviewSection()];
+            return [nav, renderSectionHeading('Review', 'Resolve unclear items, reconcile accounts, and keep the operating ritual alive.'), renderReviewQueue(), renderPaymentReviewSection(), renderTensionSignals(), renderWeeklyReviewSection()];
         }
         if (activeSection === 'data') {
             return [nav, renderSectionHeading('Data', 'Local imports, backups, import batches, and sample ledger controls.'), renderDataSection()];
@@ -786,6 +786,7 @@ window.FinancialMode = (function () {
         const overdue = treasuryArray('overdueObligations');
         const dueSoon = treasuryArray('dueSoonObligations');
         const upcoming = treasuryArray('upcomingObligations');
+        const paid = treasuryArray('paidObligations');
         const obligations = overdue.concat(dueSoon).concat(upcoming).slice(0, 10);
         return `
             <section class="fin-section">
@@ -801,11 +802,17 @@ window.FinancialMode = (function () {
                         <div class="fin-status-card">${renderStatusPill('overdue')}<strong>${overdue.length}</strong><span>${formatCurrency(overdue.reduce((sum, item) => sum + Number(item.amount || 0), 0))}</span></div>
                         <div class="fin-status-card">${renderStatusPill('due_soon')}<strong>${dueSoon.length}</strong><span>Within 7 days</span></div>
                         <div class="fin-status-card">${renderStatusPill('upcoming')}<strong>${upcoming.length}</strong><span>Next 90 days</span></div>
+                        <div class="fin-status-card">${renderStatusPill('paid')}<strong>${paid.length}</strong><span>Reviewed payments</span></div>
                     </div>
                     ${obligations.length ? obligations.map((entry) => `
                         <div class="modal-list-row">
                             <span><strong>${escapeHtml(entry.title)}</strong><br><small>${entry.dueDate ? formatShortDate(entry.dueDate) : 'No due date'} · ${escapeHtml(entry.scope || 'shared')}</small></span>
                             <span>${renderStatusPill(entry.status)} ${formatCurrency(entry.amount)}</span>
+                            <span class="goal-modal-actions">
+                                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'obligationPayment', '${escapeActionArg(entry.id)}'">Mark paid</button>
+                                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'obligationDefer', '${escapeActionArg(entry.id)}'">Defer</button>
+                                <button class="fin-mini-btn" type="button" data-action="markObligationNeedsReview" data-action-args="'${escapeActionArg(entry.id)}'">Review</button>
+                            </span>
                         </div>
                     `).join('') : renderCompactEmpty('Add recurring costs or debt items to see upcoming obligations.')}
                 </div>
@@ -832,6 +839,34 @@ window.FinancialMode = (function () {
                             ${renderStatusPill(item.tone === 'urgent' ? 'overdue' : 'needs_review')}
                         </div>
                     `).join('') : renderCompactEmpty('Nothing needs review right now.')}
+                </div>
+            </section>
+        `;
+    }
+
+    function renderPaymentReviewSection() {
+        const payments = safeArray(currentData && currentData.transactions)
+            .filter((entry) => String(entry && entry.type) === 'expense.recorded')
+            .slice(0, 8);
+        return `
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Actual Payments</div>
+                            <div class="fin-helper-text">Payments booked into the ledger. Matched payments are tied to an obligation; the rest are review material.</div>
+                        </div>
+                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transaction'">Add payment</button>
+                    </div>
+                    ${payments.length ? payments.map((entry) => {
+                const matched = Boolean(entry.obligationId);
+                return `
+                        <div class="modal-list-row">
+                            <span><strong>${escapeHtml(entry.description || 'Payment')}</strong><br><small>${formatShortDate(entry.timestamp)} · ${escapeHtml(entry.accountName || 'Account')} · ${escapeHtml(entry.categoryId || 'uncategorized')}</small></span>
+                            <span>${renderStatusPill(matched ? 'paid' : 'needs_review')} ${formatCurrency(entry.amount, entry.currency)}</span>
+                        </div>
+                    `;
+            }).join('') : renderCompactEmpty('No actual payments have been booked yet.')}
                 </div>
             </section>
         `;

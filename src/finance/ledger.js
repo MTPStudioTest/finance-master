@@ -109,6 +109,7 @@
         var pipelineById = Object.create(null);
         var invoiceById = Object.create(null);
         var recurringById = Object.create(null);
+        var obligationReviewById = Object.create(null);
         var debtById = Object.create(null);
         var fiatById = Object.create(null);
         var web3ById = Object.create(null);
@@ -138,6 +139,9 @@
                     source: String(metadata.source || 'manual'),
                     importBatchId: String(metadata.importBatchId || '').trim(),
                     fingerprint: String(metadata.fingerprint || '').trim(),
+                    obligationId: String(metadata.obligationId || '').trim(),
+                    obligationDueDate: String(metadata.obligationDueDate || '').trim(),
+                    obligationTitle: String(metadata.obligationTitle || '').trim(),
                     timestamp: event.timestamp
                 });
             }
@@ -330,6 +334,26 @@
                 return;
             }
 
+            if (event.type === 'obligation.reviewed') {
+                obligationReviewById[relatedId] = {
+                    id: relatedId,
+                    status: String(metadata.status || 'needs_review').toLowerCase(),
+                    title: String(metadata.title || 'Obligation'),
+                    amount: Number.isFinite(Number(metadata.amount)) ? Number(metadata.amount) : eventAmount,
+                    dueDate: String(metadata.dueDate || ''),
+                    paidAt: String(metadata.paidAt || ''),
+                    deferredUntil: String(metadata.deferredUntil || ''),
+                    accountId: String(metadata.accountId || ''),
+                    accountName: String(metadata.accountName || ''),
+                    transactionId: String(metadata.transactionId || ''),
+                    notes: String(metadata.notes || ''),
+                    reviewedAt: event.timestamp,
+                    currency: event.currency,
+                    scope: String(metadata.scope || 'shared')
+                };
+                return;
+            }
+
             if (event.type === 'debt.added' || event.type === 'debt.payment_made') {
                 if (!debtById[relatedId]) {
                     debtById[relatedId] = {
@@ -401,6 +425,7 @@
 
         var pipelineDeals = Object.keys(pipelineById).map(function (id) { return pipelineById[id]; });
         var recurringExpenses = Object.keys(recurringById).map(function (id) { return recurringById[id]; });
+        var obligationReviews = Object.keys(obligationReviewById).map(function (id) { return obligationReviewById[id]; });
         var activeRecurringExpenses = recurringExpenses.filter(function (item) { return item && item.active !== false; });
         var debtAccounts = Object.keys(debtById).map(function (id) { return debtById[id]; });
         var invoices = Object.keys(invoiceById).map(function (id) { return invoiceById[id]; });
@@ -462,6 +487,7 @@
             eventsCount: activeEvents.length,
             pipelineDeals: pipelineDeals,
             recurringExpenses: activeRecurringExpenses,
+            obligationReviews: obligationReviews,
             debtAccounts: debtAccounts,
             invoices: invoices,
             transactions: transactions,

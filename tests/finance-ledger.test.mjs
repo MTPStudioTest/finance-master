@@ -289,6 +289,51 @@ test('treasury scenarios only include income inside the forecast horizon', () =>
   assert.equal(result.treasury.incomeScenarios.optimistic, 1500);
 });
 
+test('reviewed obligation instances can be marked paid and leave overdue queue', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-03T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-main',
+      type: 'asset.account_set',
+      amount: 1000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating cash', balance: 1000, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'rent-recurring',
+      type: 'expense.recurring_set',
+      amount: 300,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'rent-recurring',
+      metadata: { category: 'Studio rent', monthlyAmount: 300, dueDay: 1, frequency: 'monthly', scope: 'business' },
+    },
+    {
+      id: 'rent-reviewed',
+      type: 'obligation.reviewed',
+      amount: 300,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:05:00.000Z',
+      related_entity_id: 'rent-recurring-2026-06',
+      metadata: { status: 'paid', title: 'Studio rent', dueDate: '2026-06-01', paidAt: '2026-06-02T12:00:00.000Z', scope: 'business' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(result.treasury.overdueObligations.some((entry) => entry.id === 'rent-recurring-2026-06'), false);
+  assert.equal(result.treasury.paidObligations.length, 1);
+  assert.equal(result.treasury.paidObligations[0].status, 'paid');
+  assert.equal(result.treasury.incomeScenarios.conservative, 100);
+});
+
 test('currency formatting respects an explicit currency before base currency', () => {
   assert.equal(resolveCurrencyCode('usd', 'EUR'), 'USD');
   assert.equal(resolveCurrencyCode('', 'EUR'), 'EUR');

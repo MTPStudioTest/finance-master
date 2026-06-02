@@ -66,6 +66,7 @@ declare global {
   interface FinanceContext {
     snapshot: Record<string, any>;
     readModel: Record<string, any>;
+    treasury?: Record<string, any>;
     invariants?: Record<string, any>;
     confidence?: Record<string, any>;
     diagnostics?: Record<string, any>;
@@ -127,6 +128,18 @@ declare global {
       importBatchId?: string;
       fingerprint?: string;
       sourceFile?: string;
+      obligationId?: string;
+      obligationDueDate?: string;
+      obligationTitle?: string;
+    }): FinanceEvent[];
+    reviewObligation(input: {
+      id: string;
+      status: 'paid' | 'deferred' | 'needs_review';
+      accountId?: string;
+      paidAt?: string;
+      deferredUntil?: string;
+      amount?: number;
+      notes?: string;
     }): FinanceEvent[];
     reverseFinanceEvent(id: string, reason?: string): FinanceEvent | null;
     saveGoal(input: {

@@ -5,6 +5,7 @@
         'income.received',
         'expense.recorded',
         'expense.recurring_set',
+        'obligation.reviewed',
         'debt.added',
         'debt.payment_made',
         'invoice.sent',

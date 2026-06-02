@@ -141,6 +141,11 @@
     function buildTreasuryModel(readModel, snapshotSeed, cfg, nowTs) {
         var fiatAccounts = safeArray(readModel.fiatAccounts);
         var recurringExpenses = safeArray(readModel.recurringExpenses);
+        var obligationReviewMap = Object.create(null);
+        safeArray(readModel.obligationReviews).forEach(function (review) {
+            if (!review || !review.id) return;
+            obligationReviewMap[String(review.id)] = review;
+        });
         var pipelineDeals = safeArray(readModel.pipelineDeals).filter(function (deal) {
             return isPipelineIncluded(deal && deal.status);
         });
@@ -203,13 +208,28 @@
                 var due = new Date(new Date(nowTs).getFullYear(), new Date(nowTs).getMonth() + monthOffset, dueDay, 12, 0, 0, 0);
                 if (due.getTime() > forecastEndTs) continue;
                 if (monthOffset > 0 || due.getTime() >= addDays(nowTs, -30).getTime()) {
+                    var obligationId = String((expense && expense.id) || 'expense') + '-' + due.toISOString().slice(0, 7);
+                    var review = obligationReviewMap[obligationId] || null;
+                    var dueDate = due.toISOString().slice(0, 10);
+                    var status = classifyObligationStatus(due.toISOString(), nowTs);
+                    if (review && review.status === 'paid') {
+                        status = 'paid';
+                    } else if (review && review.status === 'deferred' && review.deferredUntil) {
+                        dueDate = dateOnly(review.deferredUntil) || dueDate;
+                        status = classifyObligationStatus(dueDate, nowTs);
+                    } else if (review && review.status === 'needs_review') {
+                        status = 'needs_review';
+                    }
                     obligations.push({
-                        id: String((expense && expense.id) || 'expense') + '-' + due.toISOString().slice(0, 7),
+                        id: obligationId,
+                        sourceId: String((expense && expense.id) || 'expense'),
                         title: String((expense && expense.category) || 'Recurring cost'),
                         type: 'recurring_cost',
                         amount: round(Number(expense && expense.monthlyAmount) || 0),
-                        dueDate: due.toISOString().slice(0, 10),
-                        status: classifyObligationStatus(due.toISOString(), nowTs),
+                        dueDate: dueDate,
+                        originalDueDate: due.toISOString().slice(0, 10),
+                        status: status,
+                        review: review,
                         scope: String((expense && expense.scope) || 'shared')
                     });
                 }
@@ -225,7 +245,7 @@
                 amount: round(outstanding),
                 dueDate: '',
                 status: 'needs_review',
-                scope: String((debt && debt.scope) || 'shared')
+            scope: String((debt && debt.scope) || 'shared')
             });
         });
         obligations.sort(function (a, b) {
@@ -278,6 +298,7 @@
         var risky90 = forecastIncome.filter(function (entry) { return entry.status === 'risky'; })
             .reduce(function (sum, entry) { return sum + entry.amount; }, 0);
         var scheduled90 = obligations
+            .filter(function (entry) { return entry.status !== 'paid'; })
             .reduce(function (sum, entry) { return sum + (Number(entry.amount) || 0); }, 0);
         var trulyAvailable = round(totalCash - reservedCash);
 
@@ -328,6 +349,7 @@
             overdueObligations: obligations.filter(function (entry) { return entry.status === 'overdue'; }),
             dueSoonObligations: obligations.filter(function (entry) { return entry.status === 'due_soon'; }),
             upcomingObligations: obligations.filter(function (entry) { return entry.status === 'upcoming'; }),
+            paidObligations: obligations.filter(function (entry) { return entry.status === 'paid'; }),
             income: income,
             incomeThisMonth: {
                 confirmed: round(incomeThisMonth.confirmed),

@@ -154,6 +154,23 @@ test('pipeline settlement requires an account and appearance modes persist throu
   expect(errors).toEqual([]);
 });
 
+test('overdue obligation can be booked as paid and appears in payment review', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+  const markPaid = page.getByRole('button', { name: 'Mark paid', exact: true }).first();
+  await expect(markPaid).toBeVisible();
+  await markPaid.click();
+  await expect(page.getByRole('heading', { name: 'Mark obligation paid', exact: true })).toBeVisible();
+  await page.getByLabel('Paid from account').selectOption({ index: 1 });
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.getByText('Reviewed payments', { exact: true })).toBeVisible();
+
+  await page.getByRole('banner').getByRole('button', { name: 'Review', exact: true }).click();
+  await expect(page.getByText('Actual Payments', { exact: true })).toBeVisible();
+  await expect(page.locator('#fin-content-area').getByText('Paid', { exact: true }).first()).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('mobile and tablet capture surfaces avoid horizontal overflow', async ({ page }) => {
   const errors = monitorConsole(page);
   for (const viewport of [{ width: 390, height: 844 }, { width: 820, height: 1180 }]) {
