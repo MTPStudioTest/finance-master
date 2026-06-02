@@ -232,6 +232,13 @@ textarea:focus-visible,
   color: var(--text-primary);
 }
 
+.finance-master-button.active,
+.finance-master-button[aria-current='page'] {
+  border-color: rgba(178, 226, 242, 0.42);
+  background: rgba(178, 226, 242, 0.16);
+  color: var(--text-primary);
+}
+
 .ui-card,
 .widget,
 .glass {

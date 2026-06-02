@@ -13,6 +13,7 @@ import type {
   CsvImportPreview,
   FinanceBackupPreview,
   FinanceScope,
+  FinanceScopeFilter,
 } from '../types/finance';
 
 const overlay = document.querySelector<HTMLDivElement>('#modal-overlay');
@@ -214,6 +215,8 @@ function renderQuickAdd(): string {
         <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'expense'"><strong>Obligation</strong><span>Recurring fixed cost or due item</span></button>
         <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'fiatAccount'"><strong>Cash account</strong><span>Add an account balance</span></button>
         <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'debtAdd'"><strong>Debt item</strong><span>Track repayment pressure</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'debtPayment'"><strong>Debt payment</strong><span>Reduce a tracked debt</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'goal'"><strong>Goal</strong><span>Buffer or savings target</span></button>
         <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'csvImport'"><strong>Import local CSV</strong><span>Bring in transactions for review</span></button>
       </div>
     </div>
@@ -243,10 +246,9 @@ function renderSettings(): string {
   const uiSettings = Store.getUiSettings();
   const latestImport = Store.getImportState().batches.slice(-1)[0];
   const readModel = Store.getFinancialReadModel();
-  const displayMode = uiSettings.appearance === 'bright' ? 'bright' : 'dark';
   return `
     <div class="modal-form">
-      <h2 id="modal-title">Settings</h2>
+      <h2 id="modal-title">Finance Master settings</h2>
       <p class="modal-copy">Keep this operational: currency, display, entities by scope, cash accounts, reserve buckets, recurring costs, debt, and local data.</p>
       <div class="modal-grid-two">
         <div class="form-group">
@@ -263,15 +265,24 @@ function renderSettings(): string {
         </div>
       </div>
       <div class="modal-section">
-        <div class="ui-title">Display</div>
-        <p class="modal-copy">A tiny accessibility switch only. The treasury workflow stays the same.</p>
-        <div class="form-group">
-          <label for="modal-settings-display">Mode</label>
-          <select id="modal-settings-display">
-            <option value="dark"${displayMode === 'dark' ? ' selected' : ''}>Calm dark</option>
-            <option value="bright"${displayMode === 'bright' ? ' selected' : ''}>Bright</option>
-          </select>
+        <div class="ui-title">Appearance and scope</div>
+        <p class="modal-copy">Every persisted display mode is available here, including bright mode.</p>
+        <div class="modal-grid-two">
+          <div class="form-group">
+            <label for="modal-settings-appearance">Appearance</label>
+            <select id="modal-settings-appearance">
+              <option value="aurora"${uiSettings.appearance === 'aurora' ? ' selected' : ''}>Aurora</option>
+              <option value="midnight"${uiSettings.appearance === 'midnight' ? ' selected' : ''}>Midnight</option>
+              <option value="bright"${uiSettings.appearance === 'bright' ? ' selected' : ''}>Bright</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="modal-settings-scope">Default scope filter</label>
+            <select id="modal-settings-scope">${scopeFilterOptions(uiSettings.scopeFilter || 'all')}</select>
+          </div>
         </div>
+        <label class="settings-check"><input id="modal-settings-reduced-motion" type="checkbox"${uiSettings.reducedMotion ? ' checked' : ''} /><span>Reduce motion</span></label>
+        <p class="modal-copy">Market portfolio integrations are postponed and not part of the main treasury workflow.</p>
       </div>
       <div class="modal-section">
         <div class="ui-title">Entities</div>
@@ -501,7 +512,7 @@ function renderCsvImport(): string {
           </div>
         </div>
       ` : ''}
-      ${csvSummary ? `<div class="fin-compact-empty">${escapeHtml(csvSummary)}</div>` : ''}
+      ${csvSummary ? `<div class="fin-compact-empty" role="alert">${escapeHtml(csvSummary)}</div>` : ''}
       ${hasPreview ? `
         <div class="modal-section">
           <div class="ui-title">Import preview</div>
@@ -532,6 +543,10 @@ function renderBackupRestore(): string {
     <div class="modal-form">
       <h2 id="modal-title">Restore Finance Master backup</h2>
       <p class="modal-copy">Review this backup before replacement. Restoring replaces your current finance data, goals, settings, review state, import history, and cached prices.</p>
+      <div class="csv-file-actions">
+        <button class="ui-btn ui-btn--secondary" type="button" data-action="chooseFinanceBackup">Choose backup file</button>
+        <input id="modal-backup-file" type="file" accept="application/json,.json" hidden />
+      </div>
       ${preview?.valid ? `
         <div class="backup-preview-card">
           <div><span>Exported</span><strong>${formatDate(preview.exportedAt)}</strong></div>
@@ -643,6 +658,19 @@ function renderExpense(id = ''): string {
 function renderDebt(type: 'debtAdd' | 'debtPayment', id = ''): string {
   const debts = Store.getFinancialReadModel().debtAccounts || [];
   if (type === 'debtPayment') {
+    if (!debts.length) {
+      return `
+        <div class="modal-form">
+          <h2 id="modal-title">Record debt payment</h2>
+          <p class="modal-copy">Add a debt item first, then payments can reduce its remaining balance.</p>
+          <div class="fin-compact-empty">No debts are tracked yet.</div>
+          <div class="modal-actions">
+            <button class="btn-secondary ui-btn ui-btn--secondary" type="button" data-action="closeModal">Close</button>
+            <button class="btn-primary ui-btn ui-btn--primary" type="button" data-action="openEditModal" data-action-args="'debtAdd'">Add debt item</button>
+          </div>
+        </div>
+      `;
+    }
     return `
       <div class="modal-form">
         <h2 id="modal-title">Record debt payment</h2>
@@ -709,8 +737,12 @@ function closeModal(): void {
 }
 
 function append(draft: FinanceEventDraft, source: string): void {
-  Store.appendFinanceEvent(draft, { source });
-  closeModal();
+  try {
+    Store.appendFinanceEvent(draft, { source });
+    closeModal();
+  } catch (error) {
+    showModalError(error instanceof Error ? error.message : 'Could not save this finance entry.');
+  }
 }
 
 function addTransactionFromFields(prefix: string): boolean {
@@ -721,17 +753,22 @@ function addTransactionFromFields(prefix: string): boolean {
     showModalError('Add a note, a non-zero amount, and a destination account.');
     return false;
   }
-  Store.recordTransaction({
-    description,
-    amount,
-    timestamp: toIso(value(`${prefix}-date`)),
-    accountId,
-    categoryId: value(`${prefix}-category`) || 'uncategorized',
-    scope: value(`${prefix}-scope`) as FinanceScope,
-    source: 'manual',
-  });
-  closeModal();
-  return true;
+  try {
+    Store.recordTransaction({
+      description,
+      amount,
+      timestamp: toIso(value(`${prefix}-date`)),
+      accountId,
+      categoryId: value(`${prefix}-category`) || 'uncategorized',
+      scope: value(`${prefix}-scope`) as FinanceScope,
+      source: 'manual',
+    });
+    closeModal();
+    return true;
+  } catch (error) {
+    showModalError(error instanceof Error ? error.message : 'Could not add this transaction.');
+    return false;
+  }
 }
 
 function captureCsvFields(): void {
@@ -765,16 +802,27 @@ function saveFinanceModal(type: string): void {
   const currency = Store.getFinanceSettings().baseCurrency;
   const timestamp = new Date().toISOString();
   if (type === 'settings') {
-    Store.saveFinanceSettings({ baseCurrency: value('modal-settings-currency'), forecastDays: Number(value('modal-settings-forecast')) });
-    Store.saveUiSettings({ appearance: value('modal-settings-display') === 'bright' ? 'bright' : 'aurora' });
-    applyAppearance(Store);
-    closeModal();
+    try {
+      Store.saveFinanceSettings({ baseCurrency: value('modal-settings-currency'), forecastDays: Number(value('modal-settings-forecast')) });
+      Store.saveUiSettings({
+        appearance: (value('modal-settings-appearance') || 'aurora') as FinanceUiSettings['appearance'],
+        reducedMotion: checked('modal-settings-reduced-motion'),
+        scopeFilter: (value('modal-settings-scope') || 'all') as FinanceScopeFilter,
+      });
+      applyAppearance(Store);
+      closeModal();
+    } catch (error) {
+      showModalError(error instanceof Error ? error.message : 'Could not save settings.');
+    }
     return;
   }
   if (type === 'income') {
     const amount = Number(value('modal-income-amount'));
     const probability = Number(value('modal-income-probability'));
-    if (!value('modal-income-title') || !Number.isFinite(amount) || !Number.isFinite(probability)) return;
+    if (!value('modal-income-title') || !Number.isFinite(amount) || amount === 0 || !Number.isFinite(probability) || probability < 0 || probability > 1) {
+      showModalError('Add an income source, a non-zero amount, and a probability between 0 and 1.');
+      return;
+    }
     append({
       type: 'pipeline.created',
       amount: Math.abs(amount),
@@ -796,7 +844,10 @@ function saveFinanceModal(type: string): void {
   }
   if (type === 'fiatAccount') {
     const balance = Number(value('modal-fiat-balance'));
-    if (!value('modal-fiat-name') || !Number.isFinite(balance)) return;
+    if (!value('modal-fiat-name') || !Number.isFinite(balance)) {
+      showModalError('Add an account name and a valid balance.');
+      return;
+    }
     const bucket = value('modal-fiat-bucket') || 'available';
     append({
       type: 'asset.account_set',
@@ -817,19 +868,29 @@ function saveFinanceModal(type: string): void {
   }
   if (type === 'expense') {
     const amount = Math.abs(Number(value('modal-expense-amount')));
-    if (!value('modal-expense-category') || !Number.isFinite(amount)) return;
-    append({ type: 'expense.recurring_set', amount, currency, timestamp, related_entity_id: value('modal-expense-id') || financeId('expense'), metadata: { category: value('modal-expense-category'), monthlyAmount: amount, essential: checked('modal-expense-essential'), active: true, dueDay: Number(value('modal-expense-due-day')) || 1, frequency: 'monthly', scope: value('modal-expense-scope') } }, 'modal.expense');
+    const dueDay = Number(value('modal-expense-due-day'));
+    if (!value('modal-expense-category') || !Number.isFinite(amount) || amount <= 0 || !Number.isFinite(dueDay) || dueDay < 1 || dueDay > 28) {
+      showModalError('Add a cost name, positive monthly amount, and due day from 1 to 28.');
+      return;
+    }
+    append({ type: 'expense.recurring_set', amount, currency, timestamp, related_entity_id: value('modal-expense-id') || financeId('expense'), metadata: { category: value('modal-expense-category'), monthlyAmount: amount, essential: checked('modal-expense-essential'), active: true, dueDay, frequency: 'monthly', scope: value('modal-expense-scope') } }, 'modal.expense');
     return;
   }
   if (type === 'debtAdd') {
     const amount = Math.abs(Number(value('modal-debt-amount')));
-    if (!value('modal-debt-name') || !Number.isFinite(amount) || amount <= 0) return;
+    if (!value('modal-debt-name') || !Number.isFinite(amount) || amount <= 0) {
+      showModalError('Add a debt name and a positive amount.');
+      return;
+    }
     append({ type: 'debt.added', amount, currency, timestamp, related_entity_id: value('modal-debt-id') || financeId('debt'), metadata: { name: value('modal-debt-name'), scope: value('modal-debt-scope') } }, 'modal.debtAdd');
     return;
   }
   if (type === 'debtPayment') {
     const amount = Math.abs(Number(value('modal-debt-payment-amount')));
-    if (!value('modal-debt-payment-id') || !Number.isFinite(amount) || amount <= 0) return;
+    if (!value('modal-debt-payment-id') || !Number.isFinite(amount) || amount <= 0) {
+      showModalError('Choose a debt item and enter a positive payment amount.');
+      return;
+    }
     append({ type: 'debt.payment_made', amount, currency, timestamp, related_entity_id: value('modal-debt-payment-id'), metadata: {} }, 'modal.debtPayment');
     return;
   }
@@ -859,8 +920,12 @@ function saveFinanceModal(type: string): void {
       showModalError('Choose a settlement account before marking this item as paid.');
       return;
     }
-    Store.markPipelineItemPaid(value('modal-settle-id'), { destinationAccountId: value('modal-settle-account') });
-    closeModal();
+    try {
+      Store.markPipelineItemPaid(value('modal-settle-id'), { destinationAccountId: value('modal-settle-account') });
+      closeModal();
+    } catch (error) {
+      showModalError(error instanceof Error ? error.message : 'Could not mark this income as paid.');
+    }
   }
 }
 
@@ -1016,21 +1081,29 @@ Object.assign(window, {
       showModalError('Preview at least one valid, non-duplicate row before importing.');
       return;
     }
-    const summary = Store.importCsvTransactions(csvPreview.rows, { accountId: csvAccountId, sourceFile: csvPreview.sourceFile });
-    csvSummary = `Imported ${summary.imported} row${summary.imported === 1 ? '' : 's'}${summary.duplicates ? ` · skipped ${summary.duplicates} duplicate${summary.duplicates === 1 ? '' : 's'}` : ''}.`;
-    csvPreview = null;
-    openEditModal('csvImport');
+    try {
+      const summary = Store.importCsvTransactions(csvPreview.rows, { accountId: csvAccountId, sourceFile: csvPreview.sourceFile });
+      csvSummary = `Imported ${summary.imported} row${summary.imported === 1 ? '' : 's'}${summary.duplicates ? ` · skipped ${summary.duplicates} duplicate${summary.duplicates === 1 ? '' : 's'}` : ''}.`;
+      csvPreview = null;
+      openEditModal('csvImport');
+    } catch (error) {
+      showModalError(error instanceof Error ? error.message : 'Could not import this CSV.');
+    }
   },
   applyBackupRestore: () => {
     if (!backupPreview?.valid || !pendingBackup) {
       showModalError('Choose a valid Finance Master backup before restoring.');
       return;
     }
-    Store.restoreBackup(pendingBackup);
-    applyAppearance(Store);
-    pendingBackup = null;
-    backupPreview = null;
-    closeModal();
+    try {
+      Store.restoreBackup(pendingBackup);
+      applyAppearance(Store);
+      pendingBackup = null;
+      backupPreview = null;
+      closeModal();
+    } catch (error) {
+      showModalError(error instanceof Error ? error.message : 'Could not restore this backup.');
+    }
   },
 });
 

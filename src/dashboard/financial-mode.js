@@ -18,8 +18,11 @@ window.FinancialMode = (function () {
 
     const UI_KEYS = {
         focusMode: 'finance-master.layout.focus-mode',
-        pipelineTab: 'finance-master.layout.pipeline-tab'
+        pipelineTab: 'finance-master.layout.pipeline-tab',
+        activeSection: 'finance-master.layout.active-section'
     };
+
+    const SECTIONS = ['dashboard', 'ledger', 'planning', 'review', 'data', 'settings'];
 
     // Elements
     const elements = {
@@ -80,6 +83,34 @@ window.FinancialMode = (function () {
         }
     }
 
+    function getActiveSection() {
+        try {
+            const raw = String(localStorage.getItem(UI_KEYS.activeSection) || 'dashboard').toLowerCase();
+            return SECTIONS.indexOf(raw) !== -1 ? raw : 'dashboard';
+        } catch (error) {
+            return 'dashboard';
+        }
+    }
+
+    function setActiveSection(section) {
+        const next = String(section || 'dashboard').toLowerCase();
+        const safeSection = SECTIONS.indexOf(next) !== -1 ? next : 'dashboard';
+        try {
+            localStorage.setItem(UI_KEYS.activeSection, safeSection);
+        } catch (error) {
+            // noop
+        }
+        render();
+    }
+
+    function updateTopNavigation(section) {
+        document.querySelectorAll('[data-fin-nav]').forEach((button) => {
+            const active = String(button.getAttribute('data-fin-nav') || '') === section;
+            button.classList.toggle('active', active);
+            button.setAttribute('aria-current', active ? 'page' : 'false');
+        });
+    }
+
     function isSectionCollapsed(sectionId) {
         return readStoredBoolean(collapsedKey(sectionId), true);
     }
@@ -134,12 +165,19 @@ window.FinancialMode = (function () {
         return '';
     }
 
-    function formatCurrency(val, currency = 'EUR') {
+    function formatCurrency(val, currency) {
         if (!currentHasFinanceData && (val == null || Number(val) === 0)) return '—';
         if (val == null || !Number.isFinite(Number(val))) return '—';
-        const activeCurrency = (window.Store && typeof window.Store.getFinanceSettings === 'function')
+        const baseCurrency = (window.Store && typeof window.Store.getFinanceSettings === 'function')
             ? window.Store.getFinanceSettings().baseCurrency
-            : currency;
+            : 'EUR';
+        if (window.FinanceFormatting && typeof window.FinanceFormatting.formatCurrencyAmount === 'function') {
+            return window.FinanceFormatting.formatCurrencyAmount(val, {
+                currency,
+                baseCurrency
+            });
+        }
+        const activeCurrency = currency || baseCurrency || 'EUR';
         return new Intl.NumberFormat(undefined, {
             style: 'currency',
             currency: activeCurrency || 'EUR',
@@ -390,19 +428,18 @@ window.FinancialMode = (function () {
 
         if (!elements.content) return;
 
-        const sections = [
-            renderObservatoryHeader(),
-            renderTreasurySnapshot(),
-            renderReserveBuckets(),
-            renderIncomePipeline(),
-            renderObligations(),
-            renderReviewQueue(),
-            renderScenarioOutcomes(),
-            renderLeanRecords()
-        ];
+        const activeSection = getActiveSection();
+        const focusMode = getFocusMode();
+        updateTopNavigation(activeSection);
+        const sections = renderSection(activeSection, focusMode);
 
-        elements.content.classList.toggle('fin-focus-mode', false);
+        elements.content.classList.toggle('fin-focus-mode', activeSection === 'dashboard' && focusMode);
         elements.content.innerHTML = sections.join('');
+
+        if (activeSection === 'planning') {
+            attachCharts();
+            attachLabListeners();
+        }
 
         // Post-render attachments
         if (window.CoreDashboardLayout && typeof window.CoreDashboardLayout.refresh === 'function') {
@@ -411,6 +448,183 @@ window.FinancialMode = (function () {
     }
 
     /* --- IA Layer Renderers --- */
+
+    function renderSectionNav(activeSection) {
+        const labels = {
+            dashboard: 'Dashboard',
+            ledger: 'Ledger',
+            planning: 'Planning',
+            review: 'Review',
+            data: 'Data',
+            settings: 'Settings'
+        };
+        return `
+            <section class="fin-section fin-section-nav" aria-label="Finance sections">
+                <div class="fin-section-tabs" role="tablist" aria-label="Finance workspace">
+                    ${SECTIONS.map((section) => `
+                        <button class="fin-tab-btn ${activeSection === section ? 'active' : ''}" type="button" data-action="FinancialMode.setSection" data-action-args="'${section}'" role="tab" aria-selected="${activeSection === section ? 'true' : 'false'}">
+                            ${labels[section]}
+                        </button>
+                    `).join('')}
+                </div>
+            </section>
+        `;
+    }
+
+    function renderSection(activeSection, focusMode) {
+        const nav = renderSectionNav(activeSection);
+        if (activeSection === 'ledger') {
+            return [nav, renderSectionHeading('Ledger', 'Transactions are the raw material. Filter, add, reverse, and reconcile cash movements.'), renderLedgerSection(), renderOperationsInvestmentsRow()];
+        }
+        if (activeSection === 'planning') {
+            return [nav, renderSectionHeading('Planning', 'Pipeline, goals, obligations, debts, cash calendar, and scenario work.'), renderPipelineTabs(), renderGoals(), renderCashCalendar(), renderOperationsInvestmentsRow(), renderProjection(), renderScenarioLab()];
+        }
+        if (activeSection === 'review') {
+            return [nav, renderSectionHeading('Review', 'Resolve unclear items, reconcile accounts, and keep the operating ritual alive.'), renderReviewQueue(), renderTensionSignals(), renderWeeklyReviewSection()];
+        }
+        if (activeSection === 'data') {
+            return [nav, renderSectionHeading('Data', 'Local imports, backups, import batches, and sample ledger controls.'), renderDataSection()];
+        }
+        if (activeSection === 'settings') {
+            return [nav, renderSectionHeading('Settings', 'Operational preferences, appearance, scope, and postponed integrations.'), renderSettingsSection()];
+        }
+        return [
+            nav,
+            renderObservatoryHeader(),
+            renderSetupChecklist(),
+            renderTreasurySnapshot(),
+            renderReserveBuckets(),
+            renderIncomePipeline(),
+            renderObligations(),
+            renderReviewQueue(),
+            renderScenarioOutcomes(),
+            focusMode ? '' : renderLeanRecords()
+        ];
+    }
+
+    function renderSectionHeading(title, copy) {
+        return `
+            <section class="fin-section fin-section-heading">
+                <div class="widget ui-card glass fin-card fin-section-intro">
+                    <div class="widget-title ui-title">${title}</div>
+                    <div class="fin-helper-text">${copy}</div>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderLedgerSection() {
+        const transactions = safeArray(currentData && currentData.transactions)
+            .slice()
+            .sort((a, b) => Date.parse(String(b && b.timestamp || '')) - Date.parse(String(a && a.timestamp || '')))
+            .slice(0, 12);
+        return `
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Transaction Ledger</div>
+                            <div class="fin-helper-text">Search, filter, add, and reverse records in the full ledger modal.</div>
+                        </div>
+                        <div class="fin-action-row">
+                            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transaction'">Add transaction</button>
+                            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'financeOverview'">Open ledger</button>
+                        </div>
+                    </div>
+                    ${transactions.length ? `
+                        <table class="fin-table fin-table--compact">
+                            <thead><tr><th>Date</th><th>Description</th><th>Category</th><th style="text-align:right">Amount</th></tr></thead>
+                            <tbody>
+                                ${transactions.map((entry) => `
+                                    <tr>
+                                        <td>${formatShortDate(entry.timestamp)}</td>
+                                        <td>${escapeHtml(entry.description || 'Transaction')}</td>
+                                        <td>${escapeHtml(entry.categoryId || 'uncategorized')}</td>
+                                        <td style="text-align:right" class="${Number(entry.amount) >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${formatCurrency(entry.amount, entry.currency)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    ` : renderCompactEmpty('No transactions yet. Add a cash account and start with one real movement.')}
+                </div>
+            </section>
+        `;
+    }
+
+    function renderWeeklyReviewSection() {
+        const reviewDue = isWeeklyReviewDue();
+        return `
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card fin-review-prompt">
+                    <div>
+                        <div class="widget-title ui-title">${reviewDue ? 'Weekly review due' : 'Weekly review current'}</div>
+                        <div class="fin-helper-text">Reconcile cash accounts, inspect pipeline and recurring costs, then leave one operating note.</div>
+                        <div class="fin-operating-meta">Last reviewed ${formatShortDate(currentReview && currentReview.lastReviewedAt)}</div>
+                    </div>
+                    <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">${reviewDue ? 'Start review' : 'Open review'}</button>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderDataSection() {
+        const latestImport = window.Store && typeof window.Store.getImportState === 'function'
+            ? safeArray(window.Store.getImportState().batches).slice(-1)[0]
+            : null;
+        return `
+            <section class="fin-section">
+                <div class="fin-operational-row">
+                    <div class="widget ui-card glass fin-card">
+                        <div class="widget-title ui-title">Imports and Backups</div>
+                        <div class="fin-helper-text">Everything stays local. Use exports before big changes or device moves.</div>
+                        ${latestImport ? `
+                            <div class="modal-list-row">
+                                <span><strong>Latest CSV batch</strong><br><small>${escapeHtml(latestImport.sourceFile)} · ${latestImport.fingerprints.length} rows · ${formatShortDate(latestImport.importedAt)}</small></span>
+                                <button class="fin-mini-btn" type="button" data-action="undoImportBatch" data-action-args="'${escapeActionArg(latestImport.id)}'">Undo</button>
+                            </div>
+                        ` : renderCompactEmpty('No CSV import batches yet.')}
+                        <div class="fin-action-row">
+                            <button class="fin-action-btn" type="button" data-action="openEditModal" data-action-args="'csvImport'">Import CSV</button>
+                            <button class="fin-action-btn" type="button" data-action="exportFinanceBackup">Export backup</button>
+                            <button class="fin-action-btn" type="button" data-action="openEditModal" data-action-args="'backupRestore'">Restore backup</button>
+                        </div>
+                    </div>
+                    <div class="widget ui-card glass fin-card">
+                        <div class="widget-title ui-title">Sample Data</div>
+                        <div class="fin-helper-text">Use the fictional sample ledger to understand the cockpit, or clear it for your own records.</div>
+                        <div class="settings-reset-actions">
+                            <button class="ui-btn ui-btn--secondary" type="button" data-action="resetDemoData">Restore sample data</button>
+                            <button class="btn-danger ui-btn" type="button" data-action="deleteDemoData">Delete sample data</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderSettingsSection() {
+        const financeSettings = window.Store.getFinanceSettings();
+        const uiSettings = window.Store.getUiSettings();
+        return `
+            <section class="fin-section">
+                <div class="fin-operational-row">
+                    <div class="widget ui-card glass fin-card">
+                        <div class="widget-title ui-title">Operating Preferences</div>
+                        <div class="modal-list-row"><span>Base currency</span><strong>${escapeHtml(financeSettings.baseCurrency || 'EUR')}</strong></div>
+                        <div class="modal-list-row"><span>Forecast horizon</span><strong>${escapeHtml(financeSettings.forecastDays || 90)} days</strong></div>
+                        <div class="modal-list-row"><span>Scope filter</span><strong>${escapeHtml(uiSettings.scopeFilter || 'all')}</strong></div>
+                        <div class="modal-list-row"><span>Appearance</span><strong>${escapeHtml(uiSettings.appearance || 'aurora')}</strong></div>
+                        <div class="modal-list-row"><span>Reduced motion</span><strong>${uiSettings.reducedMotion ? 'On' : 'Off'}</strong></div>
+                        <button class="fin-action-btn" type="button" data-action="openEditModal" data-action-args="'settings'">Open settings</button>
+                    </div>
+                    <div class="widget ui-card glass fin-card">
+                        <div class="widget-title ui-title">Postponed Integrations</div>
+                        <div class="fin-helper-text">Market portfolio, Web3, DeFi, and live quote refresh remain compatibility-only. They are kept out of the production flow until they serve treasury decisions clearly.</div>
+                    </div>
+                </div>
+            </section>
+        `;
+    }
 
     function treasuryArray(key) {
         return safeArray(currentTreasury && currentTreasury[key]);
@@ -1459,6 +1673,7 @@ window.FinancialMode = (function () {
     return {
         init,
         render,
+        setSection: setActiveSection,
         openAddModal
     };
 })();

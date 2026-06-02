@@ -265,11 +265,17 @@
             }
         });
 
-        var confirmed90 = income.filter(function (entry) { return entry.status === 'confirmed'; })
+        function isInsideForecast(entry) {
+            var ts = Date.parse(entry && entry.dueDate || '');
+            return Number.isFinite(ts) && ts >= nowTs && ts <= forecastEndTs;
+        }
+
+        var forecastIncome = income.filter(isInsideForecast);
+        var confirmed90 = forecastIncome.filter(function (entry) { return entry.status === 'confirmed'; })
             .reduce(function (sum, entry) { return sum + entry.amount; }, 0);
-        var expected90 = income.filter(function (entry) { return entry.status === 'expected'; })
+        var expected90 = forecastIncome.filter(function (entry) { return entry.status === 'expected'; })
             .reduce(function (sum, entry) { return sum + entry.amount; }, 0);
-        var risky90 = income.filter(function (entry) { return entry.status === 'risky'; })
+        var risky90 = forecastIncome.filter(function (entry) { return entry.status === 'risky'; })
             .reduce(function (sum, entry) { return sum + entry.amount; }, 0);
         var scheduled90 = obligations
             .reduce(function (sum, entry) { return sum + (Number(entry.amount) || 0); }, 0);

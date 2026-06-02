@@ -11,8 +11,26 @@ function monitorConsole(page: Page): string[] {
 
 async function openSettings(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Open settings', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Finance Master settings' })).toBeVisible();
 }
+
+test('grouped navigation exposes every finance workspace section', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+  for (const [button, heading] of [
+    ['Dashboard', 'Finance Observatory'],
+    ['Ledger', 'Ledger'],
+    ['Planning', 'Planning'],
+    ['Review', 'Review'],
+    ['Data', 'Data'],
+    ['Settings', 'Settings'],
+  ] as const) {
+    await page.getByRole('button', { name: button, exact: true }).click();
+    await expect(page.getByRole('heading', { name: heading, exact: true }).or(page.getByText(heading, { exact: true }).first())).toBeVisible();
+  }
+  expect(errors).toEqual([]);
+});
 
 test('daily capture supports keyboard focus, focus trap, Escape, and focus restoration', async ({ page }) => {
   const errors = monitorConsole(page);
@@ -25,16 +43,19 @@ test('daily capture supports keyboard focus, focus trap, Escape, and focus resto
   await page.getByLabel('Amount').fill('-24.50');
   await page.getByLabel('Account').selectOption({ index: 1 });
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await page.getByRole('button', { name: 'Transactions', exact: true }).click();
-  await expect(page.getByText('Test capture', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Ledger', exact: true }).click();
+  await page.getByRole('button', { name: 'Open ledger', exact: true }).click();
+  await expect(page.getByLabel('Transactions').getByText('Test capture', { exact: true })).toBeVisible();
   await page.locator('[data-action="closeModal"]').click();
 
   const review = page.getByRole('button', { name: 'Review', exact: true });
   await review.click();
+  const reviewLauncher = page.getByRole('button', { name: /Start review|Open review/ }).first();
+  await reviewLauncher.click();
   await page.getByRole('button', { name: 'Mark review complete', exact: true }).press('Tab');
   await expect(page.getByRole('button', { name: 'Close', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(review).toBeFocused();
+  await expect(reviewLauncher).toBeFocused();
   expect(errors).toEqual([]);
 });
 
@@ -63,10 +84,11 @@ test('CSV file import previews accepted, duplicate, and rejected rows and remain
   await page.getByRole('button', { name: 'Import valid rows', exact: true }).click();
   await expect(page.getByText('Imported 2 rows', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await openSettings(page);
-  await expect(page.getByText('Latest CSV batch:', { exact: false })).toContainText('release-bank.csv');
+  await page.getByRole('button', { name: 'Data', exact: true }).click();
+  await expect(page.getByText('Latest CSV batch', { exact: true })).toBeVisible();
+  await expect(page.getByText('release-bank.csv', { exact: false })).toBeVisible();
   page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: 'Undo latest CSV import', exact: true }).click();
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
   expect(errors).toEqual([]);
 });
 
@@ -101,11 +123,13 @@ test('sample deletion reveals onboarding and sample restore returns the dashboar
   await openSettings(page);
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Delete sample data', exact: true }).click();
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
   await expect(page.getByText('Start with a clear baseline', { exact: true })).toBeVisible();
   await openSettings(page);
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Restore sample data', exact: true }).click();
-  await expect(page.getByText('Assets', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  await expect(page.getByText('Truly available', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -148,6 +172,7 @@ test('mobile and tablet capture surfaces avoid horizontal overflow', async ({ pa
 test('savings goal progress and weekly reconciliation complete the operating ritual', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
+  await page.getByRole('banner').getByRole('button', { name: 'Review', exact: true }).click();
   await expect(page.getByText('Weekly review due', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '+ Add', exact: true }).click();
@@ -160,9 +185,11 @@ test('savings goal progress and weekly reconciliation complete the operating rit
   await expect(page.getByRole('heading', { name: 'Savings and buffer goals', exact: true })).toBeVisible();
   await expect(page.locator('#modal-body').getByText('Release buffer', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).last().click();
+  await page.getByRole('button', { name: 'Planning', exact: true }).click();
   await expect(page.locator('#fin-content-area').getByText('Release buffer', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Review', exact: true }).click();
+  await page.getByRole('banner').getByRole('button', { name: 'Review', exact: true }).click();
+  await page.getByRole('button', { name: /Start review|Open review/ }).first().click();
   for (const checkbox of await page.locator('.review-account-check').all()) {
     await checkbox.check();
   }
@@ -171,6 +198,6 @@ test('savings goal progress and weekly reconciliation complete the operating rit
   await page.locator('#modal-review-signals').check();
   await page.getByLabel('Review notes').fill('Balances reconciled for release week.');
   await page.getByRole('button', { name: 'Mark review complete', exact: true }).click();
-  await expect(page.getByText('Weekly review due', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Weekly review current', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });

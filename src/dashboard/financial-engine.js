@@ -161,8 +161,20 @@ window.FinancialEngine = (function () {
 
         const monthlyBurn = snapshot.monthlyBurn == null ? 0 : snapshot.monthlyBurn;
         const weightedIncome90d = toNumber(readModel.expectedPipeline90d, snapshot.weightedPipeline);
+        const nowTs = Date.parse(String(data && data.nowIso || '')) || Date.now();
+        const confirmedEndTs = nowTs + (90 * 24 * 60 * 60 * 1000);
         const confirmedIncome90d = (Array.isArray(readModel.invoices) ? readModel.invoices : [])
             .filter((entry) => String(entry && entry.status || '').toLowerCase() === 'paid')
+            .filter((entry) => {
+                const ts = Date.parse(String(
+                    (entry && entry.paidAt)
+                    || (entry && entry.sentAt)
+                    || (entry && entry.expectedDateISO)
+                    || (entry && entry.timestamp)
+                    || ''
+                ));
+                return Number.isFinite(ts) && ts >= nowTs && ts <= confirmedEndTs;
+            })
             .reduce((acc, entry) => acc + toNumber(entry && entry.amount, 0), 0);
 
         const liquidNetWorth = snapshot.realBalance;

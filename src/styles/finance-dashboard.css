@@ -797,6 +797,17 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     background: rgba(255, 255, 255, 0.1);
 }
 
+#dashboard-financial #fin-content-area .fin-section-nav {
+    margin-bottom: -6px;
+}
+
+#dashboard-financial #fin-content-area .fin-section-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
 #dashboard-financial #fin-content-area .fin-tabs {
     display: inline-flex;
     align-items: center;

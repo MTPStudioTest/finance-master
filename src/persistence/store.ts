@@ -15,6 +15,7 @@ import type {
   FinanceGoalState,
   FinanceImportState,
   FinancePriceCache,
+  FinancePriceQuote,
   FinanceReviewState,
   FinanceScope,
   FinanceScopeFilter,
@@ -627,14 +628,23 @@ export const Store = {
     return getJson(STORAGE_KEYS.priceCache, DEFAULT_PRICE_CACHE);
   },
 
-  async refreshCryptoPrices(): Promise<{ updated: number; source: string }> {
+  async refreshCryptoPrices(): Promise<{ updated: number; source: string; error?: string }> {
     const ui = this.getUiSettings();
     const provider = createPriceProvider(ui.walletPriceSource);
     const positions = (this.getFinancialReadModel().web3Positions || [])
       .filter((position: Record<string, unknown>) => position.manualPriceOverride !== true);
     if (!positions.length || provider.id === 'manual') return { updated: 0, source: provider.id };
     const symbols = positions.map((position: Record<string, unknown>) => String(position.symbolOrName || '')).filter(Boolean);
-    const quotes = await provider.getQuotes(symbols, this.getFinanceSettings().baseCurrency);
+    let quotes: FinancePriceQuote[];
+    try {
+      quotes = await provider.getQuotes(symbols, this.getFinanceSettings().baseCurrency);
+    } catch (error) {
+      return {
+        updated: 0,
+        source: provider.id,
+        error: error instanceof Error ? error.message : 'Price refresh failed.',
+      };
+    }
     const bySymbol = new Map(quotes.map((quote) => [quote.symbol.toUpperCase(), quote]));
     const currency = this.getFinanceSettings().baseCurrency;
     const drafts = positions.flatMap((position: Record<string, unknown>) => {

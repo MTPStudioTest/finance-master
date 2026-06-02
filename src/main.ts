@@ -7,6 +7,7 @@ import './finance/ledger.js';
 import './finance/invariants.js';
 import './finance/confidence.js';
 import './finance/compute.js';
+import { formatCurrencyAmount, resolveCurrencyCode } from './finance/formatting.js';
 import './finance/modal-events.js';
 import './finance/commands.js';
 import './dashboard/financial-engine.js';
@@ -16,6 +17,10 @@ import './components/modal-controller';
 import './dashboard/financial-mode.js';
 
 window.Store = Store;
+(window as unknown as { FinanceFormatting: { formatCurrencyAmount: typeof formatCurrencyAmount; resolveCurrencyCode: typeof resolveCurrencyCode } }).FinanceFormatting = {
+  formatCurrencyAmount,
+  resolveCurrencyCode,
+};
 await Store.initialize();
 Store.seedDemoIfNeeded();
 applyAppearance(Store);

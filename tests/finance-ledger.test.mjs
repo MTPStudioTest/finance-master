@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { test } from 'node:test';
 import vm from 'node:vm';
 import { decodeLegacyValue, selectRepositoryValue } from '../src/persistence/legacy-migration.js';
+import { formatCurrencyAmount, resolveCurrencyCode } from '../src/finance/formatting.js';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const SOURCES = [
@@ -30,6 +31,23 @@ function loadFinance() {
     vm.runInContext(readFileSync(resolve(ROOT, source), 'utf8'), context, { filename: source });
   }
   return context;
+}
+
+function loadFinancialEngine() {
+  const context = vm.createContext({
+    console,
+    Date,
+    Intl,
+    Math,
+    Number,
+    Object,
+    String,
+  });
+  context.window = context;
+  vm.runInContext(readFileSync(resolve(ROOT, 'src/dashboard/financial-engine.js'), 'utf8'), context, {
+    filename: 'src/dashboard/financial-engine.js',
+  });
+  return context.FinancialEngine;
 }
 
 function append(context, drafts, nowIso = '2026-06-02T10:00:00.000Z') {
@@ -225,6 +243,87 @@ test('treasury model classifies income scenarios and review items', () => {
   assert.equal(result.treasury.incomeScenarios.optimistic, 6500);
   assert.equal(result.treasury.overdueObligations[0].title, 'Workspace');
   assert.equal(result.treasury.reviewQueue.some((item) => item.reason === 'Risky income assumption'), true);
+});
+
+test('treasury scenarios only include income inside the forecast horizon', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-02T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-main',
+      type: 'asset.account_set',
+      amount: 1000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating cash', balance: 1000, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'income-inside',
+      type: 'pipeline.created',
+      amount: 500,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'income-inside',
+      metadata: { title: 'June project', value: 500, probability: 0.9, status: 'confirmed', expectedDateISO: '2026-06-20', scope: 'business' },
+    },
+    {
+      id: 'income-outside',
+      type: 'pipeline.created',
+      amount: 10000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'income-outside',
+      metadata: { title: 'Late-year project', value: 10000, probability: 0.8, status: 'expected', expectedDateISO: '2026-10-20', scope: 'business' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(result.treasury.incomeScenarios.conservative, 1500);
+  assert.equal(result.treasury.incomeScenarios.expected, 1500);
+  assert.equal(result.treasury.incomeScenarios.optimistic, 1500);
+});
+
+test('currency formatting respects an explicit currency before base currency', () => {
+  assert.equal(resolveCurrencyCode('usd', 'EUR'), 'USD');
+  assert.equal(resolveCurrencyCode('', 'EUR'), 'EUR');
+  const explicit = formatCurrencyAmount(12, { currency: 'USD', baseCurrency: 'EUR', locale: 'en-US' });
+  const fallback = formatCurrencyAmount(12, { baseCurrency: 'EUR', locale: 'en-US' });
+  assert.match(explicit, /\$12\.00|US\$12\.00/);
+  assert.match(fallback, /€12\.00/);
+});
+
+test('FinancialEngine confirmedIncome90d excludes paid income outside the next 90 days', () => {
+  const engine = loadFinancialEngine();
+  const result = engine.compute({
+    nowIso: '2026-06-02T10:00:00.000Z',
+    financeSnapshot: {
+      realBalance: 0,
+      projectedBalance: 0,
+      weightedPipeline: 0,
+      monthlyBurn: 0,
+      runwayMonths: null,
+      totalDebt: 0,
+      confidenceScore: 1,
+      missingInputs: [],
+    },
+    financeReadModel: {
+      fiatAccounts: [],
+      web3Positions: [],
+      invoices: [
+        { id: 'paid-inside', status: 'paid', amount: 1200, paidAt: '2026-06-20T12:00:00.000Z' },
+        { id: 'paid-outside', status: 'paid', amount: 4000, paidAt: '2026-10-20T12:00:00.000Z' },
+        { id: 'paid-before', status: 'paid', amount: 900, paidAt: '2026-05-20T12:00:00.000Z' },
+      ],
+    },
+  });
+
+  assert.equal(result.confirmedIncome90d, 1200);
 });
 
 test('reversals remove their target from active events and derived balances', () => {

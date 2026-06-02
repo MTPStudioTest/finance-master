@@ -21,13 +21,22 @@
         <button class="finance-master-button finance-master-button--accent" type="button" data-action="openEditModal" data-action-args="'quickAdd'">
           + Add
         </button>
-        <button class="finance-master-button" type="button" data-action="openEditModal" data-action-args="'financeOverview'">
-          Transactions
+        <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'dashboard'" data-fin-nav="dashboard">
+          Dashboard
         </button>
-        <button class="finance-master-button" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">
+        <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'ledger'" data-fin-nav="ledger">
+          Ledger
+        </button>
+        <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'planning'" data-fin-nav="planning">
+          Planning
+        </button>
+        <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'review'" data-fin-nav="review">
           Review
         </button>
-        <button class="finance-master-button" type="button" data-action="openEditModal" data-action-args="'settings'">
+        <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'data'" data-fin-nav="data">
+          Data
+        </button>
+        <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'settings'" data-fin-nav="settings">
           Settings
         </button>
       </div>
