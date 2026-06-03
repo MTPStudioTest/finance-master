@@ -49,6 +49,7 @@ window.FinancialMode = (function () {
         ledgerFilters: 'finance-master.layout.ledger-filters',
         selectedTransaction: 'finance-master.layout.selected-transaction',
         invoicesView: 'finance-master.layout.invoices-view',
+        treasuryProject: 'finance-master.layout.treasury-project',
         activeSection: 'finance-master.layout.active-section'
     };
 
@@ -209,6 +210,23 @@ window.FinancialMode = (function () {
         if (safe !== 'open' && safe !== 'settled' && safe !== 'all') return;
         try {
             localStorage.setItem(UI_KEYS.invoicesView, safe);
+        } catch (error) {
+            // noop
+        }
+    }
+
+    function getTreasuryProjectView() {
+        try {
+            return String(localStorage.getItem(UI_KEYS.treasuryProject) || 'all').trim() || 'all';
+        } catch (error) {
+            return 'all';
+        }
+    }
+
+    function setTreasuryProjectView(value) {
+        const safe = String(value || 'all').trim() || 'all';
+        try {
+            localStorage.setItem(UI_KEYS.treasuryProject, safe);
         } catch (error) {
             // noop
         }
@@ -579,6 +597,12 @@ window.FinancialMode = (function () {
 
             if (action === 'set-treasury-burn-cut') {
                 treasuryBurnCut = Math.max(0, Number(actionEl.getAttribute('data-fin-cut') || '0') || 0);
+                render();
+                return;
+            }
+
+            if (action === 'set-treasury-project') {
+                setTreasuryProjectView(actionEl.getAttribute('data-fin-project') || 'all');
                 render();
                 return;
             }
@@ -1771,25 +1795,134 @@ window.FinancialMode = (function () {
         }).join('') : renderCompactEmpty('Debt-free operations.');
     }
 
+    function activeTreasuryProjects() {
+        return safeArray(currentData?.projectProfiles)
+            .filter((profile) => profile && String(profile.status || 'active') !== 'archived')
+            .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    }
+
+    function treasuryProjectId(entry) {
+        return String(entry && entry.projectId || '').trim();
+    }
+
+    function treasuryProjectMatches(entry, selectedProject) {
+        const selected = String(selectedProject || 'all');
+        if (selected === 'all') return true;
+        const id = treasuryProjectId(entry);
+        if (selected === 'unassigned') return !id;
+        return id === selected;
+    }
+
+    function sumMoney(items, selector) {
+        return safeArray(items).reduce((sum, item) => sum + (Number(selector(item)) || 0), 0);
+    }
+
+    function getTreasuryProjectContext() {
+        const projects = activeTreasuryProjects();
+        const rawSelected = getTreasuryProjectView();
+        const project = projects.find((profile) => String(profile.id) === rawSelected) || null;
+        const selected = rawSelected === 'unassigned' || project ? rawSelected : 'all';
+        if (selected !== rawSelected) setTreasuryProjectView(selected);
+        const isProjectView = selected !== 'all';
+        const label = selected === 'all'
+            ? 'All Treasury'
+            : (selected === 'unassigned' ? 'Unassigned' : String(project?.name || 'Project treasury'));
+        const filter = (items) => safeArray(items).filter((entry) => treasuryProjectMatches(entry, selected));
+        const fiatAccounts = filter(currentData?.fiatAccounts);
+        const reserveBuckets = filter(currentData?.reserveBuckets);
+        const recurringExpenses = filter(currentData?.recurringExpenses);
+        const debtAccounts = filter(currentData?.debtAccounts);
+        const pipelineDeals = filter(currentData?.pipelineDeals);
+        const invoices = filter(currentData?.invoices);
+        const transactions = filter(currentData?.transactions);
+        const accountIds = new Set(fiatAccounts.map((account) => String(account.id || '')).filter(Boolean));
+        return {
+            selected,
+            label,
+            project,
+            projects,
+            isProjectView,
+            fiatAccounts,
+            reserveBuckets,
+            recurringExpenses,
+            debtAccounts,
+            pipelineDeals,
+            invoices,
+            transactions,
+            accountIds
+        };
+    }
+
+    function renderTreasuryProjectStrip(context) {
+        const projects = safeArray(context?.projects);
+        const selected = String(context?.selected || 'all');
+        const profileButton = (id, label, meta = '') => `
+            <button class="fin-treasury-profile-btn ${selected === id ? 'active' : ''}" type="button" data-fin-action="set-treasury-project" data-fin-project="${escapeHtml(id)}" aria-pressed="${selected === id ? 'true' : 'false'}">
+                <span>${escapeHtml(label)}</span>
+                ${meta ? `<small>${escapeHtml(meta)}</small>` : ''}
+            </button>
+        `;
+        return `
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card fin-treasury-profiles">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Treasury Profiles</div>
+                            <div class="fin-helper-text">Tagged views for projects, clients, and individual wallets. Global Treasury stays canonical.</div>
+                        </div>
+                        <div class="fin-treasury-profile-actions">
+                            ${context?.project && selected !== 'unassigned' ? financeIconButton({ action: 'openEditModal', args: `'projectProfile', '${escapeActionArg(context.project.id)}'`, label: `Edit ${context.project.name || 'project treasury'}` }) : ''}
+                            <button class="fin-mini-btn fin-mini-btn--primary" type="button" data-action="openEditModal" data-action-args="'projectProfile'">Add project</button>
+                        </div>
+                    </div>
+                    <div class="fin-treasury-profile-strip" role="list" aria-label="Treasury profile views">
+                        ${profileButton('all', 'All Treasury', 'Full system')}
+                        ${projects.map((profile) => profileButton(String(profile.id), profile.name || 'Project treasury', profile.clientOrPurpose || 'Project view')).join('')}
+                        ${profileButton('unassigned', 'Unassigned', 'No project tag')}
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
     function renderReservesSection() {
-        const fiatAccounts = safeArray(currentData?.fiatAccounts);
-        const buckets = safeArray(currentData?.reserveBuckets);
-        const debts = safeArray(currentData?.debtAccounts);
-        const expenses = sortedTreasuryExpenses(currentData?.recurringExpenses);
+        const projectContext = getTreasuryProjectContext();
+        const fiatAccounts = safeArray(projectContext.fiatAccounts);
+        const buckets = safeArray(projectContext.reserveBuckets);
+        const debts = safeArray(projectContext.debtAccounts);
+        const expenses = sortedTreasuryExpenses(projectContext.recurringExpenses);
         const essentialCosts = expenses.filter((expense) => expense && expense.essential);
         const flexibleCosts = expenses.filter((expense) => !expense || !expense.essential);
         const essentialTotal = essentialCosts.reduce((sum, expense) => sum + (Number(expense.monthlyAmount) || 0), 0);
         const flexibleTotal = flexibleCosts.reduce((sum, expense) => sum + (Number(expense.monthlyAmount) || 0), 0);
         const debtMonthlyPressure = debts.reduce((sum, debt) => sum + treasuryDebtMonthlyPayment(debt), 0);
-        const actualCash = treasuryNumber('actualCash', treasuryNumber('totalCash', Number(currentSnapshot?.realBalance) || 0));
-        const protectedCash = treasuryNumber('protectedCash', treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0));
-        const availableCash = treasuryNumber('availableCash', Number.isFinite(Number(currentSnapshot?.availableCash)) ? Number(currentSnapshot.availableCash) : actualCash - protectedCash);
-        const committedObligations = treasuryNumber('committedShortTermObligations', 0);
-        const monthlyBurn = treasuryNumber('totalMonthlyBurn', Number(currentSnapshot?.monthlyBurn) || (essentialTotal + flexibleTotal + debtMonthlyPressure));
-        const runway = Number(currentTreasury?.runwayMonths ?? currentSnapshot?.runwayMonths);
+        const projectActualCash = sumMoney(fiatAccounts, (account) => account.balance);
+        const projectProtectedCash = sumMoney(buckets, (bucket) => bucket.currentAmount);
+        const projectCommittedObligations = essentialTotal + flexibleTotal + debtMonthlyPressure;
+        const projectAvailableCash = projectActualCash - projectProtectedCash - projectCommittedObligations;
+        const actualCash = projectContext.isProjectView
+            ? projectActualCash
+            : treasuryNumber('actualCash', treasuryNumber('totalCash', Number(currentSnapshot?.realBalance) || 0));
+        const protectedCash = projectContext.isProjectView
+            ? projectProtectedCash
+            : treasuryNumber('protectedCash', treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0));
+        const committedObligations = projectContext.isProjectView
+            ? projectCommittedObligations
+            : treasuryNumber('committedShortTermObligations', 0);
+        const availableCash = projectContext.isProjectView
+            ? projectAvailableCash
+            : treasuryNumber('availableCash', Number.isFinite(Number(currentSnapshot?.availableCash)) ? Number(currentSnapshot.availableCash) : actualCash - protectedCash);
+        const monthlyBurn = projectContext.isProjectView
+            ? projectCommittedObligations
+            : treasuryNumber('totalMonthlyBurn', Number(currentSnapshot?.monthlyBurn) || (essentialTotal + flexibleTotal + debtMonthlyPressure));
+        const runway = projectContext.isProjectView
+            ? (monthlyBurn > 0 ? availableCash / monthlyBurn : null)
+            : Number(currentTreasury?.runwayMonths ?? currentSnapshot?.runwayMonths);
         const runwayLabel = Number.isFinite(runway) ? `${runway.toFixed(1)} months` : 'Unknown';
         const activeDebts = debts.filter((debt) => Math.max(0, Number(debt && debt.outstanding) || 0) > 0);
-        const totalDebt = treasuryNumber('debtRemaining', explanationNumber('debtBurden', activeDebts.reduce((sum, debt) => sum + (Number(debt.outstanding) || 0), 0)));
+        const totalDebt = projectContext.isProjectView
+            ? activeDebts.reduce((sum, debt) => sum + (Number(debt.outstanding) || 0), 0)
+            : treasuryNumber('debtRemaining', explanationNumber('debtBurden', activeDebts.reduce((sum, debt) => sum + (Number(debt.outstanding) || 0), 0)));
         const missingPlans = activeDebts.filter((debt) => !treasuryDebtHasPlan(debt));
         const reserveTarget = buckets.reduce((sum, bucket) => sum + Math.max(0, Number(bucket.targetAmount) || 0), 0);
         const reserveGap = treasuryReserveGap(buckets);
@@ -1799,9 +1932,12 @@ window.FinancialMode = (function () {
         const adjustedResult = flowResult + adjustedCut;
         const adjustedRunway = adjustedBurn > 0 ? availableCash / adjustedBurn : null;
         const maxFlowValue = Math.max(1, Math.abs(availableCash), essentialTotal, flexibleTotal, debtMonthlyPressure, protectedCash, Math.abs(flowResult));
-        const goals = typeof window.Store.getGoalProgress === 'function'
+        let goals = typeof window.Store.getGoalProgress === 'function'
             ? window.Store.getGoalProgress(window.Store.getUiSettings().scopeFilter || 'all')
             : [];
+        if (projectContext.isProjectView) {
+            goals = safeArray(goals).filter((goal) => safeArray(goal.linkedAccountIds).some((id) => projectContext.accountIds.has(String(id))));
+        }
         let pulseStatus = { label: 'Stable', className: 'is-stable', copy: 'Treasury has breathing room.' };
         if (availableCash < 0 || flowResult < 0) {
             pulseStatus = { label: 'Critical shortfall', className: 'is-critical', copy: 'Near-term obligations need coverage before future goals.' };
@@ -1877,12 +2013,15 @@ window.FinancialMode = (function () {
         ];
 
         return `
+            ${renderTreasuryProjectStrip(projectContext)}
+
             <section class="fin-section">
                 <div class="widget ui-card glass fin-card fin-treasury-pulse ${pulseStatus.className}">
                     <div class="fin-treasury-pulse-main">
                         <span class="fin-eyebrow">Treasury Pulse</span>
+                        <div class="fin-treasury-profile-context">${escapeHtml(projectContext.label)}${projectContext.isProjectView ? ' project view totals' : ' canonical totals'}</div>
                         <div class="fin-treasury-free-cash">
-                            <span>Free cash right now</span>
+                            <span>${projectContext.isProjectView ? 'Project free cash' : 'Free cash right now'}</span>
                             <strong class="${availableCash < 0 ? 'fin-val-neg' : 'fin-val-pos'}">${formatCurrency(availableCash)}</strong>
                         </div>
                         <p>${escapeHtml(pulseStatus.copy)}</p>
@@ -2038,7 +2177,7 @@ window.FinancialMode = (function () {
                             <div class="fin-treasury-compact-row">
                                 <span>
                                     <strong>${escapeHtml(acc.name)}</strong>
-                                    <small>${escapeHtml(acc.scope || 'shared')} · ${acc.reserved ? 'protected cash' : 'available cash'}${acc.bucket ? ` · ${escapeHtml(String(acc.bucket).replace(/_/g, ' '))}` : ''}</small>
+                                    <small>${escapeHtml(acc.scope || 'shared')} · ${acc.reserved ? 'protected cash' : 'available cash'}${acc.bucket ? ` · ${escapeHtml(String(acc.bucket).replace(/_/g, ' '))}` : ''}${acc.projectId ? ' · project treasury' : ''}</small>
                                 </span>
                                 <span>
                                     <strong>${formatCurrency(acc.balance)}</strong>

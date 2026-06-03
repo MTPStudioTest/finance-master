@@ -134,6 +134,10 @@ function scopeFilter(value: unknown, fallback: FinanceScopeFilter = 'all'): Fina
   return value === 'all' ? value : scope(value, fallback === 'all' ? 'shared' : fallback);
 }
 
+function projectId(value: unknown): string {
+  return String(value || '').trim();
+}
+
 function entityId(prefix: string): string {
   return `${prefix}-${window.FinanceEvents?.createId?.() || Date.now().toString(36)}`;
 }
@@ -429,6 +433,53 @@ export const Store = {
     return this.computeFinanceContext(force, filter).readModel;
   },
 
+  saveProjectProfile(input: {
+    id?: string;
+    name: string;
+    clientOrPurpose?: string;
+    color?: string;
+    notes?: string;
+    status?: 'active' | 'archived';
+  }): FinanceEvent[] {
+    const name = String(input.name || '').trim();
+    if (!name) throw new Error('Add a project treasury name.');
+    const existing = (this.getFinancialReadModel().projectProfiles || [])
+      .find((entry: Record<string, unknown>) => String(entry.id || '') === String(input.id || ''));
+    const id = String(input.id || existing?.id || entityId('project'));
+    const nowIso = new Date().toISOString();
+    const currency = this.getFinanceSettings().baseCurrency;
+    const event = this.appendFinanceEvent({
+      type: 'project.profile_set',
+      amount: 0,
+      currency,
+      timestamp: financeTimestamp(id),
+      related_entity_id: id,
+      metadata: {
+        name,
+        clientOrPurpose: String(input.clientOrPurpose || '').trim(),
+        color: String(input.color || existing?.color || 'mint'),
+        notes: String(input.notes || '').trim(),
+        status: input.status === 'archived' ? 'archived' : 'active',
+        createdAt: String(existing?.createdAt || nowIso),
+      },
+    }, { source: 'saveProjectProfile' });
+    return event ? [event] : [];
+  },
+
+  archiveProjectProfile(id: string): FinanceEvent[] {
+    const profile = (this.getFinancialReadModel().projectProfiles || [])
+      .find((entry: Record<string, unknown>) => String(entry.id || '') === String(id || ''));
+    if (!profile) throw new Error('This project treasury could not be found.');
+    return this.saveProjectProfile({
+      id: String(profile.id),
+      name: String(profile.name || 'Project treasury'),
+      clientOrPurpose: String(profile.clientOrPurpose || ''),
+      color: String(profile.color || 'mint'),
+      notes: String(profile.notes || ''),
+      status: 'archived',
+    });
+  },
+
   appendFinanceEvent(draft: FinanceEventDraft, context: Record<string, unknown> = {}): FinanceEvent | null {
     return this.appendFinanceEvents([draft], context)[0] || null;
   },
@@ -503,6 +554,7 @@ export const Store = {
     obligationId?: string;
     obligationDueDate?: string;
     obligationTitle?: string;
+    projectId?: string;
   }): FinanceEvent[] {
     const account = (this.getFinancialReadModel().fiatAccounts || [])
       .find((entry: Record<string, unknown>) => String(entry.id) === String(input.accountId || ''));
@@ -526,6 +578,7 @@ export const Store = {
       obligationId: input.obligationId || undefined,
       obligationDueDate: input.obligationDueDate || undefined,
       obligationTitle: input.obligationTitle || undefined,
+      projectId: projectId(input.projectId || account.projectId) || undefined,
     };
     return this.appendFinanceEvents([
       {
@@ -552,6 +605,7 @@ export const Store = {
           scope: transactionScope,
           bucket: account.bucket,
           reserved: account.reserved,
+          projectId: projectId(input.projectId || account.projectId) || undefined,
           transactionId,
           source: sharedMetadata.source,
           importBatchId: sharedMetadata.importBatchId,
@@ -569,6 +623,7 @@ export const Store = {
     categoryId?: string;
     scope?: FinanceScope;
     direction?: 'increase' | 'decrease';
+    projectId?: string;
   }): FinanceEvent[] {
     const ledgerType = String(input.type || '').toLowerCase();
     const amount = Math.abs(Number(input.amount));
@@ -592,6 +647,7 @@ export const Store = {
             : amount;
       const categoryId = input.categoryId || (ledgerType === 'income' ? 'client-income' : ledgerType === 'adjustment' ? 'adjustment' : 'uncategorized');
       const transactionId = entityId(ledgerType === 'adjustment' ? 'adjustment' : 'transaction');
+      const nextProjectId = projectId(input.projectId);
       const transactionDraft: FinanceEventDraft = {
         type: ledgerType === 'income' ? 'income.received' : ledgerType === 'expense' ? 'expense.recorded' : 'cash.adjusted',
         amount,
@@ -606,6 +662,7 @@ export const Store = {
           accountName: 'Operating cash',
           categoryId,
           scope: fallbackScope,
+          projectId: nextProjectId || undefined,
           source: 'manual-ledger',
         },
       };
@@ -620,6 +677,7 @@ export const Store = {
           balance: signedAmount,
           active: true,
           scope: fallbackScope,
+          projectId: nextProjectId || undefined,
           bucket: 'available',
           reserved: false,
           transactionId,
@@ -636,6 +694,7 @@ export const Store = {
         accountId: input.accountId,
         categoryId: input.categoryId || 'client-income',
         scope: input.scope,
+        projectId: input.projectId,
         source: 'manual-ledger',
       });
     }
@@ -647,6 +706,7 @@ export const Store = {
         accountId: input.accountId,
         categoryId: input.categoryId || 'uncategorized',
         scope: input.scope,
+        projectId: input.projectId,
         source: 'manual-ledger',
       });
     }
@@ -659,6 +719,7 @@ export const Store = {
     const timestamp = financeTimestamp(`adjustment-${input.accountId}`, input.timestamp);
     const transactionId = entityId('adjustment');
     const transactionScope = scope(input.scope, scope(account.scope));
+    const nextProjectId = projectId(input.projectId || account.projectId);
     const balance = Math.round(((Number(account.balance) || 0) + effect) * 100) / 100;
     return this.appendFinanceEvents([
       {
@@ -675,6 +736,7 @@ export const Store = {
           accountName: String(account.name || 'Account'),
           categoryId: String(input.categoryId || 'adjustment'),
           scope: transactionScope,
+          projectId: nextProjectId || undefined,
           source: 'manual-ledger',
         },
       },
@@ -689,6 +751,7 @@ export const Store = {
           balance,
           active: true,
           scope: scope(account.scope),
+          projectId: nextProjectId || undefined,
           bucket: account.bucket,
           reserved: account.reserved,
           transactionId,
@@ -706,6 +769,7 @@ export const Store = {
     categoryId?: string;
     scope?: FinanceScope;
     description?: string;
+    projectId?: string;
   }): FinanceEvent[] {
     const readModel = this.getFinancialReadModel();
     const from = (readModel.fiatAccounts || []).find((entry: Record<string, unknown>) => String(entry.id) === String(input.fromAccountId || ''));
@@ -718,6 +782,7 @@ export const Store = {
     const timestamp = financeTimestamp(`transfer-${from.id}-${to.id}`, input.timestamp);
     const transferId = entityId('transfer');
     const transferScope = scope(input.scope, scope(from.scope));
+    const transferProjectId = projectId(input.projectId || from.projectId || to.projectId);
     const fromBalance = Math.round(((Number(from.balance) || 0) - amount) * 100) / 100;
     const toBalance = Math.round(((Number(to.balance) || 0) + amount) * 100) / 100;
     return this.appendFinanceEvents([
@@ -739,6 +804,7 @@ export const Store = {
           accountName: String(from.name || 'From account'),
           categoryId: String(input.categoryId || 'transfer'),
           scope: transferScope,
+          projectId: transferProjectId || undefined,
           source: 'manual-ledger',
         },
       },
@@ -748,7 +814,7 @@ export const Store = {
         currency,
         timestamp: financeTimestamp(String(from.id), timestamp),
         related_entity_id: String(from.id),
-        metadata: { name: from.name, balance: fromBalance, active: true, scope: scope(from.scope), bucket: from.bucket, reserved: from.reserved, transactionId: transferId, source: 'manual-ledger' },
+        metadata: { name: from.name, balance: fromBalance, active: true, scope: scope(from.scope), projectId: projectId(from.projectId) || undefined, bucket: from.bucket, reserved: from.reserved, transactionId: transferId, source: 'manual-ledger' },
       },
       {
         type: 'asset.account_set',
@@ -756,7 +822,7 @@ export const Store = {
         currency,
         timestamp: financeTimestamp(String(to.id), timestamp),
         related_entity_id: String(to.id),
-        metadata: { name: to.name, balance: toBalance, active: true, scope: scope(to.scope), bucket: to.bucket, reserved: to.reserved, transactionId: transferId, source: 'manual-ledger' },
+        metadata: { name: to.name, balance: toBalance, active: true, scope: scope(to.scope), projectId: projectId(to.projectId) || undefined, bucket: to.bucket, reserved: to.reserved, transactionId: transferId, source: 'manual-ledger' },
       },
     ], { source: 'recordTransfer' });
   },
@@ -803,6 +869,7 @@ export const Store = {
         obligationId: String(obligation.id),
         obligationDueDate: String(obligation.dueDate || ''),
         obligationTitle: String(obligation.title || 'Obligation'),
+        projectId: projectId(obligation.projectId) || undefined,
       });
       transactionId = String(transactionEvents[0]?.related_entity_id || transactionEvents[0]?.id || '');
     }
@@ -827,6 +894,7 @@ export const Store = {
         accountName,
         transactionId,
         scope: scopeValue,
+        projectId: projectId(obligation.projectId) || undefined,
         notes: input.notes || '',
       },
     }, { source: 'reviewObligation' });
@@ -841,6 +909,7 @@ export const Store = {
     linkedIncomeId?: string;
     linkedReserveId?: string;
     linkedDebtId?: string;
+    projectId?: string;
   }): FinanceEvent[] {
     const readModel = this.getFinancialReadModel();
     const transaction = (readModel.transactions || [])
@@ -850,6 +919,7 @@ export const Store = {
     if (!categoryId) throw new Error('Choose a category for this transaction.');
     const currency = this.getFinanceSettings().baseCurrency;
     const transactionId = String(transaction.id || input.id);
+    const nextProjectId = projectId(input.projectId ?? transaction.projectId);
     const events = this.appendFinanceEvents([{
       type: 'transaction.reviewed',
       amount: Math.abs(Number(transaction.amount) || 0),
@@ -864,6 +934,7 @@ export const Store = {
         linkedIncomeId: String(input.linkedIncomeId || '').trim(),
         linkedReserveId: String(input.linkedReserveId || '').trim(),
         linkedDebtId: String(input.linkedDebtId || '').trim(),
+        projectId: nextProjectId || undefined,
       },
     }], { source: 'reviewTransaction' });
     const linkedIncomeId = String(input.linkedIncomeId || '').trim();
@@ -889,6 +960,7 @@ export const Store = {
             incomeType: String(deal.incomeType || 'one_off'),
             notes: String(input.notes || ''),
             scope: scope(input.scope, scope(transaction.scope)),
+            projectId: nextProjectId || projectId(deal.projectId) || undefined,
           },
         }], { source: 'reviewTransaction.linkIncome' }));
       }
@@ -913,6 +985,7 @@ export const Store = {
     const currency = this.getFinanceSettings().baseCurrency;
     const transactionId = String(transaction.id || input.transactionId);
     const scopeValue = scope(obligation.scope, scope(transaction.scope));
+    const nextProjectId = projectId(transaction.projectId || obligation.projectId);
     const timestamp = financeTimestamp(String(obligation.id));
     return this.appendFinanceEvents([
       {
@@ -927,6 +1000,7 @@ export const Store = {
           reviewStatus: 'reviewed',
           obligationId: String(obligation.id),
           obligationTitle: String(obligation.title || 'Obligation'),
+          projectId: nextProjectId || undefined,
           notes: String(input.notes || ''),
         },
       },
@@ -946,6 +1020,7 @@ export const Store = {
           accountName: String(transaction.accountName || ''),
           transactionId,
           scope: scopeValue,
+          projectId: nextProjectId || undefined,
           notes: String(input.notes || ''),
         },
       },
@@ -986,6 +1061,7 @@ export const Store = {
           status,
           title: deal.title,
           scope: scope(deal.scope),
+          projectId: projectId(deal.projectId) || undefined,
           expectedDateISO,
           destinationAccountId: String(input.destinationAccountId || ''),
           destinationAccountName: destination ? String(destination.name || '') : '',
@@ -1001,6 +1077,7 @@ export const Store = {
         metadata: {
           probability,
           scope: scope(deal.scope),
+          projectId: projectId(deal.projectId) || undefined,
           expectedDateISO,
           destinationAccountId: String(input.destinationAccountId || ''),
           destinationAccountName: destination ? String(destination.name || '') : '',
@@ -1026,6 +1103,7 @@ export const Store = {
         status: 'cancelled',
         title: deal.title,
         scope: scope(deal.scope),
+        projectId: projectId(deal.projectId) || undefined,
         notes,
       },
     }], { source: 'cancelPipelineItem' });
@@ -1066,6 +1144,7 @@ export const Store = {
       metadata: {
         name: debt.name,
         scope: scope(debt.scope),
+        projectId: projectId(debt.projectId) || undefined,
         dueDate,
         minimumPayment,
         paymentPlanNote: String(input.paymentPlanNote || '').trim(),

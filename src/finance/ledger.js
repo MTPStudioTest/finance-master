@@ -161,6 +161,7 @@
         var web3ById = Object.create(null);
         var defiById = Object.create(null);
         var reserveById = Object.create(null);
+        var projectById = Object.create(null);
         var transactions = [];
         var reversedByEventId = Object.create(null);
 
@@ -207,6 +208,7 @@
                     toAccountName: String(metadata.toAccountName || '').trim(),
                     categoryId: String(metadata.categoryId || 'uncategorized'),
                     scope: String(metadata.scope || 'shared'),
+                    projectId: String(metadata.projectId || '').trim(),
                     source: String(metadata.source || 'manual'),
                     sourceFile: String(metadata.sourceFile || '').trim(),
                     sourceRowId: String(metadata.sourceRowId || metadata.rowNumber || '').trim(),
@@ -226,6 +228,20 @@
                 });
             }
 
+            if (event.type === 'project.profile_set') {
+                projectById[relatedId] = {
+                    id: relatedId,
+                    name: String(metadata.name || 'Project treasury'),
+                    clientOrPurpose: String(metadata.clientOrPurpose || metadata.purpose || ''),
+                    status: String(metadata.status || 'active').toLowerCase() === 'archived' ? 'archived' : 'active',
+                    color: String(metadata.color || 'mint'),
+                    notes: String(metadata.notes || ''),
+                    createdAt: String(metadata.createdAt || event.timestamp),
+                    updatedAt: event.timestamp
+                };
+                return;
+            }
+
             if (event.type === 'income.received' && ageMs <= thirtyDaysMs) {
                 incomeLast30Minor += Events.toMinor(eventAmount);
             }
@@ -242,6 +258,7 @@
                     destinationAccountName: String(metadata.destinationAccountName || '').trim(),
                     incomeType: String(metadata.incomeType || metadata.type || 'one_off'),
                     scope: String(metadata.scope || 'shared'),
+                    projectId: String(metadata.projectId || '').trim(),
                     scenarioInclusion: String(metadata.scenarioInclusion || 'realistic'),
                     currency: event.currency,
                     createdAt: event.timestamp,
@@ -271,6 +288,11 @@
                 }
                 pipelineById[relatedId].status = String(metadata.stage || metadata.status || pipelineById[relatedId].status || 'open');
                 pipelineById[relatedId].scope = String(metadata.scope || pipelineById[relatedId].scope || 'shared');
+                if (Object.prototype.hasOwnProperty.call(metadata, 'projectId')) {
+                    pipelineById[relatedId].projectId = String(metadata.projectId || '').trim();
+                } else {
+                    pipelineById[relatedId].projectId = pipelineById[relatedId].projectId || '';
+                }
                 if (metadata.expectedDateISO || metadata.expectedDate) {
                     pipelineById[relatedId].expectedDateISO = toIsoDateOnly(metadata.expectedDateISO || metadata.expectedDate);
                 }
@@ -306,6 +328,7 @@
                         destinationAccountName: String(metadata.destinationAccountName || '').trim(),
                         incomeType: String(metadata.incomeType || metadata.type || 'one_off'),
                         scope: String(metadata.scope || 'shared'),
+                        projectId: String(metadata.projectId || '').trim(),
                         scenarioInclusion: String(metadata.scenarioInclusion || 'realistic'),
                         currency: event.currency,
                         createdAt: event.timestamp,
@@ -314,6 +337,11 @@
                 }
                 pipelineById[relatedId].value = Number.isFinite(Number(metadata.value)) ? Number(metadata.value) : eventAmount;
                 pipelineById[relatedId].scope = String(metadata.scope || pipelineById[relatedId].scope || 'shared');
+                if (Object.prototype.hasOwnProperty.call(metadata, 'projectId')) {
+                    pipelineById[relatedId].projectId = String(metadata.projectId || '').trim();
+                } else {
+                    pipelineById[relatedId].projectId = pipelineById[relatedId].projectId || '';
+                }
                 if (metadata.expectedDateISO || metadata.expectedDate) {
                     pipelineById[relatedId].expectedDateISO = toIsoDateOnly(metadata.expectedDateISO || metadata.expectedDate);
                 }
@@ -349,6 +377,7 @@
                         destinationAccountName: String(metadata.destinationAccountName || '').trim(),
                         incomeType: String(metadata.incomeType || metadata.type || 'one_off'),
                         scope: String(metadata.scope || 'shared'),
+                        projectId: String(metadata.projectId || '').trim(),
                         scenarioInclusion: String(metadata.scenarioInclusion || 'realistic'),
                         currency: event.currency,
                         createdAt: event.timestamp,
@@ -357,6 +386,11 @@
                 }
                 pipelineById[relatedId].probability = Events.clampProbability(metadata.probability != null ? metadata.probability : eventAmount);
                 pipelineById[relatedId].scope = String(metadata.scope || pipelineById[relatedId].scope || 'shared');
+                if (Object.prototype.hasOwnProperty.call(metadata, 'projectId')) {
+                    pipelineById[relatedId].projectId = String(metadata.projectId || '').trim();
+                } else {
+                    pipelineById[relatedId].projectId = pipelineById[relatedId].projectId || '';
+                }
                 if (metadata.expectedDateISO || metadata.expectedDate) {
                     pipelineById[relatedId].expectedDateISO = toIsoDateOnly(metadata.expectedDateISO || metadata.expectedDate);
                 }
@@ -386,6 +420,7 @@
                     destinationAccountId: String(metadata.destinationAccountId || '').trim(),
                     destinationAccountName: String(metadata.destinationAccountName || '').trim(),
                     scope: String(metadata.scope || 'shared'),
+                    projectId: String(metadata.projectId || '').trim(),
                     currency: event.currency,
                     sentAt: event.timestamp,
                     paidAt: null
@@ -404,6 +439,7 @@
                         destinationAccountId: String(metadata.destinationAccountId || '').trim(),
                         destinationAccountName: String(metadata.destinationAccountName || '').trim(),
                         scope: String(metadata.scope || 'shared'),
+                        projectId: String(metadata.projectId || '').trim(),
                         currency: event.currency,
                         sentAt: event.timestamp,
                         paidAt: event.timestamp
@@ -412,6 +448,11 @@
                 invoiceById[relatedId].status = 'Paid';
                 invoiceById[relatedId].paidAt = event.timestamp;
                 invoiceById[relatedId].scope = String(metadata.scope || invoiceById[relatedId].scope || 'shared');
+                if (Object.prototype.hasOwnProperty.call(metadata, 'projectId')) {
+                    invoiceById[relatedId].projectId = String(metadata.projectId || '').trim();
+                } else {
+                    invoiceById[relatedId].projectId = invoiceById[relatedId].projectId || '';
+                }
                 if (Number.isFinite(Number(metadata.amount))) {
                     invoiceById[relatedId].amount = Number(metadata.amount);
                 }
@@ -441,6 +482,7 @@
                     frequency: recurringFrequency,
                     linkedDebtId: String(metadata.linkedDebtId || metadata.debtId || '').trim(),
                     scope: String(metadata.scope || 'shared'),
+                    projectId: String(metadata.projectId || '').trim(),
                     currency: event.currency,
                     updatedAt: event.timestamp
                 };
@@ -462,7 +504,8 @@
                     notes: String(metadata.notes || ''),
                     reviewedAt: event.timestamp,
                     currency: event.currency,
-                    scope: String(metadata.scope || 'shared')
+                    scope: String(metadata.scope || 'shared'),
+                    projectId: String(metadata.projectId || '').trim()
                 };
                 return;
             }
@@ -479,6 +522,7 @@
                     linkedIncomeId: String(metadata.linkedIncomeId || '').trim(),
                     linkedReserveId: String(metadata.linkedReserveId || '').trim(),
                     linkedDebtId: String(metadata.linkedDebtId || '').trim(),
+                    projectId: String(metadata.projectId || '').trim(),
                     reviewedAt: event.timestamp
                 };
                 return;
@@ -501,6 +545,7 @@
                         installments: [],
                         planReviewedAt: '',
                         scope: String(metadata.scope || 'shared'),
+                        projectId: String(metadata.projectId || '').trim(),
                         currency: event.currency,
                         updatedAt: event.timestamp
                     };
@@ -526,6 +571,11 @@
                 debtById[relatedId].minimumPaymentMonthly = normalizeRecurrenceMonthlyAmount(debtById[relatedId].minimumPayment, debtById[relatedId].frequency);
                 Object.assign(debtById[relatedId], estimateDebtPayoff(debtById[relatedId], nowIso));
                 debtById[relatedId].scope = String(metadata.scope || debtById[relatedId].scope || 'shared');
+                if (Object.prototype.hasOwnProperty.call(metadata, 'projectId')) {
+                    debtById[relatedId].projectId = String(metadata.projectId || '').trim();
+                } else {
+                    debtById[relatedId].projectId = debtById[relatedId].projectId || '';
+                }
                 debtById[relatedId].updatedAt = event.timestamp;
                 return;
             }
@@ -538,6 +588,7 @@
                     currency: event.currency,
                     active: metadata.active !== false,
                     scope: String(metadata.scope || 'shared'),
+                    projectId: String(metadata.projectId || '').trim(),
                     bucket: String(metadata.bucket || metadata.reserveBucket || 'available'),
                     reserved: Boolean(metadata.reserved) || (metadata.bucket && String(metadata.bucket) !== 'available'),
                     updatedAt: event.timestamp
@@ -554,6 +605,7 @@
                     liquidity: String(metadata.liquidity || 'med'),
                     chain: String(metadata.chain || 'Unknown'),
                     scope: String(metadata.scope || 'shared'),
+                    projectId: String(metadata.projectId || '').trim(),
                     priceSource: String(metadata.priceSource || 'manual'),
                     priceUpdatedAt: String(metadata.priceUpdatedAt || event.timestamp),
                     manualPriceOverride: metadata.manualPriceOverride !== false,
@@ -570,6 +622,7 @@
                     debtValue: Number.isFinite(Number(metadata.debtValue)) ? Number(metadata.debtValue) : 0,
                     riskScore: String(metadata.riskScore || 'Low'),
                     scope: String(metadata.scope || 'shared'),
+                    projectId: String(metadata.projectId || '').trim(),
                     updatedAt: event.timestamp
                 };
                 return;
@@ -585,6 +638,7 @@
                     purpose: String(metadata.purpose || 'custom'),
                     priority: String(metadata.priority || 'medium'),
                     scope: String(metadata.scope || 'shared'),
+                    projectId: String(metadata.projectId || '').trim(),
                     notes: String(metadata.notes || ''),
                     active: metadata.active !== false,
                     updatedAt: event.timestamp
@@ -600,10 +654,14 @@
                     reserveById[relatedId].currentAmount = eventAmount;
                 }
                 reserveById[relatedId].updatedAt = event.timestamp;
+                if (Object.prototype.hasOwnProperty.call(metadata, 'projectId')) {
+                    reserveById[relatedId].projectId = String(metadata.projectId || '').trim();
+                }
                 return;
             }
         });
 
+        var projectProfiles = Object.keys(projectById).map(function (id) { return projectById[id]; });
         var pipelineDeals = Object.keys(pipelineById).map(function (id) { return pipelineById[id]; });
         var recurringExpenses = Object.keys(recurringById).map(function (id) { return recurringById[id]; });
         var obligationReviews = Object.keys(obligationReviewById).map(function (id) { return obligationReviewById[id]; });
@@ -625,6 +683,7 @@
             var linkedIncomeId = review && Object.prototype.hasOwnProperty.call(review, 'linkedIncomeId') ? review.linkedIncomeId : transaction.linkedIncomeId;
             var linkedReserveId = review && Object.prototype.hasOwnProperty.call(review, 'linkedReserveId') ? review.linkedReserveId : transaction.linkedReserveId;
             var linkedDebtId = review && Object.prototype.hasOwnProperty.call(review, 'linkedDebtId') ? review.linkedDebtId : transaction.linkedDebtId;
+            var projectId = review && Object.prototype.hasOwnProperty.call(review, 'projectId') ? review.projectId : transaction.projectId;
             var linkedIncome = linkedIncomeId ? (pipelineById[String(linkedIncomeId)] || invoiceById[String(linkedIncomeId)] || null) : null;
             var linkedObligation = obligationId ? (recurringById[String(obligationId).replace(/-\d{4}-\d{2}$/, '')] || matched || null) : null;
             var linkedDebt = linkedDebtId ? debtById[String(linkedDebtId)] || null : null;
@@ -635,6 +694,7 @@
                 linkedIncomeId: linkedIncomeId || '',
                 linkedReserveId: linkedReserveId || '',
                 linkedDebtId: linkedDebtId || '',
+                projectId: projectId || '',
                 obligationTitle: transaction.obligationTitle || (review && review.obligationTitle) || (matched && matched.title) || '',
                 linkedIncomeTitle: linkedIncome ? String(linkedIncome.title || linkedIncome.client || 'Linked income') : '',
                 linkedDebtTitle: linkedDebt ? String(linkedDebt.name || 'Linked debt') : '',
@@ -659,6 +719,11 @@
             var dateB = Date.parse(b.expectedDate || '') || 0;
             if (dateA !== dateB) return dateA - dateB;
             return String(a.id).localeCompare(String(b.id));
+        });
+
+        projectProfiles.sort(function (a, b) {
+            if (String(a.status || '') !== String(b.status || '')) return String(a.status || '').localeCompare(String(b.status || ''));
+            return String(a.name || '').localeCompare(String(b.name || ''));
         });
 
         var recurringMonthlyTotal = activeRecurringExpenses
@@ -699,6 +764,7 @@
             currency: cfg.baseCurrency,
             asOf: cfg.nowIso,
             eventsCount: activeEvents.length,
+            projectProfiles: projectProfiles,
             pipelineDeals: pipelineDeals,
             recurringExpenses: activeRecurringExpenses,
             obligationReviews: obligationReviews,

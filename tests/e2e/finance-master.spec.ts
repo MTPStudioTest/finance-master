@@ -269,6 +269,90 @@ test('treasury cash accounts and reserve buckets can be edited and persist', asy
   expect(errors).toEqual([]);
 });
 
+test('treasury project profiles filter wallets and reserve buckets without separate books', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Treasury', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Treasury', exact: true })).toBeVisible();
+  await expect(page.getByText('Treasury Profiles', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /All Treasury/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Unassigned/ })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Add project', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Add project treasury', exact: true })).toBeVisible();
+  await page.locator('#modal-project-name').fill('Studio Launch Treasury');
+  await page.locator('#modal-project-purpose').fill('Client launch');
+  await page.locator('#modal-project-notes').fill('Project cash and reserves for the launch.');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Studio Launch Treasury/ })).toBeVisible();
+  const projectId = await page.evaluate(() => (
+    window.Store.getFinancialReadModel().projectProfiles
+      .find((entry: any) => String(entry.name) === 'Studio Launch Treasury')?.id
+  ));
+  expect(projectId).toBeTruthy();
+
+  await page.getByRole('button', { name: /Studio Launch Treasury/ }).click();
+  await expect(page.getByText('Studio Launch Treasury project view totals', { exact: true })).toBeVisible();
+  await page.locator('[data-fin-collapsible="treasury-accounts"]').getByRole('button', { name: /Account Details/ }).click();
+  await page.getByRole('button', { name: 'Add cash account', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Add cash account', exact: true })).toBeVisible();
+  await page.locator('#modal-fiat-name').fill('Studio Launch Wallet');
+  await page.locator('#modal-fiat-balance').fill('777');
+  await page.locator('#modal-fiat-scope').selectOption('business');
+  await page.locator('#modal-fiat-project').selectOption(String(projectId));
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
+  await expect(page.getByText('Studio Launch Wallet', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Add reserve bucket', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Add reserve bucket', exact: true })).toBeVisible();
+  await page.locator('#modal-reserve-name').fill('Studio Launch Reserve');
+  await page.locator('#modal-reserve-target').fill('1000');
+  await page.locator('#modal-reserve-current').fill('250');
+  await page.locator('#modal-reserve-scope').selectOption('business');
+  await page.locator('#modal-reserve-purpose').selectOption('custom');
+  await page.locator('#modal-reserve-project').selectOption(String(projectId));
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
+  await expect(page.getByText('Studio Launch Reserve', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate((id) => {
+    const model = window.Store.getFinancialReadModel();
+    return {
+      accountProject: model.fiatAccounts.find((entry: any) => String(entry.name) === 'Studio Launch Wallet')?.projectId,
+      reserveProject: model.reserveBuckets.find((entry: any) => String(entry.name) === 'Studio Launch Reserve')?.projectId,
+    };
+  }, projectId)).toEqual({ accountProject: projectId, reserveProject: projectId });
+
+  await page.getByRole('button', { name: /Unassigned/ }).click();
+  await expect(page.getByText('Unassigned project view totals', { exact: true })).toBeVisible();
+  await expect(page.getByText('Studio Launch Wallet', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Studio Launch Reserve', { exact: true })).toHaveCount(0);
+
+  await page.getByRole('button', { name: /All Treasury/ }).click();
+  await expect(page.getByText('All Treasury canonical totals', { exact: true })).toBeVisible();
+  await expect(page.getByText('Studio Launch Reserve', { exact: true })).toBeVisible();
+  await expect(page.getByText('Studio Launch Wallet', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: /Studio Launch Treasury/ }).click();
+  await page.getByRole('button', { name: 'Edit Studio Launch Treasury', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Edit project treasury', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Archive', exact: true }).click();
+  await page.getByLabel('Type ARCHIVE PROJECT TREASURY to continue').fill('ARCHIVE PROJECT TREASURY');
+  await page.getByRole('button', { name: 'Archive project', exact: true }).click();
+  await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
+  await expect(page.locator('.fin-treasury-profile-strip').getByRole('button', { name: /Studio Launch Treasury/ })).toHaveCount(0);
+  await expect.poll(() => page.evaluate((id) => {
+    const model = window.Store.getFinancialReadModel();
+    return {
+      status: model.projectProfiles.find((entry: any) => String(entry.id) === String(id))?.status,
+      hasAccount: model.fiatAccounts.some((entry: any) => String(entry.name) === 'Studio Launch Wallet' && String(entry.projectId) === String(id)),
+      hasReserve: model.reserveBuckets.some((entry: any) => String(entry.name) === 'Studio Launch Reserve' && String(entry.projectId) === String(id)),
+    };
+  }, projectId)).toEqual({ status: 'archived', hasAccount: true, hasReserve: true });
+  expect(errors).toEqual([]);
+});
+
 test('overview prioritizes the money picture cockpit', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');

@@ -66,6 +66,7 @@ type DestructiveConfirmationAction =
   | 'restoreBackup'
   | 'resetDemoData'
   | 'deleteDemoData'
+  | 'archiveProjectProfile'
   | 'deactivateFiatAccount'
   | 'deactivateReserveBucket'
   | 'deactivateRecurringExpense'
@@ -378,7 +379,7 @@ function renderOverview(): string {
 }
 
 function renderTransaction(defaultType = 'expense'): string {
-  return renderTransactionWorkflow(defaultType, { accountOptions, today });
+  return renderTransactionWorkflow(defaultType, { accountOptions, projectOptions, today });
 }
 
 
@@ -639,6 +640,50 @@ function accountOptions(selected = '', allowEmpty = true): string {
   `).join('')}`;
 }
 
+function defaultProjectId(selected?: unknown): string {
+  const explicit = String(selected || '').trim();
+  if (explicit) return explicit;
+  try {
+    const stored = String(localStorage.getItem('finance-master.layout.treasury-project') || '').trim();
+    if (!stored || stored === 'all' || stored === 'unassigned') return '';
+    const projects = Store.getFinancialReadModel().projectProfiles || [];
+    return projects.some((project: Record<string, unknown>) => String(project.id) === stored && String(project.status || 'active') !== 'archived')
+      ? stored
+      : '';
+  } catch (error) {
+    return '';
+  }
+}
+
+function projectOptions(selected?: string): string {
+  const current = defaultProjectId(selected);
+  const projects = (Store.getFinancialReadModel().projectProfiles || [])
+    .filter((project: Record<string, unknown>) => String(project.status || 'active') !== 'archived');
+  return `<option value="">No project</option>${projects.map((project: Record<string, unknown>) => `
+    <option value="${escapeHtml(project.id)}"${String(project.id) === current ? ' selected' : ''}>${escapeHtml(project.name)}${project.clientOrPurpose ? ` · ${escapeHtml(project.clientOrPurpose)}` : ''}</option>
+  `).join('')}`;
+}
+
+function renderProjectProfile(id = ''): string {
+  const item = (Store.getFinancialReadModel().projectProfiles || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
+  return `
+    <div class="modal-form">
+      <h2 id="modal-title">${item ? 'Edit project treasury' : 'Add project treasury'}</h2>
+      <p class="modal-copy">Project treasuries group wallets, reserves, obligations, income, and transactions without creating separate books.</p>
+      <input id="modal-project-id" type="hidden" value="${escapeHtml(item?.id || '')}" />
+      <div class="form-group"><label for="modal-project-name">Name</label><input id="modal-project-name" value="${escapeHtml(item?.name || '')}" placeholder="Client launch or studio project" /></div>
+      <div class="modal-grid-two">
+        <div class="form-group"><label for="modal-project-purpose">Client / purpose</label><input id="modal-project-purpose" value="${escapeHtml(item?.clientOrPurpose || '')}" placeholder="Client, campaign, or internal project" /></div>
+        <div class="form-group"><label for="modal-project-color">Color</label><select id="modal-project-color">
+          ${['mint', 'blue', 'gold', 'rose', 'slate'].map((entry) => `<option value="${entry}"${String(item?.color || 'mint') === entry ? ' selected' : ''}>${entry}</option>`).join('')}
+        </select></div>
+      </div>
+      <div class="form-group"><label for="modal-project-notes">Notes <span class="fin-text-med">(optional)</span></label><textarea id="modal-project-notes" rows="3" placeholder="What this treasury is for">${escapeHtml(item?.notes || '')}</textarea></div>
+      <div class="modal-actions">${item ? '<button class="btn-secondary ui-btn ui-btn--secondary" type="button" data-action="archiveProjectProfile">Archive</button>' : ''}<span class="modal-actions-spacer"></span>${formActions('projectProfile', Boolean(item)).replace('<div class="modal-actions">', '').replace('</div>', '')}</div>
+    </div>
+  `;
+}
+
 function renderIncome(id = ''): string {
   const item = (Store.getFinancialReadModel().pipelineDeals || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
   const status = String(item?.status || 'expected').toLowerCase();
@@ -657,6 +702,7 @@ function renderIncome(id = ''): string {
         <div class="form-group"><label for="modal-income-type">Income type</label><select id="modal-income-type">${['one_off', 'retainer', 'recurring'].map((entry) => `<option value="${entry}"${String(item?.incomeType || 'one_off') === entry ? ' selected' : ''}>${entry.replace('_', ' ')}</option>`).join('')}</select></div>
         <div class="form-group"><label for="modal-income-scenario">Scenario Inclusion</label><select id="modal-income-scenario">${['realistic', 'conservative', 'optimistic', 'all'].map((scenario) => `<option${(item?.scenarioInclusion || 'realistic') === scenario ? ' selected' : ''}>${scenario}</option>`).join('')}</select></div>
         <div class="form-group"><label for="modal-income-scope">Scope</label><select id="modal-income-scope">${scopeOptions(String(item?.scope || 'business'))}</select></div>
+        <div class="form-group"><label for="modal-income-project">Project treasury</label><select id="modal-income-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
       </div>
       <div class="form-group"><label for="modal-income-account">Settlement account</label><select id="modal-income-account">${accountOptions(String(item?.destinationAccountId || ''))}</select></div>
       ${formActions('income', Boolean(item))}
@@ -674,6 +720,7 @@ function renderFiatAccount(id = ''): string {
       <div class="form-group"><label for="modal-fiat-balance">Balance</label><input id="modal-fiat-balance" type="number" step="0.01" value="${escapeHtml(item?.balance || '')}" /></div>
       <div class="modal-grid-two">
         <div class="form-group"><label for="modal-fiat-scope">Scope</label><select id="modal-fiat-scope">${scopeOptions(String(item?.scope || 'business'))}</select></div>
+        <div class="form-group"><label for="modal-fiat-project">Project treasury</label><select id="modal-fiat-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
         <div class="form-group"><label for="modal-fiat-bucket">Bucket</label><select id="modal-fiat-bucket">
           ${[
             ['available', 'Available cash'],
@@ -714,6 +761,7 @@ function renderReserveBucket(id = '') {
           ].map(([val, label]) => `<option value="${val}"${String(item?.purpose || 'tax_reserve') === val ? ' selected' : ''}>${label}</option>`).join('')}
         </select></div>
         <div class="form-group"><label for="modal-reserve-scope">Scope</label><select id="modal-reserve-scope">${scopeOptions(String(item?.scope || 'shared'))}</select></div>
+        <div class="form-group"><label for="modal-reserve-project">Project treasury</label><select id="modal-reserve-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
         <div class="form-group"><label for="modal-reserve-priority">Priority</label><select id="modal-reserve-priority">
           ${[
             ['critical', 'Critical (Must fill)'],
@@ -772,6 +820,7 @@ function renderExpense(id = ''): string {
       <div class="modal-grid-two">
         <div class="form-group"><label for="modal-expense-due-day">Due day</label><input id="modal-expense-due-day" type="number" min="1" max="28" value="${escapeHtml(item?.dueDay || 1)}" /></div>
         <div class="form-group"><label for="modal-expense-scope">Scope</label><select id="modal-expense-scope">${scopeOptions(String(item?.scope || 'personal'))}</select></div>
+        <div class="form-group"><label for="modal-expense-project">Project treasury</label><select id="modal-expense-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
       </div>
       <label class="settings-check"><input id="modal-expense-essential" type="checkbox"${item?.essential ? ' checked' : ''} /><span>Essential expense</span></label>
       <div class="modal-actions">${deactivateButton('deactivateRecurringExpense', Boolean(item))}<span class="modal-actions-spacer"></span>${formActions('expense', Boolean(item)).replace('<div class="modal-actions">', '').replace('</div>', '')}</div>
@@ -812,6 +861,7 @@ function renderDebt(type: 'debtAdd' | 'debtPayment', id = ''): string {
       <div class="form-group"><label for="modal-debt-name">Name</label><input id="modal-debt-name" value="${escapeHtml(item?.name || '')}" placeholder="Credit line" /></div>
       <div class="form-group"><label for="modal-debt-amount">${item ? 'Additional amount' : 'Amount'}</label><input id="modal-debt-amount" type="number" step="0.01" /></div>
       <div class="form-group"><label for="modal-debt-scope">Scope</label><select id="modal-debt-scope">${scopeOptions(String(item?.scope || 'business'))}</select></div>
+      <div class="form-group"><label for="modal-debt-project">Project treasury</label><select id="modal-debt-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
       <div class="modal-actions">${deactivateButton('deactivateDebtAccount', Boolean(item))}<span class="modal-actions-spacer"></span>${formActions('debtAdd', Boolean(item)).replace('<div class="modal-actions">', '').replace('</div>', '')}</div>
     </div>
   `;
@@ -1130,6 +1180,7 @@ function renderModal(type: string, id = ''): string {
   if (type === 'csvImport') return renderCsvImport();
   if (type === 'backupRestore') return renderBackupRestore();
   if (type === 'destructiveConfirm') return renderDestructiveConfirm();
+  if (type === 'projectProfile') return renderProjectProfile(id);
   if (type === 'settleIncome') return renderSettleIncome(id);
   if (type === 'income') return renderIncome(id);
   if (type === 'fiatAccount') return renderFiatAccount(id);
@@ -1208,6 +1259,7 @@ function addTransactionFromFields(prefix: string): boolean {
         toAccountId: value(`${prefix}-to-account`),
         categoryId: value(`${prefix}-category`) || 'transfer',
         scope: value(`${prefix}-scope`) as FinanceScope,
+        projectId: value(`${prefix}-project`),
       });
     } else {
       Store.recordLedgerTransaction({
@@ -1219,6 +1271,7 @@ function addTransactionFromFields(prefix: string): boolean {
         categoryId: value(`${prefix}-category`) || (type === 'income' ? 'client-income' : type === 'adjustment' ? 'adjustment' : 'uncategorized'),
         scope: value(`${prefix}-scope`) as FinanceScope,
         direction: value(`${prefix}-direction`) === 'decrease' ? 'decrease' : 'increase',
+        projectId: value(`${prefix}-project`),
       });
     }
     closeModal();
@@ -1299,6 +1352,7 @@ function saveFinanceModal(type: string): void {
         expectedDateISO: value('modal-income-date'),
         destinationAccountId: value('modal-income-account'),
         scope: value('modal-income-scope'),
+        projectId: value('modal-income-project') || undefined,
       },
     }, 'modal.income');
     return;
@@ -1321,6 +1375,7 @@ function saveFinanceModal(type: string): void {
         balance,
         active: true,
         scope: value('modal-fiat-scope'),
+        projectId: value('modal-fiat-project') || undefined,
         bucket,
         reserved: bucket !== 'available',
       },
@@ -1347,6 +1402,7 @@ function saveFinanceModal(type: string): void {
         currentAmount: current,
         purpose: value('modal-reserve-purpose'),
         scope: value('modal-reserve-scope'),
+        projectId: value('modal-reserve-project') || undefined,
         priority: value('modal-reserve-priority'),
         active: true,
       },
@@ -1393,7 +1449,7 @@ function saveFinanceModal(type: string): void {
       showModalError('Add a cost name, positive amount, and due day from 1 to 28.');
       return;
     }
-    append({ type: 'expense.recurring_set', amount, currency, timestamp, related_entity_id: value('modal-expense-id') || financeId('expense'), metadata: { category: value('modal-expense-category'), monthlyAmount, essential: checked('modal-expense-essential'), active: true, dueDay, frequency, scope: value('modal-expense-scope') } }, 'modal.expense');
+    append({ type: 'expense.recurring_set', amount, currency, timestamp, related_entity_id: value('modal-expense-id') || financeId('expense'), metadata: { category: value('modal-expense-category'), monthlyAmount, essential: checked('modal-expense-essential'), active: true, dueDay, frequency, scope: value('modal-expense-scope'), projectId: value('modal-expense-project') || undefined } }, 'modal.expense');
     return;
   }
   if (type === 'debtAdd') {
@@ -1402,7 +1458,23 @@ function saveFinanceModal(type: string): void {
       showModalError('Add a debt name and a positive amount.');
       return;
     }
-    append({ type: 'debt.added', amount, currency, timestamp, related_entity_id: value('modal-debt-id') || financeId('debt'), metadata: { name: value('modal-debt-name'), scope: value('modal-debt-scope') } }, 'modal.debtAdd');
+    append({ type: 'debt.added', amount, currency, timestamp, related_entity_id: value('modal-debt-id') || financeId('debt'), metadata: { name: value('modal-debt-name'), scope: value('modal-debt-scope'), projectId: value('modal-debt-project') || undefined } }, 'modal.debtAdd');
+    return;
+  }
+  if (type === 'projectProfile') {
+    try {
+      Store.saveProjectProfile({
+        id: value('modal-project-id') || undefined,
+        name: value('modal-project-name'),
+        clientOrPurpose: value('modal-project-purpose'),
+        color: value('modal-project-color'),
+        notes: value('modal-project-notes'),
+        status: 'active',
+      });
+      closeModal();
+    } catch (error) {
+      showModalError(error instanceof Error ? error.message : 'Could not save this project treasury.');
+    }
     return;
   }
   if (type === 'debtPayment') {
@@ -1726,6 +1798,19 @@ Object.assign(window, {
     `;
     list.appendChild(row);
   },
+  archiveProjectProfile: () => {
+    const id = value('modal-project-id');
+    if (!id) return;
+    openDestructiveConfirmation({
+      action: 'archiveProjectProfile',
+      targetId: id,
+      title: 'Archive project treasury',
+      copy: 'This hides the project treasury from active profile choices while keeping all tagged finance history intact.',
+      phrase: 'ARCHIVE PROJECT TREASURY',
+      buttonLabel: 'Archive project',
+      renderAfter: true,
+    });
+  },
   deactivateFiatAccount: () => confirmDeactivate('deactivateFiatAccount', 'modal-fiat-id'),
   deactivateReserveBucket: () => confirmDeactivate('deactivateReserveBucket', 'modal-reserve-id'),
   deactivateRecurringExpense: () => confirmDeactivate('deactivateRecurringExpense', 'modal-expense-id'),
@@ -1929,6 +2014,9 @@ Object.assign(window, {
         Store.clearAndReseedDemo();
       } else if (config.action === 'deleteDemoData') {
         Store.deleteSampleData();
+      } else if (config.action === 'archiveProjectProfile') {
+        if (!config.targetId) throw new Error('Choose a project treasury before archiving.');
+        Store.archiveProjectProfile(config.targetId);
       } else if (config.action === 'deactivateFiatAccount' || config.action === 'deactivateReserveBucket' || config.action === 'deactivateRecurringExpense' || config.action === 'deactivateDebtAccount') {
         if (!config.targetId) throw new Error('Choose an item before deactivating.');
         (Store[config.action] as (id: string) => FinanceEvent[])(config.targetId);

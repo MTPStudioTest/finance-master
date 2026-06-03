@@ -3741,11 +3741,64 @@ body.settings-reduced-motion #dashboard-financial #fin-content-area .fin-tile {
 #dashboard-financial #fin-content-area .fin-treasury-burn,
 #dashboard-financial #fin-content-area .fin-treasury-debt,
 #dashboard-financial #fin-content-area .fin-treasury-goals,
+#dashboard-financial #fin-content-area .fin-treasury-profiles,
 #dashboard-financial #fin-content-area .fin-treasury-accounts {
     border-color: var(--ds-mode-surface-border);
     background:
         radial-gradient(circle at 12% 14%, color-mix(in srgb, var(--interactive-primary) 8%, transparent), transparent 32%),
         color-mix(in srgb, var(--ds-mode-surface) 90%, transparent);
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-profiles {
+    display: grid;
+    gap: 0.9rem;
+    padding: 1rem;
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-profile-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-profile-strip {
+    min-width: 0;
+    display: flex;
+    gap: 0.6rem;
+    overflow-x: auto;
+    padding-bottom: 0.15rem;
+    scrollbar-width: thin;
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-profile-btn {
+    flex: 0 0 auto;
+    min-width: 145px;
+    display: grid;
+    gap: 0.2rem;
+    padding: 0.72rem 0.85rem;
+    border: 1px solid var(--ds-mode-surface-border);
+    border-radius: var(--ds-radius-sm);
+    color: var(--text-primary);
+    text-align: left;
+    background: color-mix(in srgb, var(--ds-mode-surface) 68%, transparent);
+    cursor: pointer;
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-profile-btn:hover,
+#dashboard-financial #fin-content-area .fin-treasury-profile-btn.active {
+    border-color: color-mix(in srgb, var(--interactive-primary) 46%, var(--ds-mode-surface-border));
+    background: color-mix(in srgb, var(--interactive-primary) 12%, var(--ds-mode-surface));
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-profile-btn span {
+    font-weight: 700;
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-profile-btn small,
+#dashboard-financial #fin-content-area .fin-treasury-profile-context {
+    color: var(--text-secondary);
+    font-size: 0.78rem;
 }
 
 #dashboard-financial #fin-content-area .fin-treasury-pulse {
@@ -4087,7 +4140,8 @@ body.settings-reduced-motion #dashboard-financial #fin-content-area .fin-tile {
     #dashboard-financial #fin-content-area .fin-treasury-simulator,
     #dashboard-financial #fin-content-area .fin-treasury-reserve-head,
     #dashboard-financial #fin-content-area .fin-treasury-debt-head,
-    #dashboard-financial #fin-content-area .fin-treasury-compact-row {
+    #dashboard-financial #fin-content-area .fin-treasury-compact-row,
+    #dashboard-financial #fin-content-area .fin-treasury-profile-actions {
         align-items: stretch;
         flex-direction: column;
     }

@@ -2,6 +2,7 @@ import { formActions, scopeOptions } from '../modal-ui';
 
 interface TransactionRendererDeps {
   accountOptions: (selected?: string, allowEmpty?: boolean) => string;
+  projectOptions: (selected?: string) => string;
   today: () => string;
 }
 
@@ -75,6 +76,10 @@ export function renderTransaction(defaultType = 'expense', deps: TransactionRend
         <div class="form-group fg-scope conditional-income-expense">
           <label for="modal-fast-txn-scope">Scope</label>
           <select id="modal-fast-txn-scope">${scopeOptions('business')}</select>
+        </div>
+        <div class="form-group fg-project">
+          <label for="modal-fast-txn-project">Project treasury</label>
+          <select id="modal-fast-txn-project">${deps.projectOptions()}</select>
         </div>
         <div class="form-group fg-note">
           <label for="modal-fast-txn-desc">Note <span class="fin-text-med">(optional)</span></label>

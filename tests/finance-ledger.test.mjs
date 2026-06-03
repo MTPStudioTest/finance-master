@@ -144,6 +144,153 @@ test('read model preserves account, scope, category, and recurring schedule meta
   assert.equal(result.snapshot.runwayMonths, 3);
 });
 
+test('read model derives project treasury profiles and preserves archived profiles', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-02T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'project-alpha-created',
+      type: 'project.profile_set',
+      amount: 0,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'project-alpha',
+      metadata: {
+        name: 'Launch Treasury',
+        clientOrPurpose: 'Client launch',
+        color: 'mint',
+        notes: 'Keep launch cash separate.',
+        status: 'active',
+        createdAt: '2026-06-01T09:00:00.000Z',
+      },
+    },
+    {
+      id: 'project-alpha-archived',
+      type: 'project.profile_set',
+      amount: 0,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:00:00.000Z',
+      related_entity_id: 'project-alpha',
+      metadata: {
+        name: 'Launch Treasury',
+        clientOrPurpose: 'Client launch',
+        color: 'mint',
+        notes: 'Done for now.',
+        status: 'archived',
+        createdAt: '2026-06-01T09:00:00.000Z',
+      },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(result.readModel.projectProfiles.length, 1);
+  assert.equal(result.readModel.projectProfiles[0].id, 'project-alpha');
+  assert.equal(result.readModel.projectProfiles[0].name, 'Launch Treasury');
+  assert.equal(result.readModel.projectProfiles[0].clientOrPurpose, 'Client launch');
+  assert.equal(result.readModel.projectProfiles[0].status, 'archived');
+  assert.equal(result.readModel.projectProfiles[0].createdAt, '2026-06-01T09:00:00.000Z');
+});
+
+test('project treasury tags survive read-model derivation without changing global cash math', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-02T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'project-alpha',
+      type: 'project.profile_set',
+      amount: 0,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'project-alpha',
+      metadata: { name: 'Launch Treasury', status: 'active' },
+    },
+    {
+      id: 'cash-alpha',
+      type: 'asset.account_set',
+      amount: 2200,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-alpha',
+      metadata: { name: 'Launch Wallet', balance: 2200, scope: 'business', projectId: 'project-alpha' },
+    },
+    {
+      id: 'cash-global',
+      type: 'asset.account_set',
+      amount: 800,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-global',
+      metadata: { name: 'Studio Wallet', balance: 800, scope: 'business' },
+    },
+    {
+      id: 'reserve-alpha',
+      type: 'asset.reserve_set',
+      amount: 600,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'reserve-alpha',
+      metadata: { name: 'Launch tax', targetAmount: 1000, currentAmount: 600, scope: 'business', projectId: 'project-alpha' },
+    },
+    {
+      id: 'cost-alpha',
+      type: 'expense.recurring_set',
+      amount: 300,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cost-alpha',
+      metadata: { category: 'Launch tools', monthlyAmount: 300, dueDay: 7, scope: 'business', projectId: 'project-alpha' },
+    },
+    {
+      id: 'debt-alpha',
+      type: 'debt.added',
+      amount: 1200,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'debt-alpha',
+      metadata: { name: 'Launch credit', scope: 'business', minimumPayment: 120, projectId: 'project-alpha' },
+    },
+    {
+      id: 'income-alpha',
+      type: 'pipeline.created',
+      amount: 1500,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'income-alpha',
+      metadata: { title: 'Launch milestone', value: 1500, probability: 1, status: 'confirmed', expectedDateISO: '2026-06-20', scope: 'business', projectId: 'project-alpha' },
+    },
+    {
+      id: 'txn-alpha',
+      type: 'income.received',
+      amount: 500,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'txn-alpha-entity',
+      metadata: { description: 'Launch deposit', accountId: 'cash-alpha', accountName: 'Launch Wallet', categoryId: 'client-income', scope: 'business', projectId: 'project-alpha' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(result.readModel.fiatAccounts.find((entry) => entry.id === 'cash-alpha').projectId, 'project-alpha');
+  assert.equal(result.readModel.fiatAccounts.find((entry) => entry.id === 'cash-global').projectId, '');
+  assert.equal(result.readModel.reserveBuckets[0].projectId, 'project-alpha');
+  assert.equal(result.readModel.recurringExpenses[0].projectId, 'project-alpha');
+  assert.equal(result.readModel.debtAccounts[0].projectId, 'project-alpha');
+  assert.equal(result.readModel.pipelineDeals[0].projectId, 'project-alpha');
+  assert.equal(result.readModel.transactions.find((entry) => entry.id === 'txn-alpha').projectId, 'project-alpha');
+  assert.equal(result.treasury.actualCash, 3000);
+  assert.equal(result.treasury.totalMonthlyBurn, 420);
+});
+
 test('read model derives transaction evidence from existing metadata and links', () => {
   const finance = loadFinance();
   const nowIso = '2026-06-03T10:00:00.000Z';

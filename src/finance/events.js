@@ -27,6 +27,7 @@
         'asset.defi_set',
         'asset.reserve_set',
         'asset.reserve_allocated',
+        'project.profile_set',
         'finance.event_reversed'
     ];
 
