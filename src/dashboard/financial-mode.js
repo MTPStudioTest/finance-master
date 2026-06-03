@@ -1319,6 +1319,43 @@ window.FinancialMode = (function () {
         }
     }
 
+    function renderMonthCloseSummary() {
+        const transactions = safeArray(currentData && currentData.transactions);
+        const monthKey = window.FinanceDates?.monthKey?.(window.FinanceDates?.todayDateOnly?.() || new Date().toISOString())
+            || new Date().toISOString().slice(0, 7);
+        const monthTransactions = transactions.filter((entry) => {
+            const date = window.FinanceDates?.toDateOnly?.(entry && entry.timestamp) || String(entry && entry.timestamp || '').slice(0, 10);
+            return date.slice(0, 7) === monthKey;
+        });
+        const receivedIncome = monthTransactions
+            .filter((entry) => String(entry && entry.type) === 'income.received')
+            .reduce((sum, entry) => sum + Math.abs(ledgerSignedAmount(entry)), 0);
+        const paidExpenses = monthTransactions
+            .filter((entry) => String(entry && entry.type) === 'expense.recorded' && String(entry && entry.categoryId || '').toLowerCase() !== 'transfer')
+            .reduce((sum, entry) => sum + Math.abs(ledgerSignedAmount(entry)), 0);
+        const netMovement = monthTransactions.reduce((sum, entry) => sum + ledgerSignedAmount(entry), 0);
+        const reviewedObligations = monthTransactions.filter((entry) => String(entry && entry.obligationId || '').trim()).length;
+        const reserveMovements = monthTransactions.filter((entry) => ledgerReserveMovementLabel(entry)).length;
+        const unresolved = treasuryArray('reviewQueue').length;
+        const runway = Number(currentSnapshot && currentSnapshot.runwayMonths);
+        const runwayLabel = Number.isFinite(runway) ? `${runway.toFixed(1)} months` : 'Unknown';
+        return `
+            <div class="fin-monthly-review-panel fin-monthly-review-summary" aria-label="Month close summary">
+                <div class="fin-eyebrow">Close summary</div>
+                <div class="backup-preview-card">
+                    <div><span>Net movement</span><strong class="${netMovement >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${netMovement >= 0 ? '+' : '-'}${formatCurrency(Math.abs(netMovement))}</strong></div>
+                    <div><span>Income received</span><strong>${formatCurrency(receivedIncome)}</strong></div>
+                    <div><span>Expenses paid</span><strong>${formatCurrency(paidExpenses)}</strong></div>
+                    <div><span>Obligations reviewed</span><strong>${reviewedObligations}</strong></div>
+                    <div><span>Reserve movements</span><strong>${reserveMovements}</strong></div>
+                    <div><span>Runway now</span><strong>${escapeHtml(runwayLabel)}</strong></div>
+                    <div><span>Unresolved items</span><strong>${unresolved}</strong></div>
+                </div>
+                <div class="fin-helper-text">Runway change needs review history; the current close shows the live runway baseline.</div>
+            </div>
+        `;
+    }
+
     function financeIconButton({ action, args, label, icon = 'edit', tone = 'muted', extraClass = '', attrs = '', local = false }) {
         const actionAttr = local
             ? `data-fin-action="${escapeHtml(action)}"`
@@ -1388,6 +1425,7 @@ window.FinancialMode = (function () {
                             `).join('')}
                         </div>
                     </div>
+                    ${renderMonthCloseSummary()}
                     <label class="fin-review-notes">
                         <span class="fin-eyebrow">Review note</span>
                         <textarea id="monthly-review-notes" rows="3" placeholder="What changed, what needs attention?">${escapeHtml(currentReview && currentReview.notes || '')}</textarea>
