@@ -281,19 +281,16 @@ The e2e suite covers:
 
 ### Recommended next slices
 
-1. **Commit and deploy current baseline**
-   - The current uncommitted work includes Ledger Workspace and Monthly Review simplification.
-   - Run the validation stack again before committing if more edits are made.
-2. **Roadmap/documentation cleanup**
-   - Update the shorter `ROADMAP.md` baseline language so it no longer says Transactions has Clean/Work/Audit views.
-   - Add screenshots or a short product-state note if the deployed UI needs public-facing release notes.
-3. **Continue with focused Phase 3 polish**
-   - Continue standardizing icon-first row actions where they still reduce clutter without hiding decisions.
-   - Reduce remaining dense table/card surfaces where they feel like admin software.
+1. **Complete focused Phase 3 polish**
+   - Standardize cross-page surfaces, outlines, status pills, spacing, dark-mode readability, and icon-first row actions.
+   - Keep Overview compact and do not reintroduce explanation dropdowns there.
    - Keep calculation and data safety untouched unless a test exposes a regression.
-4. **Then continue Phase 5/8 depth**
-   - Import profiles, categorization rules, and transaction evidence depth.
-   - Monthly review history, monthly summary, reserve review, and review completion narrative.
+2. **Then continue Phase 5 transaction/data depth**
+   - Import profiles, categorization suggestions, and transaction evidence depth.
+   - Do not rebuild the Ledger Workspace shell or expose Audit as a primary mode.
+3. **Then continue Phase 8 monthly review depth**
+   - Review history, monthly summary, reserve review, and review completion narrative.
+   - Keep the ritual page-native and avoid returning to the large review modal.
 
 ---
 

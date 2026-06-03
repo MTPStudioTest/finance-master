@@ -754,7 +754,7 @@ window.FinancialMode = (function () {
                     </div>
                     <div class="fin-transaction-row-side">
                         <span class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</span>
-                        <button class="fin-mini-btn" type="button" data-fin-action="select-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">Open</button>
+                        ${financeTransactionIconButton({ action: 'select-ledger-transaction', transactionId: id, label: 'Inspect transaction' })}
                     </div>
                 </div>
             `;
@@ -773,9 +773,9 @@ window.FinancialMode = (function () {
                     <div class="fin-transaction-row-side">
                         <span class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</span>
                         <div class="fin-ledger-actions">
-                            ${needsCategory ? `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${escapeActionArg(id)}'">Categorize</button>` : ''}
-                            ${needsMatch ? `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'paymentMatch', '${escapeActionArg(id)}'">Match</button>` : ''}
-                            <button class="fin-mini-btn" type="button" data-fin-action="select-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">Open</button>
+                            ${needsCategory ? financeIconButton({ action: 'openEditModal', args: `'transactionReview', '${escapeActionArg(id)}'`, label: 'Edit transaction review' }) : ''}
+                            ${needsMatch ? financeIconButton({ action: 'openEditModal', args: `'paymentMatch', '${escapeActionArg(id)}'`, label: 'Edit payment match', icon: 'success', tone: 'success' }) : ''}
+                            ${financeTransactionIconButton({ action: 'select-ledger-transaction', transactionId: id, label: 'Inspect transaction' })}
                         </div>
                     </div>
                 </div>
@@ -997,8 +997,8 @@ window.FinancialMode = (function () {
                     `).join('')}
                 </dl>
                 <div class="fin-inspector-actions">
-                    <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${escapeActionArg(id)}'">Change category</button>
-                    ${isExpense && !matched ? `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'paymentMatch', '${escapeActionArg(id)}'">Match obligation/payment</button>` : ''}
+                    ${financeIconButton({ action: 'openEditModal', args: `'transactionReview', '${escapeActionArg(id)}'`, label: 'Edit transaction review' })}
+                    ${isExpense && !matched ? financeIconButton({ action: 'openEditModal', args: `'paymentMatch', '${escapeActionArg(id)}'`, label: 'Edit payment match', icon: 'success', tone: 'success' }) : ''}
                     <button class="fin-mini-btn" type="button" data-fin-action="reverse-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">Reverse transaction</button>
                 </div>
             </aside>
@@ -1054,6 +1054,14 @@ window.FinancialMode = (function () {
     function financeIconButton({ action, args, label, icon = 'edit', tone = 'muted', extraClass = '' }) {
         return `
             <button class="fin-mini-btn fin-icon-btn ${extraClass}" type="button" data-action="${escapeHtml(action)}"${args ? ` data-action-args="${escapeHtml(args)}"` : ''} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
+                ${renderSAGGlyph(icon, { size: 'xs', tone })}
+            </button>
+        `;
+    }
+
+    function financeTransactionIconButton({ action, transactionId, label, icon = 'attention', tone = 'muted', extraClass = '' }) {
+        return `
+            <button class="fin-mini-btn fin-icon-btn ${extraClass}" type="button" data-fin-action="${escapeHtml(action)}" data-fin-transaction-id="${escapeHtml(transactionId)}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
                 ${renderSAGGlyph(icon, { size: 'xs', tone })}
             </button>
         `;

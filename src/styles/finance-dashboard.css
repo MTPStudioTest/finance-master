@@ -27,6 +27,11 @@
     /* Golden mustard */
     --fin-stress-high: #f1b9a7;
     /* Soft clay */
+    --fin-local-panel-bg: rgba(255, 255, 255, 0.035);
+    --fin-local-row-bg: rgba(255, 255, 255, 0.04);
+    --fin-local-row-bg-strong: rgba(178, 226, 242, 0.075);
+    --fin-local-input-bg: rgba(255, 255, 255, 0.06);
+    --fin-local-shadow: 0 14px 28px rgba(0, 0, 0, 0.12);
 }
 
 :root[data-appearance='bright'] {
@@ -42,6 +47,11 @@
     --fin-chart-safe: rgba(52, 125, 105, 0.92);
     --fin-chart-realistic: rgba(39, 111, 132, 0.9);
     --fin-chart-optimistic: rgba(53, 77, 75, 0.52);
+    --fin-local-panel-bg: rgba(255, 255, 255, 0.48);
+    --fin-local-row-bg: rgba(255, 255, 255, 0.64);
+    --fin-local-row-bg-strong: rgba(233, 248, 240, 0.54);
+    --fin-local-input-bg: rgba(255, 255, 255, 0.72);
+    --fin-local-shadow: 0 14px 28px rgba(23, 38, 34, 0.045);
 }
 
 .financial-dashboard {
@@ -905,8 +915,8 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     padding: 12px 14px;
     border: 1px solid var(--ds-mode-surface-border);
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.04);
-    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.12);
+    background: var(--fin-local-row-bg);
+    box-shadow: var(--fin-local-shadow);
 }
 
 #dashboard-financial #fin-content-area .fin-ledger-status-strip span,
@@ -1069,7 +1079,7 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
 #dashboard-financial #fin-content-area .fin-transaction-row[role="button"]:focus-visible,
 #dashboard-financial #fin-content-area .fin-transaction-row.active {
     outline: 0;
-    background: rgba(178, 226, 242, 0.075);
+    background: var(--fin-local-row-bg-strong);
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-row:last-child {
@@ -1170,7 +1180,7 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     padding: 12px;
     border: 1px solid var(--ds-mode-surface-border);
     border-radius: 14px;
-    background: rgba(255, 255, 255, 0.035);
+    background: var(--fin-local-panel-bg);
 }
 
 #dashboard-financial #fin-content-area .fin-review-check-row {
@@ -1182,12 +1192,12 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     padding: 11px 12px;
     border: 1px solid var(--ds-mode-surface-border);
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--fin-local-row-bg);
 }
 
 #dashboard-financial #fin-content-area .fin-review-check-row.is-ready {
     border-color: color-mix(in srgb, var(--interactive-primary) 24%, var(--ds-mode-surface-border));
-    background: color-mix(in srgb, var(--interactive-primary) 9%, rgba(255, 255, 255, 0.035));
+    background: var(--fin-local-row-bg-strong);
 }
 
 #dashboard-financial #fin-content-area .fin-review-check-row span {
@@ -1214,7 +1224,7 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     min-height: 36px;
     border: 1px solid var(--ds-mode-surface-border);
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--fin-local-input-bg);
     color: var(--text-primary);
     padding: 0 10px;
 }
@@ -1228,7 +1238,7 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     width: 100%;
     border: 1px solid var(--ds-mode-surface-border);
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--fin-local-row-bg);
     color: var(--text-primary);
     padding: 12px;
     resize: vertical;
@@ -2892,6 +2902,49 @@ body.settings-reduced-motion #dashboard-financial #fin-content-area .fin-tile {
 :root[data-appearance='bright'] #dashboard-financial #fin-content-area .fin-compact-empty {
     border-color: rgba(43, 88, 81, 0.16);
     background: rgba(255, 255, 255, 0.38);
+}
+
+:root[data-appearance='aurora'] #dashboard-financial #fin-content-area .fin-ledger-status-strip > div,
+:root[data-appearance='midnight'] #dashboard-financial #fin-content-area .fin-ledger-status-strip > div,
+:root[data-appearance='twilight'] #dashboard-financial #fin-content-area .fin-ledger-status-strip > div,
+:root[data-appearance='aurora'] #dashboard-financial #fin-content-area .fin-monthly-review-panel,
+:root[data-appearance='midnight'] #dashboard-financial #fin-content-area .fin-monthly-review-panel,
+:root[data-appearance='twilight'] #dashboard-financial #fin-content-area .fin-monthly-review-panel,
+:root[data-appearance='aurora'] #dashboard-financial #fin-content-area .fin-review-check-row,
+:root[data-appearance='midnight'] #dashboard-financial #fin-content-area .fin-review-check-row,
+:root[data-appearance='twilight'] #dashboard-financial #fin-content-area .fin-review-check-row,
+:root[data-appearance='aurora'] #dashboard-financial #fin-content-area .fin-review-notes textarea,
+:root[data-appearance='midnight'] #dashboard-financial #fin-content-area .fin-review-notes textarea,
+:root[data-appearance='twilight'] #dashboard-financial #fin-content-area .fin-review-notes textarea {
+    background-color: transparent;
+    color: var(--text-primary);
+}
+
+:root[data-appearance='aurora'] #dashboard-financial #fin-content-area .fin-ledger-status-strip > div,
+:root[data-appearance='midnight'] #dashboard-financial #fin-content-area .fin-ledger-status-strip > div,
+:root[data-appearance='twilight'] #dashboard-financial #fin-content-area .fin-ledger-status-strip > div {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+:root[data-appearance='aurora'] #dashboard-financial #fin-content-area .fin-monthly-review-panel,
+:root[data-appearance='midnight'] #dashboard-financial #fin-content-area .fin-monthly-review-panel,
+:root[data-appearance='twilight'] #dashboard-financial #fin-content-area .fin-monthly-review-panel {
+    background: rgba(255, 255, 255, 0.035);
+}
+
+:root[data-appearance='aurora'] #dashboard-financial #fin-content-area .fin-review-check-row,
+:root[data-appearance='midnight'] #dashboard-financial #fin-content-area .fin-review-check-row,
+:root[data-appearance='twilight'] #dashboard-financial #fin-content-area .fin-review-check-row,
+:root[data-appearance='aurora'] #dashboard-financial #fin-content-area .fin-review-notes textarea,
+:root[data-appearance='midnight'] #dashboard-financial #fin-content-area .fin-review-notes textarea,
+:root[data-appearance='twilight'] #dashboard-financial #fin-content-area .fin-review-notes textarea {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+:root[data-appearance='aurora'] #dashboard-financial #fin-content-area .fin-review-check-row.is-ready,
+:root[data-appearance='midnight'] #dashboard-financial #fin-content-area .fin-review-check-row.is-ready,
+:root[data-appearance='twilight'] #dashboard-financial #fin-content-area .fin-review-check-row.is-ready {
+    background: color-mix(in srgb, var(--interactive-primary) 9%, rgba(255, 255, 255, 0.035));
 }
 
 /* ----------------------------------------------------- */

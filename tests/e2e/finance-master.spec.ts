@@ -36,6 +36,28 @@ async function addExpense(page: Page, note: string, amount: string, category = '
   await modal.getByRole('button', { name: 'Create', exact: true }).click();
 }
 
+async function expectDarkLocalSurfaces(page: Page, selector: string): Promise<void> {
+  const samples = await page.locator(selector).evaluateAll((nodes) => nodes.slice(0, 6).map((node) => {
+    const parseColor = (value: string): { r: number; g: number; b: number; a: number } => {
+      const match = value.match(/rgba?\(([^)]+)\)/);
+      if (!match) return { r: 0, g: 0, b: 0, a: 0 };
+      const parts = match[1].split(',').map((part) => Number(part.trim()));
+      return { r: parts[0] || 0, g: parts[1] || 0, b: parts[2] || 0, a: parts[3] ?? 1 };
+    };
+    const styles = window.getComputedStyle(node);
+    const background = parseColor(styles.backgroundColor);
+    const text = parseColor(styles.color);
+    const backgroundLuma = (background.r * 0.2126) + (background.g * 0.7152) + (background.b * 0.0722);
+    const textLuma = (text.r * 0.2126) + (text.g * 0.7152) + (text.b * 0.0722);
+    return { backgroundAlpha: background.a, backgroundLuma, textLuma };
+  }));
+  expect(samples.length).toBeGreaterThan(0);
+  for (const sample of samples) {
+    expect(sample.backgroundAlpha < 0.5 || sample.backgroundLuma < 110).toBe(true);
+    expect(sample.textLuma).toBeGreaterThan(120);
+  }
+}
+
 test('grouped navigation exposes every finance workspace section', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
@@ -167,7 +189,7 @@ test('transactions page is the primary ledger workspace', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Open ledger', exact: true })).toHaveCount(0);
 
   await expect(page.getByLabel('Transaction inspector')).toBeVisible();
-  await workspace.locator('.fin-transaction-row').filter({ hasText: 'Ledger workspace review seed' }).getByRole('button', { name: 'Open', exact: true }).click();
+  await workspace.locator('.fin-transaction-row').filter({ hasText: 'Ledger workspace review seed' }).getByRole('button', { name: 'Inspect transaction', exact: true }).click();
   await expect(page.getByLabel('Transaction inspector').getByText('Ledger workspace review seed', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Transaction inspector').getByText('Record ID', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Transaction inspector').getByText('Import metadata', { exact: true })).toBeVisible();
@@ -182,7 +204,7 @@ test('transactions page is the primary ledger workspace', async ({ page }) => {
   await page.getByRole('button', { name: 'Review', exact: true }).click();
   await expect(page.locator('.fin-review-summary-line')).toContainText('need category');
   await expect(page.locator('.fin-review-summary-line')).toContainText('filtered records');
-  await expect(page.getByRole('button', { name: 'Categorize', exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Edit transaction review', exact: true }).first()).toBeVisible();
   await expect(page.getByLabel('Transaction inspector').getByRole('button', { name: 'Reverse transaction', exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -202,7 +224,7 @@ test('ledger filters and inline categorization work without a full-ledger modal'
 
   await page.getByRole('button', { name: 'Review', exact: true }).click();
   const row = page.locator('.fin-transaction-row--review').filter({ hasText: 'Ledger page cleanup item' });
-  await row.getByRole('button', { name: 'Categorize', exact: true }).click();
+  await row.getByRole('button', { name: 'Edit transaction review', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Categorize transaction', exact: true })).toBeVisible();
   await page.locator('#modal-body').getByLabel('Category', { exact: true }).fill('software');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
@@ -397,6 +419,27 @@ test('local data safety and appearance controls live on pages', async ({ page })
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-appearance', mode);
   }
+  expect(errors).toEqual([]);
+});
+
+test('midnight mode keeps ledger and monthly review surfaces readable', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+  await openSettingsPage(page);
+  await page.getByLabel('Appearance').selectOption('midnight');
+  await page.getByRole('button', { name: 'Apply preferences', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-appearance', 'midnight');
+
+  await page.getByRole('button', { name: 'Transactions', exact: true }).click();
+  await expect(page.getByText('Ledger Workspace', { exact: true })).toBeVisible();
+  await expectDarkLocalSurfaces(page, '.fin-ledger-status-strip > div');
+  await expect(page.getByRole('button', { name: 'Inspect transaction', exact: true }).first()).toBeVisible();
+
+  await page.getByRole('button', { name: 'Monthly Review', exact: true }).click();
+  await expect(page.getByText(/Monthly review (due|current)/).first()).toBeVisible();
+  await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
+  await expectDarkLocalSurfaces(page, '.fin-monthly-review-panel');
+  await expectDarkLocalSurfaces(page, '.fin-review-check-row');
   expect(errors).toEqual([]);
 });
 

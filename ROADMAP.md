@@ -44,6 +44,8 @@ Known baseline limitations:
 - Mobile layout has smoke coverage, but dense tables still need more deliberate small-screen design.
 - The old Monthly Review modal renderer still exists as a compatibility fallback, but the intended workflow is now page-native.
 - Transactions has pulled forward part of Phase 5; future ledger work should focus on import profiles, categorization rules, and evidence depth rather than rebuilding the workspace shell.
+- Current active slice: Phase 3 polish closeout. Finish cross-page surface consistency, dark-mode readability, and quiet contextual row actions before deeper workflow expansion.
+- Next handoff after polish: Phase 5 import profiles/categorization/evidence depth, then Phase 8 review history/monthly summary/reserve review.
 
 ## Phase 1A: Hardening The Operating Core
 
@@ -135,7 +137,7 @@ Planned work:
 - Add stable empty states and long-label handling.
 - Add CSV export for transactions.
 - Keep full ledger browsing on the Transactions page instead of routing the user into a large modal.
-- Provide inline Categorize, Match, and Reverse actions in the Work/Audit views.
+- Provide quiet icon-first review actions in Ledger / Review mode and keep technical evidence in the transaction inspector.
 
 Acceptance criteria:
 
