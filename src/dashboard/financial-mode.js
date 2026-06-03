@@ -239,23 +239,6 @@ window.FinancialMode = (function () {
         return { text: 'Stable', tone: 'nourishing', icon: 'success' };
     }
 
-    function renderFinancialHero() {
-        const heroSlot = document.getElementById('financial-hero-slot');
-        if (!heroSlot || !window.CoreDashboardHero || typeof window.CoreDashboardHero.renderHero !== 'function') return;
-
-        const signal = resolveFinancialHeroSignal();
-        heroSlot.innerHTML = window.CoreDashboardHero.renderHero({
-            domain: 'financial',
-            headline: 'Finance Cockpit',
-            signalText: signal.text,
-            signalTone: signal.tone,
-            signalIcon: signal.icon,
-            signalAriaLabel: 'Finance signal: ' + signal.text,
-            compact: currentHasFinanceData
-        });
-        window.CoreDashboardHero.bindDetailsPersistence(heroSlot, 'financial');
-    }
-
     function renderCompactEmpty(text) {
         return `<div class="fin-compact-empty">${text}</div>`;
     }
@@ -456,7 +439,6 @@ window.FinancialMode = (function () {
             financeSnapshot: currentSnapshot,
             financeReadModel: currentData
         });
-        renderFinancialHero();
 
         if (!elements.content) return;
 

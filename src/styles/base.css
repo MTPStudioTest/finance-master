@@ -364,101 +364,6 @@ textarea:focus-visible,
   color: var(--text-tertiary);
 }
 
-.connection-ambient-header {
-  position: relative;
-  min-height: 16rem;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 1.8rem;
-  background:
-    radial-gradient(circle at 8% 12%, rgba(69, 143, 128, 0.22), transparent 28rem),
-    linear-gradient(142deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018));
-  box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, 0.22);
-}
-
-.connection-ambient-inner {
-  max-width: 50rem;
-  padding: 2rem;
-}
-
-.connection-ambient-header--compact {
-  min-height: 10.5rem;
-}
-
-.connection-ambient-header--compact .connection-ambient-inner {
-  padding: 1.45rem 2rem;
-}
-
-.connection-ambient-header--compact .connection-title {
-  font-size: clamp(2.35rem, 5vw, 4rem);
-}
-
-.connection-kicker {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 0.66rem;
-  letter-spacing: 0.17em;
-  text-transform: uppercase;
-}
-
-.connection-title {
-  margin: 0.65rem 0 0.5rem;
-  font-size: clamp(2.5rem, 7vw, 5.5rem);
-  font-weight: 300;
-  letter-spacing: -0.075em;
-}
-
-.connection-dashboard-copy {
-  margin: 0.4rem 0;
-  color: var(--text-secondary);
-  font-size: 0.92rem;
-  line-height: 1.55;
-}
-
-.connection-hero-climate {
-  margin-top: 1rem;
-}
-
-.connection-climate-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.38rem 0.72rem;
-  border: 1px solid rgba(178, 226, 242, 0.24);
-  border-radius: 999px;
-  background: rgba(178, 226, 242, 0.07);
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.climate-fragmented {
-  border-color: rgba(241, 185, 167, 0.34);
-}
-
-.climate-expanding,
-.climate-nourishing {
-  border-color: rgba(168, 230, 207, 0.38);
-}
-
-.connection-field-details {
-  margin-top: 1rem;
-}
-
-.connection-field-details summary {
-  color: var(--text-tertiary);
-  cursor: pointer;
-  list-style: none;
-}
-
-.connection-dashboard-head {
-  margin-top: 0.85rem;
-  padding-top: 0.65rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
 .fin-allocation-row,
 .modal-list-row {
   display: flex;
@@ -859,15 +764,6 @@ textarea {
   background: rgba(89, 167, 151, 0.16);
 }
 
-:root[data-appearance='bright'] .connection-ambient-header {
-  border-color: rgba(43, 88, 81, 0.14);
-  background:
-    radial-gradient(circle at 8% 12%, rgba(116, 194, 174, 0.2), transparent 28rem),
-    linear-gradient(142deg, rgba(255, 255, 255, 0.9), rgba(242, 249, 245, 0.66));
-  box-shadow: 0 1.25rem 3rem rgba(58, 94, 86, 0.12);
-}
-
-:root[data-appearance='bright'] .connection-dashboard-head,
 :root[data-appearance='bright'] .modal-section {
   border-top-color: rgba(43, 88, 81, 0.12);
 }
@@ -930,10 +826,6 @@ textarea {
 
   .finance-master-button {
     width: 100%;
-  }
-
-  .connection-ambient-inner {
-    padding: 1.35rem;
   }
 
   .quick-add-grid {

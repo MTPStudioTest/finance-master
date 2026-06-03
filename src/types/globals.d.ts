@@ -5,10 +5,6 @@ declare global {
   type FinanceScopeFilter = 'all' | FinanceScope;
 
   interface Window {
-    CoreDashboardHero?: {
-      renderHero(options: Record<string, unknown>): string;
-      bindDetailsPersistence(root: Element, domain: string): void;
-    };
     FinanceCommandService?: Record<string, (...args: any[]) => any>;
     FinanceCompute?: {
       computeFinancialContext(events: FinanceEvent[], settings: FinanceSettings): FinanceContext;
