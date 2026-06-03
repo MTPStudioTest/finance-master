@@ -102,6 +102,7 @@ declare global {
     deactivateDebtAccount(id: string, options?: Record<string, unknown>): FinanceEvent[];
     deactivateDefiPosition(id: string, options?: Record<string, unknown>): FinanceEvent[];
     deactivateFiatAccount(id: string, options?: Record<string, unknown>): FinanceEvent[];
+    deactivateReserveBucket(id: string, options?: Record<string, unknown>): FinanceEvent[];
     deactivateRecurringExpense(id: string, options?: Record<string, unknown>): FinanceEvent[];
     deactivateWeb3Position(id: string, options?: Record<string, unknown>): FinanceEvent[];
     deleteInvoice(id: string, options?: Record<string, unknown>): FinanceEvent[];

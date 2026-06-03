@@ -1608,7 +1608,7 @@ window.FinancialMode = (function () {
     }
 
     function renderReservesSection() {
-        const fiatAccounts = safeArray(currentData?.fiatAccounts).filter(acc => !acc.bucket || acc.bucket === 'available');
+        const fiatAccounts = safeArray(currentData?.fiatAccounts);
         const buckets = safeArray(currentData?.reserveBuckets);
         const actualCash = treasuryNumber('actualCash', treasuryNumber('totalCash', Number(currentSnapshot?.realBalance) || 0));
         const protectedCash = treasuryNumber('protectedCash', treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0));
@@ -1629,7 +1629,7 @@ window.FinancialMode = (function () {
                     <div class="widget ui-card glass fin-card fin-list-item">
                         <div class="fin-list-item-main">
                             <strong>${escapeHtml(acc.name)}</strong>
-                            <div class="fin-list-item-sub">${escapeHtml(acc.scope || 'shared')}</div>
+                            <div class="fin-list-item-sub">${escapeHtml(acc.scope || 'shared')} · ${acc.reserved ? 'protected cash' : 'available cash'}${acc.bucket ? ` · ${escapeHtml(String(acc.bucket).replace('_', ' '))}` : ''}</div>
                         </div>
                         <div class="fin-list-item-actions">
                             <div class="fin-list-item-val">${formatCurrency(acc.balance)}</div>
@@ -1832,6 +1832,7 @@ window.FinancialMode = (function () {
                                     : '')
                             }
                             ${String(debt.paymentPlanNote || '').trim() ? `<span>Plan note: ${escapeHtml(debt.paymentPlanNote)}</span>` : ''}
+                            ${debt.estimatedPayoffDate ? `<span>Projected payoff: ${formatShortDate(debt.estimatedPayoffDate)}${Number.isFinite(Number(debt.estimatedPayoffMonths)) && Number(debt.estimatedPayoffMonths) > 0 ? ` · ${Number(debt.estimatedPayoffMonths)} months` : ''}</span>` : ''}
                             ${!hasPlan ? `<span style="color: var(--negative, #ff4b4b); font-weight: 500; display: inline-flex; align-items: center; gap: 0.25rem;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> Missing payment plan</span>` : ''}
                         </div>
                     </div>

@@ -52,6 +52,7 @@ type DestructiveConfirmationAction =
   | 'resetDemoData'
   | 'deleteDemoData'
   | 'deactivateFiatAccount'
+  | 'deactivateReserveBucket'
   | 'deactivateRecurringExpense'
   | 'deactivateDebtAccount'
   | 'reverseTransaction'
@@ -668,7 +669,7 @@ function renderFiatAccount(id = ''): string {
           ].map(([bucket, label]) => `<option value="${bucket}"${String(item?.bucket || 'available') === bucket ? ' selected' : ''}>${label}</option>`).join('')}
         </select></div>
       </div>
-      ${formActions('fiatAccount', Boolean(item))}
+      <div class="modal-actions">${deactivateButton('deactivateFiatAccount', Boolean(item))}<span class="modal-actions-spacer"></span>${formActions('fiatAccount', Boolean(item)).replace('<div class="modal-actions">', '').replace('</div>', '')}</div>
     </div>
   `;
 }
@@ -694,6 +695,7 @@ function renderReserveBucket(id = '') {
             ['custom', 'Custom'],
           ].map(([val, label]) => `<option value="${val}"${String(item?.purpose || 'tax_reserve') === val ? ' selected' : ''}>${label}</option>`).join('')}
         </select></div>
+        <div class="form-group"><label for="modal-reserve-scope">Scope</label><select id="modal-reserve-scope">${scopeOptions(String(item?.scope || 'shared'))}</select></div>
         <div class="form-group"><label for="modal-reserve-priority">Priority</label><select id="modal-reserve-priority">
           ${[
             ['critical', 'Critical (Must fill)'],
@@ -703,7 +705,7 @@ function renderReserveBucket(id = '') {
           ].map(([val, label]) => `<option value="${val}"${String(item?.priority || 'high') === val ? ' selected' : ''}>${label}</option>`).join('')}
         </select></div>
       </div>
-      ${formActions('reserveBucket', Boolean(item))}
+      <div class="modal-actions">${deactivateButton('deactivateReserveBucket', Boolean(item))}<span class="modal-actions-spacer"></span>${formActions('reserveBucket', Boolean(item)).replace('<div class="modal-actions">', '').replace('</div>', '')}</div>
     </div>
   `;
 }
@@ -1305,6 +1307,7 @@ function saveFinanceModal(type: string): void {
         targetAmount: target,
         currentAmount: current,
         purpose: value('modal-reserve-purpose'),
+        scope: value('modal-reserve-scope'),
         priority: value('modal-reserve-priority'),
         active: true,
       },
@@ -1682,6 +1685,7 @@ Object.assign(window, {
     list.appendChild(row);
   },
   deactivateFiatAccount: () => confirmDeactivate('deactivateFiatAccount', 'modal-fiat-id'),
+  deactivateReserveBucket: () => confirmDeactivate('deactivateReserveBucket', 'modal-reserve-id'),
   deactivateRecurringExpense: () => confirmDeactivate('deactivateRecurringExpense', 'modal-expense-id'),
   deactivateDebtAccount: () => confirmDeactivate('deactivateDebtAccount', 'modal-debt-id'),
   resetDemoData: () => {
@@ -1883,7 +1887,7 @@ Object.assign(window, {
         Store.clearAndReseedDemo();
       } else if (config.action === 'deleteDemoData') {
         Store.deleteSampleData();
-      } else if (config.action === 'deactivateFiatAccount' || config.action === 'deactivateRecurringExpense' || config.action === 'deactivateDebtAccount') {
+      } else if (config.action === 'deactivateFiatAccount' || config.action === 'deactivateReserveBucket' || config.action === 'deactivateRecurringExpense' || config.action === 'deactivateDebtAccount') {
         if (!config.targetId) throw new Error('Choose an item before deactivating.');
         (Store[config.action] as (id: string) => FinanceEvent[])(config.targetId);
       } else if (config.action === 'reverseTransaction') {

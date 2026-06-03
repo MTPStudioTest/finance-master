@@ -116,6 +116,34 @@
         return Events.toDateOnly ? Events.toDateOnly(value) : (global.FinanceDates ? global.FinanceDates.toDateOnly(value) : '');
     }
 
+    function addMonthsDateOnly(nowIso, months) {
+        var date = new Date(nowIso);
+        if (!Number.isFinite(date.getTime()) || !Number.isFinite(Number(months)) || Number(months) <= 0) return '';
+        date.setUTCMonth(date.getUTCMonth() + Math.ceil(Number(months)));
+        return date.toISOString().slice(0, 10);
+    }
+
+    function estimateDebtPayoff(debt, nowIso) {
+        var outstanding = Math.max(0, Number(debt && debt.outstanding) || 0);
+        if (outstanding <= 0) return { estimatedPayoffMonths: 0, estimatedPayoffDate: toIsoDateOnly(nowIso) };
+        if (String(debt && debt.planType) === 'custom' && Array.isArray(debt.installments) && debt.installments.length) {
+            var paid = 0;
+            var sorted = debt.installments.slice().sort(function (a, b) {
+                return String(a && a.date || '').localeCompare(String(b && b.date || ''));
+            });
+            for (var i = 0; i < sorted.length; i += 1) {
+                paid += Math.max(0, Number(sorted[i] && sorted[i].amount) || 0);
+                if (paid >= outstanding) {
+                    return { estimatedPayoffMonths: null, estimatedPayoffDate: toIsoDateOnly(sorted[i].date) };
+                }
+            }
+        }
+        var monthly = Math.max(0, Number(debt && debt.minimumPaymentMonthly) || 0);
+        if (monthly <= 0) return { estimatedPayoffMonths: null, estimatedPayoffDate: '' };
+        var months = Math.ceil(outstanding / monthly);
+        return { estimatedPayoffMonths: months, estimatedPayoffDate: addMonthsDateOnly(nowIso, months) };
+    }
+
     function buildReadModel(events, settings) {
         var cfg = normalizeSettings(settings);
         var nowIso = cfg.nowIso;
@@ -480,6 +508,7 @@
                 }
                 debtById[relatedId].outstanding = Math.max(0, debtById[relatedId].totalAdded - debtById[relatedId].totalPaid);
                 debtById[relatedId].minimumPaymentMonthly = normalizeRecurrenceMonthlyAmount(debtById[relatedId].minimumPayment, debtById[relatedId].frequency);
+                Object.assign(debtById[relatedId], estimateDebtPayoff(debtById[relatedId], nowIso));
                 debtById[relatedId].scope = String(metadata.scope || debtById[relatedId].scope || 'shared');
                 debtById[relatedId].updatedAt = event.timestamp;
                 return;
@@ -653,6 +682,7 @@
             invoices: invoices,
             transactions: transactions,
             fiatAccounts: fiatAccounts,
+            reserveBuckets: reserveBuckets.filter(function (bucket) { return bucket && bucket.active !== false; }),
             web3Positions: web3Positions,
             defiPositions: defiPositions,
             recurringMonthlyTotal: Events.roundMoney(recurringMonthlyTotal),

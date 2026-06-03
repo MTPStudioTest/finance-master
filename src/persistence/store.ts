@@ -1048,6 +1048,13 @@ export const Store = {
     });
   },
 
+  deactivateReserveBucket(id: string): FinanceEvent[] {
+    return reverseMatching(id, ['asset.reserve_set', 'asset.reserve_allocated'], 'deactivateReserveBucket', (event) => {
+      const metadata = event.metadata || {};
+      return String(event.related_entity_id || '') === id || String(metadata.reserveId || '') === id;
+    });
+  },
+
   deactivateRecurringExpense(id: string): FinanceEvent[] {
     return reverseMatching(id, ['expense.recurring_set'], 'deactivateRecurringExpense');
   },

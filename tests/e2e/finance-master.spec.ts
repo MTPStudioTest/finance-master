@@ -147,6 +147,65 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('treasury cash accounts and reserve buckets can be edited and persist', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Treasury', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Treasury', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Add cash account', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Add cash account', exact: true })).toBeVisible();
+  await page.getByLabel('Name').fill('Temporary treasury cash');
+  await page.getByLabel('Balance').fill('123');
+  await page.getByLabel('Scope').selectOption('business');
+  await page.getByLabel('Bucket').selectOption('available');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
+  await expect(page.getByText('Temporary treasury cash', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Edit Temporary treasury cash', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Edit cash account', exact: true })).toBeVisible();
+  await page.getByLabel('Balance').fill('456');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (
+    window.Store.getFinancialReadModel().fiatAccounts
+      .find((entry: any) => String(entry.name) === 'Temporary treasury cash')?.balance
+  ))).toBe(456);
+
+  await page.getByRole('button', { name: 'Edit Temporary treasury cash', exact: true }).click();
+  await page.getByRole('button', { name: 'Deactivate', exact: true }).click();
+  await page.getByLabel('Type DEACTIVATE ITEM to continue').fill('DEACTIVATE ITEM');
+  await page.getByRole('button', { name: 'Deactivate item', exact: true }).click();
+  await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (
+    window.Store.getFinancialReadModel().fiatAccounts
+      .some((entry: any) => String(entry.name) === 'Temporary treasury cash')
+  ))).toBe(false);
+
+  await page.getByRole('button', { name: 'Add reserve bucket', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Add reserve bucket', exact: true })).toBeVisible();
+  await page.getByLabel('Name').fill('Client tax reserve');
+  await page.getByLabel('Target amount').fill('2000');
+  await page.getByLabel('Current amount').fill('350');
+  await page.getByLabel('Purpose').selectOption('tax_reserve');
+  await page.getByLabel('Scope').selectOption('business');
+  await page.getByLabel('Priority').selectOption('critical');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
+  await expect(page.getByText('Client tax reserve', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (
+    window.Store.getFinancialReadModel().reserveBuckets
+      .find((entry: any) => String(entry.name) === 'Client tax reserve')?.currentAmount
+  ))).toBe(350);
+
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Treasury', exact: true })).toBeVisible();
+  await expect(page.getByText('Client tax reserve', { exact: true })).toBeVisible();
+  await expect(page.getByText('Temporary treasury cash', { exact: true })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('overview prioritizes the money picture cockpit', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');

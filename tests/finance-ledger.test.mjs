@@ -116,6 +116,15 @@ test('read model preserves account, scope, category, and recurring schedule meta
       related_entity_id: 'rent-recurring',
       metadata: { category: 'Studio rent', monthlyAmount: 300, dueDay: 31, frequency: 'monthly', scope: 'business' },
     },
+    {
+      id: 'tax-reserve-bucket',
+      type: 'asset.reserve_set',
+      amount: 2000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'tax-reserve-bucket',
+      metadata: { name: 'Tax Reserve', targetAmount: 2000, currentAmount: 500, purpose: 'tax_reserve', scope: 'business', active: true },
+    },
   ], nowIso);
   const result = finance.FinanceCompute.computeFinancialContext(events, {
     baseCurrency: 'EUR',
@@ -128,6 +137,8 @@ test('read model preserves account, scope, category, and recurring schedule meta
   assert.equal(result.readModel.transactions[0].categoryId, 'studio');
   assert.equal(result.readModel.recurringExpenses[0].dueDay, 28);
   assert.equal(result.readModel.recurringExpenses[0].frequency, 'monthly');
+  assert.equal(result.readModel.reserveBuckets[0].name, 'Tax Reserve');
+  assert.equal(result.readModel.reserveBuckets[0].currentAmount, 500);
   assert.equal(result.snapshot.realBalance, 1200);
   assert.equal(result.snapshot.monthlyBurn, 300);
   assert.equal(result.snapshot.runwayMonths, 3);
@@ -859,6 +870,8 @@ test('debt payment plans affect monthly burn and are not double-counted when lin
   });
 
   assert.equal(result.readModel.debtAccounts[0].minimumPaymentMonthly, 200);
+  assert.equal(result.readModel.debtAccounts[0].estimatedPayoffMonths, 12);
+  assert.equal(result.readModel.debtAccounts[0].estimatedPayoffDate, '2027-06-03');
   assert.equal(result.readModel.recurringExpenses.find((entry) => entry.id === 'linked-debt-cost').monthlyAmount, 200);
   assert.equal(result.treasury.totalMonthlyBurn, 500);
   assert.equal(result.snapshot.monthlyBurn, 500);
