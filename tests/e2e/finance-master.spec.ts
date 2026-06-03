@@ -116,6 +116,9 @@ test('ledger filters and inline categorization work without a full-ledger modal'
   const errors = monitorConsole(page);
   await page.goto('/');
   await addExpense(page, 'Ledger page cleanup item', '24.50');
+  await expect.poll(() => page.evaluate(() => (
+    window.localStorage.getItem('finance-master.ledger.v1') || ''
+  ).includes('Ledger page cleanup item'))).toBe(true);
 
   await page.getByRole('button', { name: 'Transactions', exact: true }).click();
   await page.getByLabel('Search ledger').fill('Ledger page cleanup item');

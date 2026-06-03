@@ -15,6 +15,30 @@ function encode(value: unknown): string {
   return typeof value === 'string' ? value : JSON.stringify(value);
 }
 
+function readLocalStorage(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalStorage(key: string, value: unknown): void {
+  try {
+    window.localStorage.setItem(key, encode(value));
+  } catch {
+    // IndexedDB remains the primary durable repository when localStorage is unavailable.
+  }
+}
+
+function removeLocalStorage(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Storage can be unavailable in private or embedded contexts.
+  }
+}
+
 function requestValue<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -43,19 +67,15 @@ async function readDatabase(key: string): Promise<unknown> {
 }
 
 async function writeDatabase(key: string, value: unknown): Promise<void> {
-  if (!database) {
-    localStorage.setItem(key, encode(value));
-    return;
-  }
+  writeLocalStorage(key, value);
+  if (!database) return;
   const transaction = database.transaction(STATE_STORE, 'readwrite');
   await requestValue(transaction.objectStore(STATE_STORE).put(clone(value), key));
 }
 
 async function deleteDatabase(key: string): Promise<void> {
-  if (!database) {
-    localStorage.removeItem(key);
-    return;
-  }
+  removeLocalStorage(key);
+  if (!database) return;
   const transaction = database.transaction(STATE_STORE, 'readwrite');
   await requestValue(transaction.objectStore(STATE_STORE).delete(key));
 }
@@ -64,13 +84,15 @@ export async function initializeRepositories(keys: string[]): Promise<void> {
   database = await openDatabase();
   await Promise.all(keys.map(async (key) => {
     const stored = await readDatabase(key);
-    const legacy = localStorage.getItem(key);
+    const legacy = readLocalStorage(key);
     const selected = selectRepositoryValue(stored, legacy);
     if (selected.source === 'empty') return;
     memory.set(key, clone(selected.value));
-    if (selected.source !== 'localStorage') return;
+    if (selected.source === 'indexeddb') {
+      writeLocalStorage(key, selected.value);
+      return;
+    }
     await writeDatabase(key, selected.value);
-    if (database && selected.removeLegacy) localStorage.removeItem(key);
   }));
 }
 
