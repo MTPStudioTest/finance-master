@@ -240,6 +240,7 @@
                     expectedDateISO: toIsoDateOnly(metadata.expectedDateISO || metadata.expectedDate || event.timestamp),
                     destinationAccountId: String(metadata.destinationAccountId || '').trim(),
                     destinationAccountName: String(metadata.destinationAccountName || '').trim(),
+                    incomeType: String(metadata.incomeType || metadata.type || 'one_off'),
                     scope: String(metadata.scope || 'shared'),
                     scenarioInclusion: String(metadata.scenarioInclusion || 'realistic'),
                     currency: event.currency,
@@ -260,6 +261,7 @@
                         expectedDateISO: toIsoDateOnly(metadata.expectedDateISO || metadata.expectedDate || event.timestamp),
                         destinationAccountId: String(metadata.destinationAccountId || '').trim(),
                         destinationAccountName: String(metadata.destinationAccountName || '').trim(),
+                        incomeType: String(metadata.incomeType || metadata.type || 'one_off'),
                         scope: String(metadata.scope || 'shared'),
                         scenarioInclusion: String(metadata.scenarioInclusion || 'realistic'),
                         currency: event.currency,
@@ -284,6 +286,9 @@
                 if (Object.prototype.hasOwnProperty.call(metadata, 'destinationAccountName')) {
                     pipelineById[relatedId].destinationAccountName = String(metadata.destinationAccountName || '').trim();
                 }
+                if (metadata.incomeType || metadata.type) {
+                    pipelineById[relatedId].incomeType = String(metadata.incomeType || metadata.type);
+                }
                 pipelineById[relatedId].updatedAt = event.timestamp;
                 return;
             }
@@ -299,6 +304,7 @@
                         expectedDateISO: toIsoDateOnly(metadata.expectedDateISO || metadata.expectedDate || event.timestamp),
                         destinationAccountId: String(metadata.destinationAccountId || '').trim(),
                         destinationAccountName: String(metadata.destinationAccountName || '').trim(),
+                        incomeType: String(metadata.incomeType || metadata.type || 'one_off'),
                         scope: String(metadata.scope || 'shared'),
                         scenarioInclusion: String(metadata.scenarioInclusion || 'realistic'),
                         currency: event.currency,
@@ -323,6 +329,9 @@
                 if (Object.prototype.hasOwnProperty.call(metadata, 'destinationAccountName')) {
                     pipelineById[relatedId].destinationAccountName = String(metadata.destinationAccountName || '').trim();
                 }
+                if (metadata.incomeType || metadata.type) {
+                    pipelineById[relatedId].incomeType = String(metadata.incomeType || metadata.type);
+                }
                 pipelineById[relatedId].updatedAt = event.timestamp;
                 return;
             }
@@ -338,6 +347,7 @@
                         expectedDateISO: toIsoDateOnly(metadata.expectedDateISO || metadata.expectedDate || event.timestamp),
                         destinationAccountId: String(metadata.destinationAccountId || '').trim(),
                         destinationAccountName: String(metadata.destinationAccountName || '').trim(),
+                        incomeType: String(metadata.incomeType || metadata.type || 'one_off'),
                         scope: String(metadata.scope || 'shared'),
                         scenarioInclusion: String(metadata.scenarioInclusion || 'realistic'),
                         currency: event.currency,
@@ -358,6 +368,9 @@
                 }
                 if (Object.prototype.hasOwnProperty.call(metadata, 'destinationAccountName')) {
                     pipelineById[relatedId].destinationAccountName = String(metadata.destinationAccountName || '').trim();
+                }
+                if (metadata.incomeType || metadata.type) {
+                    pipelineById[relatedId].incomeType = String(metadata.incomeType || metadata.type);
                 }
                 pipelineById[relatedId].updatedAt = event.timestamp;
                 return;
@@ -463,6 +476,9 @@
                     notes: String(metadata.notes || ''),
                     obligationId: String(metadata.obligationId || '').trim(),
                     obligationTitle: String(metadata.obligationTitle || '').trim(),
+                    linkedIncomeId: String(metadata.linkedIncomeId || '').trim(),
+                    linkedReserveId: String(metadata.linkedReserveId || '').trim(),
+                    linkedDebtId: String(metadata.linkedDebtId || '').trim(),
                     reviewedAt: event.timestamp
                 };
                 return;
@@ -606,14 +622,22 @@
             var categoryId = review && review.categoryId ? review.categoryId : transaction.categoryId;
             var scope = review && review.scope ? review.scope : transaction.scope;
             var obligationId = transaction.obligationId || (review && review.obligationId) || (matched && matched.id) || '';
-            var linkedIncome = transaction.linkedIncomeId ? (pipelineById[String(transaction.linkedIncomeId)] || invoiceById[String(transaction.linkedIncomeId)] || null) : null;
+            var linkedIncomeId = review && Object.prototype.hasOwnProperty.call(review, 'linkedIncomeId') ? review.linkedIncomeId : transaction.linkedIncomeId;
+            var linkedReserveId = review && Object.prototype.hasOwnProperty.call(review, 'linkedReserveId') ? review.linkedReserveId : transaction.linkedReserveId;
+            var linkedDebtId = review && Object.prototype.hasOwnProperty.call(review, 'linkedDebtId') ? review.linkedDebtId : transaction.linkedDebtId;
+            var linkedIncome = linkedIncomeId ? (pipelineById[String(linkedIncomeId)] || invoiceById[String(linkedIncomeId)] || null) : null;
             var linkedObligation = obligationId ? (recurringById[String(obligationId).replace(/-\d{4}-\d{2}$/, '')] || matched || null) : null;
+            var linkedDebt = linkedDebtId ? debtById[String(linkedDebtId)] || null : null;
             return Object.assign({}, transaction, {
                 categoryId: categoryId,
                 scope: scope,
                 obligationId: obligationId,
+                linkedIncomeId: linkedIncomeId || '',
+                linkedReserveId: linkedReserveId || '',
+                linkedDebtId: linkedDebtId || '',
                 obligationTitle: transaction.obligationTitle || (review && review.obligationTitle) || (matched && matched.title) || '',
                 linkedIncomeTitle: linkedIncome ? String(linkedIncome.title || linkedIncome.client || 'Linked income') : '',
+                linkedDebtTitle: linkedDebt ? String(linkedDebt.name || 'Linked debt') : '',
                 linkedObligationTitle: linkedObligation ? String(linkedObligation.title || linkedObligation.category || 'Linked obligation') : '',
                 reviewStatus: review && review.reviewStatus ? review.reviewStatus : (String(categoryId || '').toLowerCase() === 'uncategorized' ? 'needs_review' : (obligationId ? 'reviewed' : transaction.reviewStatus)),
                 reviewNotes: review && review.notes ? review.notes : transaction.reviewNotes

@@ -46,6 +46,21 @@ let csvAppliedProfileName = '';
 let pendingBackup: unknown = null;
 let backupPreview: FinanceBackupPreview | null = null;
 let modalReturnFocus: HTMLElement | null = null;
+const INCOME_STATUSES = ['lead', 'proposal', 'expected', 'confirmed', 'invoiced', 'due', 'overdue', 'risky', 'paid', 'cancelled', 'lost'];
+const INCOME_PROBABILITY_DEFAULTS: Record<string, number> = {
+  paid: 1,
+  invoiced: 0.95,
+  due: 0.95,
+  overdue: 0.85,
+  confirmed: 0.9,
+  retainer: 0.9,
+  expected: 0.6,
+  proposal: 0.4,
+  risky: 0.35,
+  lead: 0.15,
+  cancelled: 0,
+  lost: 0,
+};
 type DestructiveConfirmationAction =
   | 'resetLocalFinanceData'
   | 'restoreBackup'
@@ -626,17 +641,20 @@ function accountOptions(selected = '', allowEmpty = true): string {
 
 function renderIncome(id = ''): string {
   const item = (Store.getFinancialReadModel().pipelineDeals || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
+  const status = String(item?.status || 'expected').toLowerCase();
+  const probability = item?.probability ?? INCOME_PROBABILITY_DEFAULTS[status] ?? 0.6;
   return `
     <div class="modal-form">
       <h2 id="modal-title">${item ? 'Edit income' : 'Add income'}</h2>
-      <p class="modal-copy">Use status to separate reality from hope: confirmed, expected, or risky.</p>
+      <p class="modal-copy">Use status to separate real, expected, overdue, and uncertain income.</p>
       <input id="modal-income-id" type="hidden" value="${escapeHtml(item?.id || '')}" />
       <div class="form-group"><label for="modal-income-title">Source</label><input id="modal-income-title" value="${escapeHtml(item?.title || '')}" placeholder="Client or opportunity" /></div>
       <div class="modal-grid-two">
         <div class="form-group"><label for="modal-income-amount">Amount</label><input id="modal-income-amount" type="number" step="0.01" value="${escapeHtml(item?.value || '')}" /></div>
-        <div class="form-group"><label for="modal-income-probability">Probability</label><input id="modal-income-probability" type="number" min="0" max="1" step="0.05" value="${escapeHtml(item?.probability ?? 0.65)}" /></div>
+        <div class="form-group"><label for="modal-income-probability">Probability</label><input id="modal-income-probability" type="number" min="0" max="1" step="0.05" value="${escapeHtml(probability)}" /></div>
         <div class="form-group"><label for="modal-income-date">Expected date</label><input id="modal-income-date" type="date" value="${escapeHtml(item?.expectedDateISO || today())}" /></div>
-        <div class="form-group"><label for="modal-income-status">Status</label><select id="modal-income-status">${['confirmed', 'expected', 'risky'].map((status) => `<option${item?.status === status ? ' selected' : ''}>${status}</option>`).join('')}</select></div>
+        <div class="form-group"><label for="modal-income-status">Status</label><select id="modal-income-status">${INCOME_STATUSES.map((entry) => `<option value="${entry}"${status === entry ? ' selected' : ''}>${entry}</option>`).join('')}</select></div>
+        <div class="form-group"><label for="modal-income-type">Income type</label><select id="modal-income-type">${['one_off', 'retainer', 'recurring'].map((entry) => `<option value="${entry}"${String(item?.incomeType || 'one_off') === entry ? ' selected' : ''}>${entry.replace('_', ' ')}</option>`).join('')}</select></div>
         <div class="form-group"><label for="modal-income-scenario">Scenario Inclusion</label><select id="modal-income-scenario">${['realistic', 'conservative', 'optimistic', 'all'].map((scenario) => `<option${(item?.scenarioInclusion || 'realistic') === scenario ? ' selected' : ''}>${scenario}</option>`).join('')}</select></div>
         <div class="form-group"><label for="modal-income-scope">Scope</label><select id="modal-income-scope">${scopeOptions(String(item?.scope || 'business'))}</select></div>
       </div>
@@ -956,14 +974,34 @@ function paymentMatchSuggestions(transaction: Record<string, unknown> | null | u
 function renderTransactionReview(id = ''): string {
   const transaction = findTransaction(id);
   const suggestions = transactionCategorySuggestions(transaction);
+  const currentIncomeId = String(transaction?.linkedIncomeId || '');
+  const incomeItems = (Store.getFinancialReadModel().pipelineDeals || [])
+    .filter((entry: Record<string, unknown>) => String(entry.id || '') === currentIncomeId || !['paid', 'cancelled', 'lost', 'deleted'].includes(String(entry.status || '').toLowerCase()));
+  const reserveBuckets = Store.getFinancialReadModel().reserveBuckets || [];
+  const debtAccounts = Store.getFinancialReadModel().debtAccounts || [];
   return `
     <div class="modal-form">
-      <h2 id="modal-title">Categorize transaction</h2>
+      <h2 id="modal-title">Review transaction</h2>
       <p class="modal-copy">${escapeHtml(transaction?.description || 'Transaction')} · ${money(transaction?.amount)} · ${formatDate(transaction?.timestamp)}</p>
+      <p class="modal-copy">Linking is applied only when this review is saved. Choose "No linked ..." to unlink evidence.</p>
       <input id="modal-review-transaction-id" type="hidden" value="${escapeHtml(id)}" />
       <div class="modal-grid-two">
         <div class="form-group"><label for="modal-review-transaction-category">Category</label><input id="modal-review-transaction-category" value="${escapeHtml(transaction?.categoryId === 'uncategorized' ? '' : transaction?.categoryId || '')}" placeholder="software, tax, client-income" /></div>
         <div class="form-group"><label for="modal-review-transaction-scope">Scope</label><select id="modal-review-transaction-scope">${scopeOptions(String(transaction?.scope || 'business'))}</select></div>
+      </div>
+      <div class="modal-grid-two">
+        <div class="form-group"><label for="modal-review-linked-income">Linked income</label><select id="modal-review-linked-income">
+          <option value="">No linked income</option>
+          ${incomeItems.map((entry: Record<string, unknown>) => `<option value="${escapeHtml(entry.id)}"${String(transaction?.linkedIncomeId || '') === String(entry.id) ? ' selected' : ''}>${escapeHtml(entry.title || 'Expected income')} · ${money(entry.value)}</option>`).join('')}
+        </select></div>
+        <div class="form-group"><label for="modal-review-linked-reserve">Linked reserve</label><select id="modal-review-linked-reserve">
+          <option value="">No linked reserve</option>
+          ${reserveBuckets.map((entry: Record<string, unknown>) => `<option value="${escapeHtml(entry.id)}"${String(transaction?.linkedReserveId || '') === String(entry.id) ? ' selected' : ''}>${escapeHtml(entry.name || 'Reserve bucket')}</option>`).join('')}
+        </select></div>
+        <div class="form-group"><label for="modal-review-linked-debt">Linked debt</label><select id="modal-review-linked-debt">
+          <option value="">No linked debt</option>
+          ${debtAccounts.map((entry: Record<string, unknown>) => `<option value="${escapeHtml(entry.id)}"${String(transaction?.linkedDebtId || '') === String(entry.id) ? ' selected' : ''}>${escapeHtml(entry.name || 'Debt item')} · ${money(entry.outstanding)}</option>`).join('')}
+        </select></div>
       </div>
       ${suggestions.length ? `
         <div class="csv-validation-list">
@@ -1013,7 +1051,7 @@ function renderPipelineReview(id = ''): string {
       <p class="modal-copy">${escapeHtml(item?.title || 'Pipeline item')} · ${money(item?.value)}</p>
       <input id="modal-pipeline-review-id" type="hidden" value="${escapeHtml(id)}" />
       <div class="modal-grid-two">
-        <div class="form-group"><label for="modal-pipeline-review-status">Status</label><select id="modal-pipeline-review-status">${['confirmed', 'expected', 'risky'].map((entry) => `<option value="${entry}"${status === entry ? ' selected' : ''}>${entry}</option>`).join('')}</select></div>
+        <div class="form-group"><label for="modal-pipeline-review-status">Status</label><select id="modal-pipeline-review-status">${INCOME_STATUSES.map((entry) => `<option value="${entry}"${status === entry ? ' selected' : ''}>${entry}</option>`).join('')}</select></div>
         <div class="form-group"><label for="modal-pipeline-review-probability">Probability</label><input id="modal-pipeline-review-probability" type="number" min="0" max="1" step="0.05" value="${escapeHtml(item?.probability ?? 0.65)}" /></div>
         <div class="form-group"><label for="modal-pipeline-review-date">Expected date</label><input id="modal-pipeline-review-date" type="date" value="${escapeHtml(item?.expectedDateISO || today())}" /></div>
         <div class="form-group"><label for="modal-pipeline-review-account">Settlement account</label><select id="modal-pipeline-review-account">${accountOptions(String(item?.destinationAccountId || ''))}</select></div>
@@ -1257,6 +1295,7 @@ function saveFinanceModal(type: string): void {
         status: value('modal-income-status'),
         stage: value('modal-income-status'),
         scenarioInclusion: value('modal-income-scenario') || 'realistic',
+        incomeType: value('modal-income-type') || 'one_off',
         expectedDateISO: value('modal-income-date'),
         destinationAccountId: value('modal-income-account'),
         scope: value('modal-income-scope'),
@@ -1425,6 +1464,9 @@ function saveFinanceModal(type: string): void {
         categoryId: value('modal-review-transaction-category'),
         scope: value('modal-review-transaction-scope') as FinanceScope,
         notes: value('modal-review-transaction-notes'),
+        linkedIncomeId: value('modal-review-linked-income'),
+        linkedReserveId: value('modal-review-linked-reserve'),
+        linkedDebtId: value('modal-review-linked-debt'),
       });
       closeModal();
     } catch (error) {

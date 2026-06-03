@@ -10,6 +10,7 @@ import {
     scopeFilterOptions
 } from './finance-ui.js';
 import { buildMonthCloseSummary } from '../finance/month-close.js';
+import { buildFinanceForecast } from '../finance/forecast.js';
 
 /**
  * FinancialMode — UI Controller for Dashi "Financial Mode (Gravity Treasury)"
@@ -26,6 +27,7 @@ window.FinancialMode = (function () {
     let currentReview = null;
     let currentTreasury = null;
     let currentExplanations = {};
+    let currentForecast = null;
     let currentHasFinanceData = false;
     let labState = { marketMajors: 0, burnDelta: 0, probFloor: 50 };
     let adviceExpanded = false;
@@ -669,6 +671,12 @@ window.FinancialMode = (function () {
         currentExplanations = context.explanations || {};
         currentDiagnostics = context.diagnostics || {};
         currentReview = window.Store.getReviewState();
+        currentForecast = buildFinanceForecast({
+            readModel: currentData || {},
+            snapshot: currentSnapshot || {},
+            treasury: currentTreasury || {},
+            nowIso: new Date().toISOString(),
+        });
         currentHasFinanceData = Number(currentData && currentData.eventsCount) > 0;
         currentMetrics = window.FinancialEngine.compute({
             financeSnapshot: currentSnapshot,
@@ -1126,6 +1134,7 @@ window.FinancialMode = (function () {
         const duplicates = Number(batch.duplicateCount || 0);
         const duplicateImported = Number(batch.duplicateImportedCount || 0);
         const rejected = Number(batch.rejectedCount || 0);
+        const activeRows = safeArray(currentData && currentData.transactions).filter((entry) => String(entry && entry.importBatchId || '') === String(batch.id || '')).length;
         const policy = batch.duplicatePolicy === 'import' ? 'duplicates imported' : 'duplicates skipped';
         const totals = `${formatCurrency(Number(batch.incomeTotal || 0))} in · ${formatCurrency(Number(batch.expenseTotal || 0))} out`;
         const dateRange = batch.dateFrom && batch.dateTo
@@ -1135,6 +1144,7 @@ window.FinancialMode = (function () {
             ['CSV batch', `${imported} imported · ${duplicates} duplicate${duplicates === 1 ? '' : 's'} (${policy}) · ${rejected} rejected`],
             ['Batch totals', totals],
             ['Batch range', dateRange],
+            ['Undo state', activeRows > 0 ? `${activeRows} active record${activeRows === 1 ? '' : 's'}` : 'Undo applied'],
             ['Duplicates included', duplicateImported ? String(duplicateImported) : '']
         ];
     }
@@ -1164,6 +1174,7 @@ window.FinancialMode = (function () {
             ['Fingerprint', entry.fingerprint || ''],
             ['Linked income', entry.linkedIncomeTitle || entry.linkedIncomeId || ''],
             ['Linked obligation', entry.linkedObligationTitle || entry.obligationTitle || entry.obligationId || ''],
+            ['Linked debt', entry.linkedDebtTitle || entry.linkedDebtId || ''],
             ['Reserve movement', reserveMovement],
             ['Payment link', entry.obligationId ? 'Matched to obligation' : ''],
             ['Reversal', entry.reversalOf ? `Reversal of ${entry.reversalOf}` : (entry.reversedBy ? `Reversed by ${entry.reversedBy}` : '')],
@@ -1326,6 +1337,7 @@ window.FinancialMode = (function () {
             snapshot: currentSnapshot || {},
             treasury: currentTreasury || {},
             reviewQueue: treasuryArray('reviewQueue'),
+            forecast: currentForecast,
             nowIso: new Date().toISOString(),
         });
         const runwayLabel = Number.isFinite(Number(summary.runwayNow)) ? `${Number(summary.runwayNow).toFixed(1)} months` : 'Unknown';
@@ -1341,6 +1353,7 @@ window.FinancialMode = (function () {
                     <div><span>Runway now</span><strong>${escapeHtml(runwayLabel)}</strong></div>
                     <div><span>Unresolved items</span><strong>${summary.unresolvedItems}</strong></div>
                     <div><span>Reserve / burn check</span><strong>${formatCurrency(summary.protectedCash)} protected · ${formatCurrency(summary.monthlyBurn)}/mo burn</strong></div>
+                    <div><span>30-day forecast</span><strong>${summary.forecastExpectedCash == null ? 'Unknown' : formatCurrency(summary.forecastExpectedCash)}</strong></div>
                 </div>
                 <div class="fin-helper-text">${escapeHtml(summary.mainRisk)} ${escapeHtml(summary.mainAction)}</div>
             </div>
@@ -1356,11 +1369,12 @@ window.FinancialMode = (function () {
                     const summary = entry.summary || {};
                     const runway = Number(summary.runwayNow);
                     const runwayLabel = Number.isFinite(runway) ? `${runway.toFixed(1)} months` : 'Unknown';
+                    const forecastLabel = summary.forecastExpectedCash == null ? '' : ` · 30-day ${formatCurrency(summary.forecastExpectedCash)}`;
                     return `
                         <div class="fin-review-check-row is-ready">
                             <span>
                                 <strong>${escapeHtml(entry.monthKey || 'Closed month')}</strong>
-                                <small>Closed ${formatShortDate(entry.closedAt)} · ${escapeHtml(summary.mainRisk || 'No major close risk detected.')}</small>
+                                <small>Closed ${formatShortDate(entry.closedAt)}${escapeHtml(forecastLabel)} · ${escapeHtml(summary.mainRisk || 'No major close risk detected.')}</small>
                                 <small>${escapeHtml(summary.mainAction || 'Keep next month reviewed on the same cadence.')}</small>
                             </span>
                             <span class="fin-status-pill">${summary.unresolvedItems || 0} open · ${escapeHtml(runwayLabel)}</span>
@@ -1523,12 +1537,14 @@ window.FinancialMode = (function () {
                         ? (batch.dateFrom === batch.dateTo ? batch.dateFrom : `${batch.dateFrom} to ${batch.dateTo}`)
                         : 'date range unknown';
                     const totalLine = `${formatCurrency(Number(batch.incomeTotal || 0))} in · ${formatCurrency(Number(batch.expenseTotal || 0))} out`;
+                    const activeRows = safeArray(currentData && currentData.transactions).filter((entry) => String(entry && entry.importBatchId || '') === String(batch.id)).length;
                     return `
                         <div class="fin-import-profile-row">
                             <div class="fin-import-profile-main">
                                 <strong>${index === 0 ? 'Latest CSV batch' : 'CSV batch'}</strong>
                                 <small>${escapeHtml(batch.sourceFile || 'CSV import')} · ${imported} imported · ${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'} (${policy}) · ${rejected} rejected</small>
-                                <small>${escapeHtml(dateRange)} · ${totalLine}${duplicateImported ? ` · ${duplicateImported} duplicate${duplicateImported === 1 ? '' : 's'} included` : ''}</small>
+                                <small>${escapeHtml(dateRange)} · ${totalLine}${duplicateImported ? ` · ${duplicateImported} duplicate${duplicateImported === 1 ? '' : 's'} included` : ''} · ${activeRows ? `${activeRows} active` : 'undo applied'}</small>
+                                <small>Batch ID ${escapeHtml(batch.id)}</small>
                             </div>
                             <div class="fin-ledger-actions">
                                 <button class="fin-mini-btn" type="button" data-action="undoImportBatch" data-action-args="'${escapeActionArg(batch.id)}'">Undo</button>
@@ -1963,11 +1979,17 @@ window.FinancialMode = (function () {
         const probability = Number(deal && deal.probability);
         const due = window.FinanceDates?.toDateOnly?.(deal && deal.expectedDateISO) || String(deal && deal.expectedDateISO || '').slice(0, 10);
         const today = window.FinanceDates?.todayDateOnly?.() || new Date().toISOString().slice(0, 10);
+        const daysUntilDue = due ? Math.ceil(((Date.parse(`${due}T12:00:00.000Z`) || 0) - (Date.parse(`${today}T12:00:00.000Z`) || 0)) / 86400000) : null;
         if (status === 'paid' || status === 'received') return 'paid';
+        if (status === 'cancelled' || status === 'lost') return status;
         if (due && due < today) return 'overdue';
+        if (status === 'overdue') return 'overdue';
+        if (status === 'due' || (Number.isFinite(daysUntilDue) && daysUntilDue <= 7)) return 'due';
+        if (status === 'invoiced') return 'invoiced';
         if (status === 'confirmed' || probability >= 0.8) return 'confirmed';
+        if (status === 'proposal' || status === 'lead') return status;
         if (status === 'risky' || probability < 0.5) return 'uncertain';
-        return 'likely';
+        return status === 'expected' ? 'expected' : 'likely';
     }
 
     function renderInvoicesSection() {
@@ -1980,6 +2002,7 @@ window.FinancialMode = (function () {
                 probability: Number(deal && deal.probability) || 0,
                 expectedDateISO: deal && deal.expectedDateISO,
                 settlementAccount: String(deal && deal.destinationAccountName || deal && deal.destinationAccountId || ''),
+                incomeType: String(deal && deal.incomeType || 'one_off'),
                 status: invoiceStatusFromDeal(deal)
             }));
         const paid = safeArray(currentData && currentData.invoices)
@@ -1992,6 +2015,7 @@ window.FinancialMode = (function () {
                 probability: 1,
                 expectedDateISO: entry && (entry.paidAt || entry.sentAt),
                 settlementAccount: String(entry && entry.destinationAccountName || ''),
+                incomeType: 'one_off',
                 status: 'paid'
             }));
         
@@ -2020,9 +2044,9 @@ window.FinancialMode = (function () {
                         <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'income'">Add expected income</button>
                     </div>
                     <div class="fin-status-grid">
-                        <div class="fin-status-card">${renderStatusPill('confirmed')}<strong>${formatCurrency(totals.confirmed || 0)}</strong><span>Signed or high-confidence income</span></div>
-                        <div class="fin-status-card">${renderStatusPill('likely')}<strong>${formatCurrency(totals.likely || 0)}</strong><span>Expected but not guaranteed</span></div>
-                        <div class="fin-status-card">${renderStatusPill('uncertain')}<strong>${formatCurrency(totals.uncertain || 0)}</strong><span>Lower-confidence assumptions</span></div>
+                        <div class="fin-status-card">${renderStatusPill('confirmed')}<strong>${formatCurrency((totals.confirmed || 0) + (totals.invoiced || 0) + (totals.due || 0))}</strong><span>Confirmed, invoiced, or due soon</span></div>
+                        <div class="fin-status-card">${renderStatusPill('expected')}<strong>${formatCurrency((totals.expected || 0) + (totals.likely || 0))}</strong><span>Expected but not guaranteed</span></div>
+                        <div class="fin-status-card">${renderStatusPill('proposal')}<strong>${formatCurrency((totals.proposal || 0) + (totals.lead || 0) + (totals.uncertain || 0))}</strong><span>Early or lower-confidence assumptions</span></div>
                         <div class="fin-status-card">${renderStatusPill('overdue')}<strong>${formatCurrency(totals.overdue || 0)}</strong><span>Follow-up candidates</span></div>
                     </div>
                     
@@ -2039,7 +2063,7 @@ window.FinancialMode = (function () {
                                 <tbody>
                                     ${displayRows.map((row) => `
                                         <tr>
-                                            <td>${escapeHtml(row.title)}${row.settlementAccount ? `<small>${escapeHtml(row.settlementAccount)}</small>` : ''}</td>
+                                            <td>${escapeHtml(row.title)}<small>${escapeHtml([row.incomeType === 'retainer' ? 'retainer' : row.incomeType === 'recurring' ? 'recurring' : '', row.settlementAccount].filter(Boolean).join(' · '))}</small></td>
                                             <td>${renderStatusPill(row.status)}</td>
                                             <td>${row.expectedDateISO ? formatShortDate(row.expectedDateISO) : 'No date'}</td>
                                             <td>${Math.round(row.probability * 100)}%</td>
@@ -2212,9 +2236,11 @@ window.FinancialMode = (function () {
     }
 
     function overviewExpectedMonthEnd() {
-        const scenarios = currentTreasury?.incomeScenarios || {};
-        const value = Number(scenarios.expected);
+        const value = Number(currentForecast && currentForecast.byHorizon && currentForecast.byHorizon['30'] && currentForecast.byHorizon['30'].expected);
         if (Number.isFinite(value)) return value;
+        const scenarios = currentTreasury?.incomeScenarios || {};
+        const scenarioValue = Number(scenarios.expected);
+        if (Number.isFinite(scenarioValue)) return scenarioValue;
         const projected = Number(currentSnapshot?.projectedBalance);
         return Number.isFinite(projected) ? projected : treasuryNumber('availableCash', 0);
     }
@@ -2376,6 +2402,7 @@ window.FinancialMode = (function () {
         const availableCash = treasuryNumber('availableCash', Number.isFinite(snapshotAvailableCash) ? snapshotAvailableCash : treasuryNumber('trulyAvailableCash', totalCash - reservedCash));
         const monthlyBurn = treasuryNumber('totalMonthlyBurn', Number(currentSnapshot?.monthlyBurn) || 0);
         const expectedMonthEnd = overviewExpectedMonthEnd();
+        const forecastWarning = safeArray(currentForecast && currentForecast.warnings)[0] || '';
         const runway = overviewRunwayValue();
         const runwayLabel = runway == null ? '—' : `${Number(runway).toFixed(1)}`;
         const runwayStatus = overviewRunwayStatus(runway);
@@ -2460,7 +2487,7 @@ window.FinancialMode = (function () {
                     <div class="fin-money-note-icon">${renderSAGGlyph('attention', { size: 'sm', tone: 'muted' })}</div>
                     <div>
                         <strong>This view is based on confirmed data and your current settings.</strong>
-                        <span>Review items in Cash Movement to keep your numbers accurate.</span>
+                        <span>${escapeHtml(forecastWarning || 'Review items in Cash Movement to keep your numbers accurate.')}</span>
                     </div>
                     <button class="fin-mini-btn fin-mini-btn--primary" type="button" data-action="FinancialMode.setSection" data-action-args="'ledger'">Open Cash Movement</button>
                 </div>
@@ -2868,29 +2895,31 @@ window.FinancialMode = (function () {
     }
 
     function renderScenarioOutcomes() {
-        const scenarios = currentTreasury && currentTreasury.incomeScenarios || {};
+        const forecast = currentForecast || buildFinanceForecast({
+            readModel: currentData || {},
+            snapshot: currentSnapshot || {},
+            treasury: currentTreasury || {},
+            nowIso: new Date().toISOString(),
+        });
+        const horizons = [7, 30, 90, 180]
+            .map((days) => forecast.byHorizon && forecast.byHorizon[String(days)])
+            .filter(Boolean);
         return `
             <section class="fin-section">
                 <div class="widget ui-card glass fin-card">
-                    <div class="widget-title ui-title">Scenarios</div>
-                    <div class="fin-helper-text">Three readable forecasts for the current horizon: conservative, realistic, and optimistic.</div>
+                    <div class="widget-title ui-title">Forecast Scenarios</div>
+                    <div class="fin-helper-text">Conservative, expected, and optimistic cash paths using current obligations, payment plans, reserves, and expected income.</div>
                     <div class="fin-status-grid">
-                        <div class="fin-status-card">
-                            <span class="fin-muted">Conservative</span>
-                            <strong>${formatCurrency(scenarios.conservative)}</strong>
-                            <span>Confirmed income only</span>
-                        </div>
-                        <div class="fin-status-card">
-                            <span class="fin-muted">Realistic</span>
-                            <strong>${formatCurrency(scenarios.expected)}</strong>
-                            <span>Confirmed + expected</span>
-                        </div>
-                        <div class="fin-status-card">
-                            <span class="fin-muted">Optimistic</span>
-                            <strong>${formatCurrency(scenarios.optimistic)}</strong>
-                            <span>Confirmed + expected + risky</span>
-                        </div>
+                        ${horizons.map((entry) => `
+                            <div class="fin-status-card">
+                                <span class="fin-muted">${entry.days} days</span>
+                                <strong>${formatCurrency(entry.expected)}</strong>
+                                <span>${formatCurrency(entry.conservative)} conservative · ${formatCurrency(entry.optimistic)} optimistic</span>
+                                <small>${formatCurrency(entry.components.recurringObligations)} obligations · ${formatCurrency(entry.components.expectedIncome)} expected income</small>
+                            </div>
+                        `).join('')}
                     </div>
+                    ${safeArray(forecast.warnings).length ? `<div class="fin-helper-text">${escapeHtml(forecast.warnings[0])}</div>` : ''}
                 </div>
             </section>
         `;

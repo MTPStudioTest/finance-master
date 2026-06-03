@@ -131,6 +131,9 @@ declare global {
       categoryId: string;
       scope?: FinanceScope;
       notes?: string;
+      linkedIncomeId?: string;
+      linkedReserveId?: string;
+      linkedDebtId?: string;
     }): FinanceEvent[];
     matchTransactionToObligation(input: {
       transactionId: string;

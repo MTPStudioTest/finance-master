@@ -187,6 +187,33 @@ test('read model derives transaction evidence from existing metadata and links',
       },
     },
     {
+      id: 'tax-reserve',
+      type: 'asset.reserve_set',
+      amount: 600,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'tax-reserve',
+      metadata: { name: 'Tax reserve', targetAmount: 600, currentAmount: 300, scope: 'business' },
+    },
+    {
+      id: 'credit-line',
+      type: 'debt.added',
+      amount: 2000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'credit-line',
+      metadata: { name: 'Credit line', scope: 'business', minimumPayment: 100 },
+    },
+    {
+      id: 'settlement-reviewed',
+      type: 'transaction.reviewed',
+      amount: 1200,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:04:00.000Z',
+      related_entity_id: 'settlement-event',
+      metadata: { categoryId: 'client-income', scope: 'business', linkedIncomeId: 'retainer-income', linkedReserveId: 'tax-reserve', linkedDebtId: 'credit-line', reviewStatus: 'reviewed' },
+    },
+    {
       id: 'rent-recurring',
       type: 'expense.recurring_set',
       amount: 300,
@@ -235,7 +262,11 @@ test('read model derives transaction evidence from existing metadata and links',
 
   assert.equal(income.sourceFile, 'bank.csv');
   assert.equal(income.importBatchId, 'import-june');
+  assert.equal(income.linkedIncomeId, 'retainer-income');
+  assert.equal(income.linkedReserveId, 'tax-reserve');
+  assert.equal(income.linkedDebtId, 'credit-line');
   assert.equal(income.linkedIncomeTitle, 'June retainer');
+  assert.equal(income.linkedDebtTitle, 'Credit line');
   assert.equal(income.fingerprint, '2026-06-03|june retainer paid|1200.00');
   assert.equal(rent.linkedObligationTitle, 'Studio rent');
   assert.equal(rent.reviewStatus, 'reviewed');

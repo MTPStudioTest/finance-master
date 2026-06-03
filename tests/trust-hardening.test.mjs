@@ -28,6 +28,7 @@ import {
   normalizeReviewState,
 } from '../src/finance/goals.js';
 import { buildMonthCloseSummary } from '../src/finance/month-close.js';
+import { buildFinanceForecast } from '../src/finance/forecast.js';
 
 function validBackup() {
   return {
@@ -361,6 +362,16 @@ test('weekly review normalization keeps legacy reads useful and marks stale revi
 });
 
 test('month close summary is deterministic and uses existing ledger evidence', () => {
+  const forecast = buildFinanceForecast({
+    nowIso: '2026-06-15T10:00:00.000Z',
+    readModel: {
+      pipelineDeals: [{ id: 'income-1', title: 'June close income', value: 1000, status: 'confirmed', probability: 0.9, expectedDateISO: '2026-06-20' }],
+      reserveBuckets: [{ id: 'tax', targetAmount: 500, currentAmount: 300 }],
+      debtAccounts: [{ id: 'card', minimumPaymentMonthly: 100 }],
+    },
+    snapshot: { monthlyBurn: 900, availableCash: 2000, confidenceScore: 0.8 },
+    treasury: { availableCash: 2000, totalMonthlyBurn: 900 },
+  });
   const summary = buildMonthCloseSummary({
     nowIso: '2026-06-15T10:00:00.000Z',
     readModel: {
@@ -375,6 +386,7 @@ test('month close summary is deterministic and uses existing ledger evidence', (
     snapshot: { runwayMonths: 2.5, monthlyBurn: 900 },
     treasury: { protectedCash: 400 },
     reviewQueue: [{ id: 'unclear' }],
+    forecast,
   });
   assert.equal(summary.monthKey, '2026-06');
   assert.equal(summary.netMovement, 1250);
@@ -384,5 +396,34 @@ test('month close summary is deterministic and uses existing ledger evidence', (
   assert.equal(summary.reserveMovements, 1);
   assert.equal(summary.runwayNow, 2.5);
   assert.equal(summary.unresolvedItems, 1);
+  assert.equal(summary.forecastHorizonDays, 30);
+  assert.equal(summary.forecastExpectedCash, 2000);
+  assert.equal(summary.forecastLowestCash, -2500);
+  assert.match(summary.forecastWarning, /Expected forecast/);
+  assert.equal(forecast.warnings.some((warning) => warning.includes('Reserve targets')), true);
   assert.match(summary.mainRisk, /Open items/);
+});
+
+test('finance forecast builds deterministic horizon scenarios from canonical inputs', () => {
+  const forecast = buildFinanceForecast({
+    nowIso: '2026-06-01T10:00:00.000Z',
+    readModel: {
+      pipelineDeals: [
+        { id: 'confirmed', title: 'Confirmed work', value: 1000, status: 'confirmed', probability: 0.9, expectedDateISO: '2026-06-05' },
+        { id: 'proposal', title: 'Proposal', value: 2000, status: 'proposal', probability: 0.4, expectedDateISO: '2026-07-01' },
+        { id: 'lost', title: 'Lost', value: 9999, status: 'lost', probability: 1, expectedDateISO: '2026-06-05' },
+      ],
+      reserveBuckets: [{ id: 'tax', targetAmount: 1000, currentAmount: 250 }],
+      debtAccounts: [{ id: 'card', minimumPaymentMonthly: 150 }],
+    },
+    snapshot: { availableCash: 3000, monthlyBurn: 1200, confidenceScore: 0.5 },
+    treasury: { availableCash: 3000, totalMonthlyBurn: 1200 },
+    horizons: [7, 30],
+  });
+  assert.equal(forecast.byHorizon['7'].conservative, 3620);
+  assert.equal(forecast.byHorizon['7'].expected, 3620);
+  assert.equal(forecast.byHorizon['30'].expected, 3500);
+  assert.equal(forecast.byHorizon['30'].components.debtPaymentPlans, 150);
+  assert.equal(forecast.byHorizon['30'].components.reserveTargetGap, 750);
+  assert.equal(forecast.warnings.some((warning) => warning.includes('Forecast confidence is low')), true);
 });

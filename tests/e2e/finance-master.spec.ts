@@ -334,7 +334,7 @@ test('ledger filters and inline categorization work without a full-ledger modal'
   await page.getByRole('button', { name: 'Review', exact: true }).click();
   const row = page.locator('.fin-transaction-row--review').filter({ hasText: 'Software cleanup item' });
   await row.getByRole('button', { name: 'Edit transaction review', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Categorize transaction', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Review transaction', exact: true })).toBeVisible();
   await expect(page.getByText('Suggested categories', { exact: true })).toBeVisible();
   await page.locator('#modal-body').getByRole('button', { name: 'software', exact: true }).click();
   await expect(page.locator('#modal-body').getByLabel('Category', { exact: true })).toHaveValue('software');
@@ -406,6 +406,22 @@ test('ledger inspector suggests expected income matches without applying them au
     window.Store.getFinancialReadModel().transactions
       .find((entry: any) => String(entry.description) === 'Acme launch income' && String(entry.type) === 'income.received')?.linkedIncomeId || ''
   ))).toBe('');
+  const incomeId = await page.evaluate(() => (
+    window.Store.getFinancialReadModel().pipelineDeals
+      .find((entry: any) => String(entry.title) === 'Acme launch income')?.id || ''
+  ));
+  expect(incomeId).toBeTruthy();
+  await inspector.getByRole('button', { name: 'Edit transaction review', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Review transaction', exact: true })).toBeVisible();
+  await page.locator('#modal-review-linked-income').selectOption(incomeId);
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const model = window.Store.getFinancialReadModel();
+    const transaction = model.transactions
+      .find((entry: any) => String(entry.description) === 'Acme launch income' && String(entry.type) === 'income.received');
+    const income = model.pipelineDeals.find((entry: any) => String(entry.title) === 'Acme launch income');
+    return `${transaction?.linkedIncomeId || ''}|${income?.status || ''}`;
+  })).toBe(`${incomeId}|paid`);
   expect(errors).toEqual([]);
 });
 
@@ -481,9 +497,9 @@ test('income exposes open, settled, and all income views', async ({ page }) => {
   await page.getByRole('button', { name: 'Cashflow', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Cashflow', exact: true })).toBeVisible();
   await expect(page.getByText('Expected and settled income records.', { exact: false })).toBeVisible();
-  await expect(page.getByText('Confirmed', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Likely', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Uncertain', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Confirmed, invoiced, or due soon', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Expected but not guaranteed', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Early or lower-confidence assumptions', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Settled', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Settled', exact: true })).toHaveClass(/active/);
   await page.getByRole('button', { name: 'All', exact: true }).click();
@@ -701,7 +717,7 @@ test('review queue actions categorize, match, update pipeline, and add debt plan
 
   const categorizeRow = page.locator('.fin-review-row').filter({ hasText: 'Review uncategorized' });
   await categorizeRow.getByRole('button', { name: 'Edit transaction review', exact: true }).first().click();
-  await expect(page.getByRole('heading', { name: 'Categorize transaction', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Review transaction', exact: true })).toBeVisible();
   await page.getByLabel('Category').fill('');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Choose a transaction category');

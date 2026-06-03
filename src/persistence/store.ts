@@ -39,6 +39,7 @@ import { createPriceProvider } from '../integrations/crypto-prices';
 import { assertFinanceBackup, validateFinanceBackup } from './backup-validation.js';
 import { calculateGoalProgress, normalizeGoalState, normalizeReviewState } from '../finance/goals.js';
 import { buildMonthCloseSummary } from '../finance/month-close.js';
+import { buildFinanceForecast } from '../finance/forecast.js';
 import type { BrowserStorageStatus } from './data-health.js';
 import type { FinanceMigrationStatus } from './schema-migration.js';
 
@@ -837,6 +838,9 @@ export const Store = {
     categoryId: string;
     scope?: FinanceScope;
     notes?: string;
+    linkedIncomeId?: string;
+    linkedReserveId?: string;
+    linkedDebtId?: string;
   }): FinanceEvent[] {
     const readModel = this.getFinancialReadModel();
     const transaction = (readModel.transactions || [])
@@ -846,7 +850,7 @@ export const Store = {
     if (!categoryId) throw new Error('Choose a category for this transaction.');
     const currency = this.getFinanceSettings().baseCurrency;
     const transactionId = String(transaction.id || input.id);
-    const event = this.appendFinanceEvent({
+    const events = this.appendFinanceEvents([{
       type: 'transaction.reviewed',
       amount: Math.abs(Number(transaction.amount) || 0),
       currency,
@@ -857,9 +861,39 @@ export const Store = {
         scope: scope(input.scope, scope(transaction.scope)),
         reviewStatus: 'reviewed',
         notes: String(input.notes || ''),
+        linkedIncomeId: String(input.linkedIncomeId || '').trim(),
+        linkedReserveId: String(input.linkedReserveId || '').trim(),
+        linkedDebtId: String(input.linkedDebtId || '').trim(),
       },
-    }, { source: 'reviewTransaction' });
-    return event ? [event] : [];
+    }], { source: 'reviewTransaction' });
+    const linkedIncomeId = String(input.linkedIncomeId || '').trim();
+    if (linkedIncomeId && String(transaction.type) === 'income.received') {
+      const deal = (readModel.pipelineDeals || [])
+        .find((entry: Record<string, unknown>) => String(entry.id || '') === linkedIncomeId);
+      if (deal) {
+        events.push(...this.appendFinanceEvents([{
+          type: 'pipeline.stage_changed',
+          amount: Number(deal.value) || Math.abs(Number(transaction.amount) || 0),
+          currency,
+          timestamp: financeTimestamp(linkedIncomeId),
+          related_entity_id: linkedIncomeId,
+          metadata: {
+            title: String(deal.title || 'Income'),
+            status: 'paid',
+            stage: 'paid',
+            probability: 1,
+            expectedDateISO: String(transaction.timestamp || new Date().toISOString()).slice(0, 10),
+            destinationAccountId: String(transaction.accountId || ''),
+            destinationAccountName: String(transaction.accountName || ''),
+            linkedTransactionId: transactionId,
+            incomeType: String(deal.incomeType || 'one_off'),
+            notes: String(input.notes || ''),
+            scope: scope(input.scope, scope(transaction.scope)),
+          },
+        }], { source: 'reviewTransaction.linkIncome' }));
+      }
+    }
+    return events;
   },
 
   matchTransactionToObligation(input: {
@@ -930,7 +964,9 @@ export const Store = {
     const deal = (readModel.pipelineDeals || []).find((entry: Record<string, unknown>) => String(entry.id) === String(input.id || ''));
     if (!deal) throw new Error('This pipeline item could not be found.');
     const status = String(input.status || '').toLowerCase();
-    if (!['confirmed', 'expected', 'risky'].includes(status)) throw new Error('Choose confirmed, expected, or risky.');
+    if (!['lead', 'proposal', 'expected', 'confirmed', 'invoiced', 'due', 'overdue', 'risky', 'paid', 'cancelled', 'lost'].includes(status)) {
+      throw new Error('Choose a supported income status.');
+    }
     const probability = Number(input.probability);
     if (!Number.isFinite(probability) || probability < 0 || probability > 1) throw new Error('Probability must be between 0 and 1.');
     const expectedDateISO = window.FinanceDates?.toDateOnly?.(input.expectedDateISO) || '';
@@ -1176,11 +1212,18 @@ export const Store = {
     });
     if (drafts.length) this.appendFinanceEvents(drafts, { source: 'completeWeeklyReview.reconcile' });
     const context = this.computeFinanceContext(true);
+    const forecast = buildFinanceForecast({
+      readModel: context.readModel,
+      snapshot: context.snapshot,
+      treasury: context.treasury,
+      nowIso,
+    });
     const summary = buildMonthCloseSummary({
       readModel: context.readModel,
       snapshot: context.snapshot,
       treasury: context.treasury,
       reviewQueue: context.treasury?.reviewQueue || [],
+      forecast,
       nowIso,
     });
     const accountReconciliations = Object.fromEntries(submittedAccounts.map((account: { accountId: string; balance: number }) => [

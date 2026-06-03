@@ -42,15 +42,17 @@ function reserveMovementLabel(entry, accounts = []) {
   }) ? ids.join(' -> ') : '';
 }
 
-function classifyRisk({ unresolvedItems, runwayNow, monthlyBurn, protectedCash }) {
+function classifyRisk({ unresolvedItems, runwayNow, monthlyBurn, protectedCash, forecastWarning }) {
   if (unresolvedItems > 0) return 'Open items need review before the close is fully reliable.';
+  if (forecastWarning) return forecastWarning;
   if (runwayNow != null && runwayNow < 3) return 'Runway is below three months.';
   if (monthlyBurn > 0 && protectedCash <= 0) return 'No protected cash is recorded for upcoming reserves.';
   return 'No major close risk detected.';
 }
 
-function classifyAction({ unresolvedItems, runwayNow, protectedCash }) {
+function classifyAction({ unresolvedItems, runwayNow, protectedCash, forecastWarning }) {
   if (unresolvedItems > 0) return 'Resolve open items in Cash Movement.';
+  if (forecastWarning) return 'Review the forecast before closing next month.';
   if (runwayNow != null && runwayNow < 3) return 'Review burn pressure and upcoming income.';
   if (protectedCash <= 0) return 'Review reserve targets in Treasury.';
   return 'Keep next month reviewed on the same cadence.';
@@ -61,6 +63,7 @@ export function buildMonthCloseSummary({
   snapshot = {},
   treasury = {},
   reviewQueue = [],
+  forecast = null,
   nowIso = new Date().toISOString(),
 } = {}) {
   const activeMonth = monthKey(nowIso);
@@ -80,7 +83,13 @@ export function buildMonthCloseSummary({
   const runwayNow = Number.isFinite(runwayRaw) ? round(runwayRaw) : null;
   const protectedCash = round(Number(treasury.protectedCash ?? snapshot.protectedCash ?? 0));
   const monthlyBurn = round(Number(treasury.totalMonthlyBurn ?? snapshot.monthlyBurn ?? 0));
-  const basis = { unresolvedItems, runwayNow, monthlyBurn, protectedCash };
+  const forecast30 = forecast && forecast.byHorizon ? (forecast.byHorizon['30'] || null) : null;
+  const forecastHorizon = forecast30 || (forecast && Array.isArray(forecast.horizons) ? forecast.horizons[0] : null);
+  const forecastWarning = String(forecast && Array.isArray(forecast.warnings) && forecast.warnings[0] || '');
+  const forecastHorizonDays = forecastHorizon ? Number(forecastHorizon.days) : undefined;
+  const forecastExpectedCash = forecastHorizon ? round(Number(forecastHorizon.expected)) : null;
+  const forecastLowestCash = forecast && Number.isFinite(Number(forecast.lowestExpected)) ? round(Number(forecast.lowestExpected)) : null;
+  const basis = { unresolvedItems, runwayNow, monthlyBurn, protectedCash, forecastWarning };
   return {
     monthKey: activeMonth,
     netMovement: round(netMovement),
@@ -92,6 +101,10 @@ export function buildMonthCloseSummary({
     unresolvedItems,
     protectedCash,
     monthlyBurn,
+    forecastHorizonDays,
+    forecastExpectedCash,
+    forecastLowestCash,
+    forecastWarning,
     mainRisk: classifyRisk(basis),
     mainAction: classifyAction(basis),
   };

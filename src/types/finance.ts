@@ -32,6 +32,10 @@ export interface FinanceMonthCloseSummary {
   unresolvedItems: number;
   protectedCash: number;
   monthlyBurn: number;
+  forecastHorizonDays?: number;
+  forecastExpectedCash?: number | null;
+  forecastLowestCash?: number | null;
+  forecastWarning?: string;
   mainRisk: string;
   mainAction: string;
 }
