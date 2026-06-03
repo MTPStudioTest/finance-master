@@ -12,3 +12,5 @@ export const STORAGE_KEYS = Object.freeze({
   heroDetails: 'finance-master.layout.hero-details',
   demoSeed: 'finance-master.demo-seeded.v1',
 });
+
+export const FINANCE_STORAGE_KEYS = Object.freeze(Object.values(STORAGE_KEYS));

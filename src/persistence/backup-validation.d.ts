@@ -1,6 +1,7 @@
-import type { FinanceBackupPreview, FinanceBackupV1, FinanceBackupV2 } from '../types/finance';
+import type { FinanceBackup, FinanceBackupPreview } from '../types/finance';
 
-export function validateFinanceBackup(input: unknown): FinanceBackupPreview;
-export function assertFinanceBackupV1(input: unknown): FinanceBackupV1;
-export function migrateFinanceBackupV1(input: unknown): FinanceBackupV2;
-export function assertFinanceBackup(input: unknown): FinanceBackupV2;
+export function validateFinanceBackup(input: unknown, options?: { latestLocalEventAt?: string | null }): FinanceBackupPreview;
+export function assertFinanceBackupV1(input: unknown): Extract<FinanceBackup, { version: 1 }>;
+export function migrateFinanceBackupV1(input: unknown): Extract<FinanceBackup, { version: 2 }>;
+export function assertFinanceBackup(input: unknown): Extract<FinanceBackup, { version: 2 }>;
+

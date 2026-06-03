@@ -81,6 +81,14 @@ export interface FinanceBackupV1 {
 export interface FinanceBackupV2 {
   version: 2;
   exportedAt: string;
+  metadata?: {
+    appName: string;
+    schemaLabel: string;
+    backupVersion: number;
+    exportedAt: string;
+    eventCount: number;
+    latestLocalEventAt: string | null;
+  };
   ledger: FinanceEvent[];
   financeSettings: FinanceSettings;
   uiSettings: FinanceUiSettings;
@@ -126,9 +134,31 @@ export interface CsvImportPreview {
 
 export interface FinanceBackupPreview {
   valid: boolean;
+  version?: number;
+  currentVersion?: number;
+  schemaLabel?: string;
+  appName?: string;
   exportedAt?: string;
+  latestLocalEventAt?: string;
   counts: Record<string, number>;
   errors: string[];
+  warnings?: string[];
+}
+
+export interface FinanceDataHealthIssue {
+  key: string;
+  label: string;
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+export interface FinanceDataHealth {
+  ok: boolean;
+  issues: FinanceDataHealthIssue[];
+  eventCount: number;
+  latestEventAt: string | null;
+  checkedAt: string;
+  storageKeys: string[];
 }
 
 export interface LedgerRepository {

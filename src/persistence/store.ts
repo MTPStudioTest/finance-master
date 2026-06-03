@@ -1,14 +1,21 @@
 import { createDemoDrafts } from '../data/demo-data';
-import { STORAGE_KEYS } from '../settings/storage-keys';
+import { FINANCE_STORAGE_KEYS, STORAGE_KEYS } from '../settings/storage-keys';
+import {
+  CURRENT_BACKUP_VERSION,
+  DATA_SCHEMA_LABEL,
+  FINANCE_APP_NAME,
+} from '../settings/data-version.js';
 import {
   initializeRepositories,
   repositoryGet,
   repositoryRemove,
   repositorySet,
 } from './repositories';
+import { backupMetadata, inspectFinanceStorage } from './data-health.js';
 import type {
   CsvImportSummary,
   CsvTransactionRow,
+  FinanceDataHealth,
   FinanceBackupV2,
   FinanceGoal,
   FinanceGoalProgress,
@@ -21,7 +28,7 @@ import type {
   FinanceScopeFilter,
 } from '../types/finance';
 import { createPriceProvider } from '../integrations/crypto-prices';
-import { assertFinanceBackup } from './backup-validation.js';
+import { assertFinanceBackup, validateFinanceBackup } from './backup-validation.js';
 import { calculateGoalProgress, normalizeGoalState, normalizeReviewState } from '../finance/goals.js';
 
 const DEFAULT_FINANCE_SETTINGS: FinanceSettings = {
@@ -63,6 +70,8 @@ const DEFAULT_IMPORT_STATE: FinanceImportState = {
 const DEFAULT_PRICE_CACHE: FinancePriceCache = {
   quotes: {},
 };
+
+const MISSING_STORAGE_VALUE = Object.freeze({ __financeMasterMissing: true });
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -135,6 +144,12 @@ function getLedgerRaw(): FinanceEvent[] {
 function saveLedgerRaw(events: FinanceEvent[]): void {
   setJson(STORAGE_KEYS.ledger, events);
   invalidate();
+}
+
+function rawStorageEntry(key: string): { present: boolean; value: unknown } {
+  const value = repositoryGet(key, MISSING_STORAGE_VALUE);
+  const present = !(isObject(value) && value.__financeMasterMissing === true);
+  return { present, value: present ? value : undefined };
 }
 
 function financeTimestamp(entityId: string, requestedTimestamp?: unknown): string {
@@ -1177,9 +1192,10 @@ export const Store = {
   },
 
   exportBackup(): FinanceBackupV2 {
-    return {
-      version: 2,
-      exportedAt: new Date().toISOString(),
+    const exportedAt = new Date().toISOString();
+    const backup: FinanceBackupV2 = {
+      version: CURRENT_BACKUP_VERSION,
+      exportedAt,
       ledger: this.getFinanceLedger(),
       financeSettings: this.getFinanceSettings(),
       uiSettings: this.getUiSettings(),
@@ -1188,6 +1204,14 @@ export const Store = {
       imports: this.getImportState(),
       prices: this.getPriceCache(),
     };
+    return {
+      ...backup,
+      metadata: backupMetadata(backup, DATA_SCHEMA_LABEL, FINANCE_APP_NAME),
+    };
+  },
+
+  previewBackup(input: unknown): import('../types/finance').FinanceBackupPreview {
+    return validateFinanceBackup(input, { latestLocalEventAt: this.getLocalDataHealth().latestEventAt });
   },
 
   restoreBackup(input: unknown): FinanceBackupV2 {
@@ -1204,6 +1228,31 @@ export const Store = {
     window.dispatchEvent(new CustomEvent('finance:ui-updated', { detail: clone(this.getUiSettings()) }));
     emitFinanceUpdated(this.getFinancialSnapshot(true), 'restoreBackup');
     return this.exportBackup();
+  },
+
+  getLocalDataHealth(): FinanceDataHealth {
+    const health = inspectFinanceStorage({
+      ledger: rawStorageEntry(STORAGE_KEYS.ledger),
+      settings: rawStorageEntry(STORAGE_KEYS.settings),
+      ui: rawStorageEntry(STORAGE_KEYS.ui),
+      review: rawStorageEntry(STORAGE_KEYS.review),
+      goals: rawStorageEntry(STORAGE_KEYS.goals),
+      imports: rawStorageEntry(STORAGE_KEYS.imports),
+      priceCache: rawStorageEntry(STORAGE_KEYS.priceCache),
+    });
+    return {
+      ...health,
+      storageKeys: [...FINANCE_STORAGE_KEYS],
+    };
+  },
+
+  resetLocalFinanceData(): FinanceDataHealth {
+    FINANCE_STORAGE_KEYS.forEach((key) => repositoryRemove(key));
+    repositorySet(STORAGE_KEYS.demoSeed, 'deleted');
+    invalidate();
+    window.dispatchEvent(new CustomEvent('finance:ui-updated', { detail: clone(this.getUiSettings()) }));
+    emitFinanceUpdated(this.getFinancialSnapshot(true), 'resetLocalFinanceData');
+    return this.getLocalDataHealth();
   },
 
   deleteInvoice(id: string, options: Record<string, unknown> = {}): FinanceEvent[] {

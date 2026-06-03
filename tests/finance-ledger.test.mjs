@@ -228,6 +228,22 @@ test('treasury model classifies income scenarios and review items', () => {
       related_entity_id: 'income-risky',
       metadata: { title: 'Unclear collaboration', value: 2000, probability: 0.35, status: 'risky', expectedDateISO: '2026-06-24', scope: 'business' },
     },
+    {
+      id: 'payment-unmatched',
+      type: 'expense.recorded',
+      amount: 120,
+      currency: 'EUR',
+      timestamp: nowIso,
+      metadata: { description: 'Workspace card payment', accountId: 'cash-main', accountName: 'Operating cash', categoryId: 'obligation', scope: 'business' },
+    },
+    {
+      id: 'txn-uncategorized',
+      type: 'expense.recorded',
+      amount: 30,
+      currency: 'EUR',
+      timestamp: nowIso,
+      metadata: { description: 'Unclear spend', accountId: 'cash-main', accountName: 'Operating cash', categoryId: 'uncategorized', scope: 'business' },
+    },
   ], nowIso);
 
   const result = finance.FinanceCompute.computeFinancialContext(events, {
@@ -244,6 +260,14 @@ test('treasury model classifies income scenarios and review items', () => {
   assert.equal(result.treasury.incomeScenarios.optimistic, 6500);
   assert.equal(result.treasury.overdueObligations[0].title, 'Workspace');
   assert.equal(result.treasury.reviewQueue.some((item) => item.reason === 'Risky income assumption'), true);
+  assert.deepEqual(Array.from(result.treasury.dashboardSummary.actionThisWeek.items.map((item) => item.kind)), ['obligation', 'payment', 'transaction', 'pipeline']);
+  assert.equal(result.treasury.dashboardSummary.actionThisWeek.urgentCount, 1);
+  assert.equal(result.treasury.dashboardSummary.next30Days.confirmedIncoming, 1200);
+  assert.equal(result.treasury.dashboardSummary.next30Days.expectedWeightedIncoming, 520);
+  assert.equal(result.treasury.dashboardSummary.next30Days.obligationsDue, 500);
+  assert.equal(result.treasury.dashboardSummary.next30Days.projectedNetMovement, 1220);
+  assert.equal(result.treasury.dashboardSummary.next30Days.incomeCount, 3);
+  assert.equal(result.treasury.dashboardSummary.next30Days.obligationCount, 1);
 });
 
 test('treasury scenarios only include income inside the forecast horizon', () => {

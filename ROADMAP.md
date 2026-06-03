@@ -138,24 +138,28 @@ Acceptance criteria:
 
 ## Phase 1D: Local Data Safety
 
+Status: implemented in the Local Data Safety slice.
+
 Goal: Make local-first behavior explicit, recoverable, and safe.
 
-Planned work:
+Implemented work:
 
-- Add `DATA_MODEL.md` documenting current persisted entities and event types.
-- Centralize schema version information.
-- Add migration notes for backup versions.
-- Improve corrupt local data handling:
+- Extended `DATA_MODEL.md` with storage keys, backup metadata, restore semantics, migration policy, and recovery guidance.
+- Centralized backup version/schema constants.
+- Preserved version 1 to version 2 backup migration and kept version 2 compatible.
+- Added corrupt local data handling:
   - explain the problem
   - offer backup import
   - offer safe reset
   - avoid blank-screen failure
-- Add backup metadata:
+- Added backup metadata:
   - schema version
   - export timestamp
   - event count
+  - latest local event timestamp
   - warning if backup appears older than current data
-- Add restore confirmation copy that clearly says local data will be replaced.
+- Added restore confirmation copy that clearly says local data will be replaced.
+- Added explicit reset flow that clears only Finance Master local data in this browser.
 
 Acceptance criteria:
 
@@ -165,34 +169,36 @@ Acceptance criteria:
 
 ## Phase 2: Dashboard Clarity
 
+Status: implemented in the Dashboard Clarity slice.
+
 Goal: Turn the Observatory into a calm financial truth surface.
 
-Planned work:
+Implemented work:
 
-- Prioritize the top hierarchy:
+- Prioritized the top hierarchy:
   1. Actually available
   2. Reserved
   3. Monthly burn
   4. Runway
   5. Action this week
   6. Next 30 days
-- Add formula helper text:
+- Added formula helper text:
   - Actually available = total active cash minus reserve buckets.
   - Runway = actually available divided by monthly burn.
   - Monthly burn = active recurring costs plus relevant debt minimums when configured.
-- Add Action This Week:
+- Added Action This Week:
   - overdue obligations
   - due within 7 days
   - overdue expected income
   - uncategorized transactions
   - unmatched actual payments
   - review due
-- Add Next 30 Days:
+- Added Next 30 Days:
   - confirmed incoming
   - expected weighted incoming
   - obligations due
   - projected net movement
-- Reduce or hide decorative scenario cards unless formula and date range are clear.
+- Reduced Dashboard noise by moving full Review Queue/detail records back to their dedicated sections.
 
 Acceptance criteria:
 

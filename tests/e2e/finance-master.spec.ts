@@ -34,6 +34,22 @@ test('grouped navigation exposes every finance workspace section', async ({ page
   expect(errors).toEqual([]);
 });
 
+test('dashboard prioritizes available cash, formulas, weekly actions, and the 30-day outlook', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+  const content = page.locator('#fin-content-area');
+  await expect(content.getByText('Actually available', { exact: true }).first()).toBeVisible();
+  await expect(content.getByText('Actually available = total active cash minus reserved buckets.', { exact: true })).toBeVisible();
+  await expect(content.getByText(/Runway = actually available \/ monthly burn|Runway unknown until recurring costs are added/).first()).toBeVisible();
+  await expect(content.getByText('Action This Week', { exact: true })).toBeVisible();
+  await expect(content.getByText('Next 30 Days', { exact: true })).toBeVisible();
+  await expect(content.getByText('Projected net movement', { exact: true })).toBeVisible();
+  await content.locator('.fin-card').filter({ hasText: 'Action This Week' }).getByRole('button', { name: 'Open Review', exact: true }).click();
+  await expect(content.getByText('Resolve unclear items, reconcile accounts, and keep the operating ritual alive.', { exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+
 test('daily capture supports keyboard focus, focus trap, Escape, and focus restoration', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
@@ -106,7 +122,10 @@ test('backup restore uses a validated in-app preview and rejects malformed JSON'
 
   await page.locator('#modal-backup-file').setInputFiles(path as string);
   await expect(page.getByRole('heading', { name: 'Restore Finance Master backup' })).toBeVisible();
+  await expect(page.getByText('Backup version', { exact: true })).toBeVisible();
+  await expect(page.getByText('Schema', { exact: true })).toBeVisible();
   await expect(page.getByText('Ledger events', { exact: true })).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Replace current data', exact: true }).click();
   await openSettings(page);
   await page.locator('#modal-backup-file').setInputFiles({
@@ -116,6 +135,21 @@ test('backup restore uses a validated in-app preview and rejects malformed JSON'
   });
   await expect(page.getByText('This backup cannot be restored', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Replace current data', exact: true })).toBeDisabled();
+  expect(errors).toEqual([]);
+});
+
+test('local data safety controls expose health and require explicit reset confirmation', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Data', exact: true }).click();
+  await expect(page.getByText('Local Data Health', { exact: true })).toBeVisible();
+  await expect(page.getByText('Local finance data is readable and backup-ready.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reset local data', exact: true })).toBeVisible();
+
+  page.once('dialog', (dialog) => dialog.accept('RESET'));
+  await page.getByRole('button', { name: 'Reset local data', exact: true }).click();
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  await expect(page.getByText('Start with a clear baseline', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -131,7 +165,7 @@ test('sample deletion reveals onboarding and sample restore returns the dashboar
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Restore sample data', exact: true }).click();
   await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
-  await expect(page.getByText('Truly available', { exact: true })).toBeVisible();
+  await expect(page.getByText('Actually available', { exact: true }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
 

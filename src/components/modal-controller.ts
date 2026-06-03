@@ -1,5 +1,4 @@
 import { Store } from '../persistence/store';
-import { validateFinanceBackup } from '../persistence/backup-validation.js';
 import { applyAppearance } from '../settings/apply-appearance';
 import {
   buildCsvImportPreview,
@@ -95,6 +94,24 @@ function formatDate(value: unknown): string {
   const parsed = Date.parse(String(value || ''));
   if (!Number.isFinite(parsed)) return 'Unknown date';
   return new Date(parsed).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function renderDataHealthPanel(): string {
+  const health = Store.getLocalDataHealth();
+  return `
+    <div class="modal-section settings-reset-panel">
+      <div>
+        <div class="ui-title">Local data health</div>
+        <p>${health.ok ? 'Local finance data is readable.' : 'Some local Finance Master data needs attention before it can be trusted.'}</p>
+        <p>${health.eventCount} finance event${health.eventCount === 1 ? '' : 's'}${health.latestEventAt ? ` · latest event ${formatDate(health.latestEventAt)}` : ''}</p>
+        ${health.issues.length ? `
+          <div class="csv-validation-list csv-validation-list--error" role="alert">
+            ${health.issues.map((entry) => `<span><strong>${escapeHtml(entry.label)}:</strong> ${escapeHtml(entry.message)}</span>`).join('')}
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
 }
 
 function formatTransactionType(value: unknown): string {
@@ -385,6 +402,16 @@ function renderSettings(): string {
           <input id="modal-backup-file" type="file" accept="application/json,.json" hidden />
         </div>
       </div>
+      ${renderDataHealthPanel()}
+      <div class="modal-section settings-reset-panel">
+        <div>
+          <div class="ui-title">Reset local finance data</div>
+          <p>This clears only Finance Master local storage keys on this browser. Export a backup first if you may need the current data later.</p>
+        </div>
+        <div class="settings-reset-actions">
+          <button class="btn-danger ui-btn" type="button" data-action="resetLocalFinanceData">Reset local finance data</button>
+        </div>
+      </div>
       <div class="modal-section settings-reset-panel">
         <div>
           <div class="ui-title">Sample data</div>
@@ -591,17 +618,22 @@ function renderCsvImport(): string {
 function renderBackupRestore(): string {
   const preview = backupPreview;
   const counts = preview?.counts || {};
+  const warnings = preview?.warnings || [];
   return `
     <div class="modal-form">
       <h2 id="modal-title">Restore Finance Master backup</h2>
-      <p class="modal-copy">Review this backup before replacement. Restoring replaces your current finance data, goals, settings, review state, import history, and cached prices.</p>
+      <p class="modal-copy">Review this backup before replacement. Restoring replaces your current local finance data, goals, settings, review state, import history, and cached prices.</p>
       <div class="csv-file-actions">
         <button class="ui-btn ui-btn--secondary" type="button" data-action="chooseFinanceBackup">Choose backup file</button>
         <input id="modal-backup-file" type="file" accept="application/json,.json" hidden />
       </div>
       ${preview?.valid ? `
         <div class="backup-preview-card">
+          <div><span>App</span><strong>${escapeHtml(preview.appName || 'Finance Master')}</strong></div>
+          <div><span>Backup version</span><strong>${escapeHtml(preview.version || 'Unknown')}</strong></div>
+          <div><span>Schema</span><strong>${escapeHtml(preview.schemaLabel || 'Unknown')}</strong></div>
           <div><span>Exported</span><strong>${formatDate(preview.exportedAt)}</strong></div>
+          <div><span>Latest event</span><strong>${formatDate(preview.latestLocalEventAt)}</strong></div>
           <div><span>Ledger events</span><strong>${counts.ledgerEvents || 0}</strong></div>
           <div><span>Accounts</span><strong>${counts.accounts || 0}</strong></div>
           <div><span>Recurring costs</span><strong>${counts.recurringCosts || 0}</strong></div>
@@ -610,6 +642,12 @@ function renderBackupRestore(): string {
           <div><span>CSV batches</span><strong>${counts.importBatches || 0}</strong></div>
           <div><span>Cached local values</span><strong>${counts.cachedQuotes || 0}</strong></div>
         </div>
+        ${warnings.length ? `
+          <div class="csv-validation-list" role="alert">
+            ${warnings.map((warning) => `<span>${escapeHtml(warning)}</span>`).join('')}
+          </div>
+        ` : ''}
+        <p class="modal-copy"><strong>Restore warning:</strong> clicking replace permanently overwrites the current local Finance Master data in this browser.</p>
       ` : `
         <div class="csv-validation-list csv-validation-list--error" role="alert">
           <strong>This backup cannot be restored</strong>
@@ -1326,6 +1364,13 @@ Object.assign(window, {
     Store.deleteSampleData();
     closeModal();
   },
+  resetLocalFinanceData: () => {
+    const confirmation = window.prompt('Type RESET to clear only Finance Master local finance data in this browser. Export a backup first if you may need this data later.');
+    if (confirmation !== 'RESET') return;
+    Store.resetLocalFinanceData();
+    applyAppearance(Store);
+    closeModal();
+  },
   completeWeeklyReview: () => {
     const accountChecks = [...document.querySelectorAll<HTMLInputElement>('.review-account-check')];
     const reviewChecks = ['modal-review-recurring-costs', 'modal-review-pipeline', 'modal-review-signals'];
@@ -1428,6 +1473,7 @@ Object.assign(window, {
       showModalError('Choose a valid Finance Master backup before restoring.');
       return;
     }
+    if (!window.confirm('Replace current local Finance Master data with this backup? This cannot be undone unless you exported a backup first.')) return;
     try {
       Store.restoreBackup(pendingBackup);
       applyAppearance(Store);
@@ -1502,7 +1548,7 @@ document.addEventListener('change', (event) => {
   reader.onload = () => {
     try {
       pendingBackup = JSON.parse(String(reader.result || ''));
-      backupPreview = validateFinanceBackup(pendingBackup);
+      backupPreview = Store.previewBackup(pendingBackup);
     } catch (error) {
       pendingBackup = null;
       backupPreview = {

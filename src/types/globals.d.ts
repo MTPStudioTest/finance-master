@@ -98,6 +98,7 @@ declare global {
     }): import('./finance').FinanceReviewState;
     computeFinanceContext(force?: boolean, filter?: FinanceScopeFilter): FinanceContext;
     deleteSampleData(): void;
+    getLocalDataHealth(): import('./finance').FinanceDataHealth;
     deactivateDebtAccount(id: string, options?: Record<string, unknown>): FinanceEvent[];
     deactivateDefiPosition(id: string, options?: Record<string, unknown>): FinanceEvent[];
     deactivateFiatAccount(id: string, options?: Record<string, unknown>): FinanceEvent[];
@@ -200,8 +201,10 @@ declare global {
     }): import('./finance').FinanceGoal;
     deleteGoal(id: string): import('./finance').FinanceGoalState;
     exportBackup(): import('./finance').FinanceBackupV2;
+    previewBackup(input: unknown): import('./finance').FinanceBackupPreview;
     refreshCryptoPrices(): Promise<{ updated: number; source: string }>;
     restoreBackup(input: unknown): import('./finance').FinanceBackupV2;
+    resetLocalFinanceData(): import('./finance').FinanceDataHealth;
     saveFinanceSettings(settings: Partial<FinanceSettings>): FinanceSettings;
     saveUiSettings(settings: Partial<FinanceUiSettings>): FinanceUiSettings;
     seedDemoIfNeeded(force?: boolean): void;

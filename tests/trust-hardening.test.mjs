@@ -13,6 +13,11 @@ import {
   validateFinanceBackup,
 } from '../src/persistence/backup-validation.js';
 import {
+  backupMetadata,
+  inspectFinanceStorage,
+  latestLedgerTimestamp,
+} from '../src/persistence/data-health.js';
+import {
   calculateGoalProgress,
   isWeeklyReviewDue,
   normalizeReviewState,
@@ -105,6 +110,9 @@ test('backup preview summarizes a complete FinanceBackupV1 payload', () => {
   const preview = validateFinanceBackup(backup);
 
   assert.equal(preview.valid, true);
+  assert.equal(preview.version, 1);
+  assert.equal(preview.currentVersion, 2);
+  assert.equal(preview.appName, 'Finance Master');
   assert.equal(preview.exportedAt, backup.exportedAt);
   assert.deepEqual(preview.counts, {
     ledgerEvents: 1,
@@ -116,6 +124,20 @@ test('backup preview summarizes a complete FinanceBackupV1 payload', () => {
     cachedQuotes: 0,
   });
   assert.equal(assertFinanceBackupV1(backup), backup);
+});
+
+test('backup metadata and age warnings preserve V2 compatibility', () => {
+  const backup = migrateFinanceBackupV1(validBackup());
+  backup.metadata = backupMetadata(backup, 'finance-master.local-first.v1', 'Finance Master');
+  const preview = validateFinanceBackup(backup, { latestLocalEventAt: '2026-06-03T10:00:00.000Z' });
+
+  assert.equal(preview.valid, true);
+  assert.equal(preview.version, 2);
+  assert.equal(preview.schemaLabel, 'finance-master.local-first.v1');
+  assert.equal(preview.latestLocalEventAt, '2026-06-02T09:00:00.000Z');
+  assert.deepEqual(preview.warnings, ['This backup is older than your newest local finance event.']);
+  assert.equal(backup.metadata.eventCount, 1);
+  assert.equal(backup.metadata.latestLocalEventAt, '2026-06-02T09:00:00.000Z');
 });
 
 test('backup validation rejects malformed, unsupported, and incomplete payloads without mutation', () => {
@@ -143,6 +165,24 @@ test('V1 backups migrate to strict V2 goals and weekly review state', () => {
   });
   assert.equal(validateFinanceBackup(migrated).valid, true);
   assert.deepEqual(assertFinanceBackup(backup), migrated);
+});
+
+test('local data health reports corrupt Finance Master storage without throwing', () => {
+  const health = inspectFinanceStorage({
+    ledger: { present: true, value: 'not-json-ledger' },
+    settings: { present: true, value: 'broken-settings' },
+    ui: { present: false, value: undefined },
+    review: { present: true, value: { lastReviewedAt: null } },
+    goals: { present: true, value: { goals: [] } },
+    imports: { present: true, value: { batches: 'broken' } },
+    priceCache: { present: true, value: { quotes: {} } },
+  });
+
+  assert.equal(health.ok, false);
+  assert.equal(health.eventCount, 0);
+  assert.equal(health.latestEventAt, null);
+  assert.deepEqual(health.issues.map((entry) => entry.key), ['ledger', 'settings', 'imports']);
+  assert.equal(latestLedgerTimestamp(validBackup().ledger), '2026-06-02T09:00:00.000Z');
 });
 
 test('goal progress derives linked cash balances and respects treasury scope', () => {

@@ -309,6 +309,12 @@
             return Number.isFinite(ts) && ts >= nowTs && ts <= forecastEndTs;
         }
 
+        function isInsideDays(entry, days) {
+            var ts = Date.parse(entry && entry.dueDate || '');
+            if (!Number.isFinite(ts)) return false;
+            return ts >= nowTs && ts <= addDays(nowTs, days).getTime();
+        }
+
         var forecastIncome = income.filter(isInsideForecast);
         var confirmed90 = forecastIncome.filter(function (entry) { return entry.status === 'confirmed'; })
             .reduce(function (sum, entry) { return sum + entry.amount; }, 0);
@@ -395,6 +401,22 @@
             pushReviewItem({ kind: 'setup', id: 'missing-burn', targetId: 'missing-burn', title: 'Monthly burn', reason: 'Add recurring fixed costs', actionLabel: 'Add recurring cost', tone: 'review' });
         }
 
+        var actionThisWeekItems = reviewQueue.filter(function (item) {
+            return ['obligation', 'payment', 'transaction', 'pipeline', 'debt', 'setup'].indexOf(String(item && item.kind || '')) !== -1;
+        }).slice(0, 6);
+        var next30Income = income.filter(function (entry) { return isInsideDays(entry, 30); });
+        var next30Obligations = obligations.filter(function (entry) {
+            return entry.status !== 'paid' && isInsideDays(entry, 30);
+        });
+        var next30Confirmed = next30Income
+            .filter(function (entry) { return entry.status === 'confirmed'; })
+            .reduce(function (sum, entry) { return sum + (Number(entry.amount) || 0); }, 0);
+        var next30ExpectedWeighted = next30Income
+            .filter(function (entry) { return entry.status === 'expected'; })
+            .reduce(function (sum, entry) { return sum + ((Number(entry.amount) || 0) * Events.clampProbability(entry.probability)); }, 0);
+        var next30ObligationTotal = next30Obligations
+            .reduce(function (sum, entry) { return sum + (Number(entry.amount) || 0); }, 0);
+
         return {
             totalCash: round(totalCash),
             reservedCash: round(reservedCash),
@@ -420,6 +442,21 @@
                 conservative: round(trulyAvailable + confirmed90 - scheduled90),
                 expected: round(trulyAvailable + confirmed90 + expected90 - scheduled90),
                 optimistic: round(trulyAvailable + confirmed90 + expected90 + risky90 - scheduled90)
+            },
+            dashboardSummary: {
+                actionThisWeek: {
+                    count: reviewQueue.length,
+                    urgentCount: reviewQueue.filter(function (item) { return item && item.tone === 'urgent'; }).length,
+                    items: actionThisWeekItems
+                },
+                next30Days: {
+                    confirmedIncoming: round(next30Confirmed),
+                    expectedWeightedIncoming: round(next30ExpectedWeighted),
+                    obligationsDue: round(next30ObligationTotal),
+                    projectedNetMovement: round(next30Confirmed + next30ExpectedWeighted - next30ObligationTotal),
+                    incomeCount: next30Income.length,
+                    obligationCount: next30Obligations.length
+                }
             },
             reviewQueue: reviewQueue.slice(0, 10),
             debtRemaining: round(debtAccounts.reduce(function (sum, debt) {

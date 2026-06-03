@@ -1,3 +1,11 @@
+import {
+  CURRENT_BACKUP_VERSION,
+  DATA_SCHEMA_LABEL,
+  FINANCE_APP_NAME,
+  SUPPORTED_BACKUP_VERSIONS,
+} from '../settings/data-version.js';
+import { backupMetadata, latestLedgerTimestamp } from './data-health.js';
+
 function isObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -86,20 +94,34 @@ function uniqueRelated(ledger, type) {
     .filter(Boolean)).size;
 }
 
-export function validateFinanceBackup(input) {
+export function validateFinanceBackup(input, options = {}) {
   const errors = [];
+  const warnings = [];
   if (!isObject(input)) {
-    return { valid: false, counts: {}, errors: ['Backup must be a JSON object.'] };
+    return { valid: false, counts: {}, errors: ['Backup must be a JSON object.'], warnings };
   }
-  if (input.version !== 1 && input.version !== 2) errors.push('Backup version is not supported.');
+  if (!SUPPORTED_BACKUP_VERSIONS.includes(input.version)) errors.push('Backup version is not supported.');
   if (!isTimestamp(input.exportedAt)) errors.push('Backup export date is missing or invalid.');
   validateLedger(input.ledger, errors);
   validateSettings(input, errors);
   validateSupportingState(input, errors, input.version);
   const ledger = Array.isArray(input.ledger) ? input.ledger : [];
+  const localLatest = Date.parse(String(options.latestLocalEventAt || ''));
+  const exported = Date.parse(String(input.exportedAt || ''));
+  if (Number.isFinite(localLatest) && Number.isFinite(exported) && exported < localLatest) {
+    warnings.push('This backup is older than your newest local finance event.');
+  }
+  const metadata = isObject(input.metadata)
+    ? input.metadata
+    : backupMetadata(input, DATA_SCHEMA_LABEL, FINANCE_APP_NAME);
   return {
     valid: errors.length === 0,
+    version: input.version,
+    currentVersion: CURRENT_BACKUP_VERSION,
+    schemaLabel: String(metadata.schemaLabel || DATA_SCHEMA_LABEL),
+    appName: String(metadata.appName || FINANCE_APP_NAME),
     exportedAt: isTimestamp(input.exportedAt) ? input.exportedAt : undefined,
+    latestLocalEventAt: latestLedgerTimestamp(ledger) || undefined,
     counts: {
       ledgerEvents: ledger.length,
       accounts: uniqueRelated(ledger, 'asset.account_set'),
@@ -110,6 +132,7 @@ export function validateFinanceBackup(input) {
       cachedQuotes: isObject(input.prices?.quotes) ? Object.keys(input.prices.quotes).length : 0,
     },
     errors,
+    warnings,
   };
 }
 
