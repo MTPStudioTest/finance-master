@@ -364,15 +364,22 @@
         var income = pipelineDeals.map(function (deal) {
             var status = classifyIncomeStatus(deal);
             var probability = Events.clampProbability(deal && deal.probability);
+            var grossAmount = Number.isFinite(Number(deal && deal.grossAmount))
+                ? round(Number(deal && deal.grossAmount))
+                : round(Number(deal && deal.value) || 0);
             return {
                 id: String((deal && deal.id) || ''),
                 title: String((deal && deal.title) || 'Income'),
-                amount: round(Number(deal && deal.value) || 0),
+                amount: grossAmount,
+                grossAmount: grossAmount,
+                netAmount: Number.isFinite(Number(deal && deal.netAmount)) ? round(Number(deal && deal.netAmount)) : null,
+                vatRate: Number.isFinite(Number(deal && deal.vatRate)) ? Number(deal && deal.vatRate) : 0,
+                vatAmount: Number.isFinite(Number(deal && deal.vatAmount)) ? round(Number(deal && deal.vatAmount)) : 0,
                 dueDate: dateOnly(deal && deal.expectedDateISO),
                 status: status,
                 dueState: classifyIncomeDueState(deal, status, nowTs),
                 probability: probability,
-                weightedAmount: round((Number(deal && deal.value) || 0) * probability),
+                weightedAmount: round(grossAmount * probability),
                 incomeType: String((deal && deal.incomeType) || 'one_off'),
                 projectId: String((deal && deal.projectId) || ''),
                 scope: String((deal && deal.scope) || 'shared')

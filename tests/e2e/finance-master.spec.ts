@@ -129,6 +129,12 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
   await expect(page.getByText('Debt Pressure', { exact: true })).toBeVisible();
   await expect(page.getByText('Savings & Future Goals', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /Account Details/ })).toBeVisible();
+  await expect(page.getByText('Flexible cost simulator', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Fixed Costs & Debt', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Savings and Buffer Goals', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: /Debt Details/ }).click();
+  await expect(page.locator('.fin-treasury-detail-row').first()).toBeVisible();
+  await expect(page.locator('[data-fin-collapsible="treasury-debt-details"] .fin-treasury-debt-card')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Month Close', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Month Close', exact: true })).toBeVisible();
@@ -208,12 +214,7 @@ test('treasury cash accounts and reserve buckets can be edited and persist', asy
   await expect(page.locator('[data-fin-collapsible="treasury-burn-flexible"] .fin-collapsible-body')).not.toBeVisible();
   await page.locator('[data-fin-collapsible="treasury-burn-flexible"]').getByRole('button', { name: /Flexible Costs/ }).click();
   await expect(page.locator('[data-fin-collapsible="treasury-burn-flexible"] .fin-collapsible-body')).toBeVisible();
-  const storedBurnBefore = await page.evaluate(() => JSON.stringify(window.Store.getFinancialReadModel().recurringExpenses));
-  await page.getByRole('button', { name: /Cut €50/ }).click();
-  await expect(page.getByText(/€50\.00 cut/)).toBeVisible();
-  await expect.poll(() => page.evaluate((before) => (
-    JSON.stringify(window.Store.getFinancialReadModel().recurringExpenses) === before
-  ), storedBurnBefore)).toBe(true);
+  await expect(page.getByText('Flexible cost simulator', { exact: true })).toHaveCount(0);
 
   await page.locator('[data-fin-collapsible="treasury-accounts"]').getByRole('button', { name: /Account Details/ }).click();
   await page.getByRole('button', { name: 'Add cash account', exact: true }).click();
@@ -248,15 +249,15 @@ test('treasury cash accounts and reserve buckets can be edited and persist', asy
 
   await page.getByRole('button', { name: 'Add reserve bucket', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Add reserve bucket', exact: true })).toBeVisible();
-  await page.locator('#modal-reserve-name').fill('Client tax reserve');
-  await page.locator('#modal-reserve-target').fill('2000');
-  await page.locator('#modal-reserve-current').fill('350');
-  await page.locator('#modal-reserve-purpose').selectOption('tax_reserve');
-  await page.locator('#modal-reserve-scope').selectOption('business');
-  await page.locator('#modal-reserve-priority').selectOption('critical');
+  await page.getByLabel('Name').fill('Client tax reserve');
+  await page.getByLabel('Target amount').fill('2000');
+  await page.getByLabel('Current amount').fill('350');
+  await page.getByLabel('Purpose').selectOption('tax_reserve');
+  await page.getByLabel('Scope').selectOption('business');
+  await page.getByLabel('Priority').selectOption('critical');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
-  await expect(page.getByText('Client tax reserve', { exact: true })).toBeVisible();
+  await expect(page.locator('.fin-treasury-reserve-card').filter({ hasText: 'Client tax reserve' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (
     window.Store.getFinancialReadModel().reserveBuckets
       .find((entry: any) => String(entry.name) === 'Client tax reserve')?.currentAmount
@@ -264,7 +265,7 @@ test('treasury cash accounts and reserve buckets can be edited and persist', asy
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Treasury', exact: true })).toBeVisible();
-  await expect(page.getByText('Client tax reserve', { exact: true })).toBeVisible();
+  await expect(page.locator('.fin-treasury-reserve-card').filter({ hasText: 'Client tax reserve' })).toBeVisible();
   await expect(page.getByText('Temporary treasury cash', { exact: true })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -282,7 +283,6 @@ test('treasury project profiles filter wallets and reserve buckets without separ
   await expect(page.getByRole('heading', { name: 'Add project treasury', exact: true })).toBeVisible();
   await page.locator('#modal-project-name').fill('Studio Launch Treasury');
   await page.locator('#modal-project-purpose').fill('Client launch');
-  await page.locator('#modal-project-notes').fill('Project cash and reserves for the launch.');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Studio Launch Treasury/ })).toBeVisible();
@@ -307,15 +307,15 @@ test('treasury project profiles filter wallets and reserve buckets without separ
 
   await page.getByRole('button', { name: 'Add reserve bucket', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Add reserve bucket', exact: true })).toBeVisible();
-  await page.locator('#modal-reserve-name').fill('Studio Launch Reserve');
-  await page.locator('#modal-reserve-target').fill('1000');
-  await page.locator('#modal-reserve-current').fill('250');
-  await page.locator('#modal-reserve-scope').selectOption('business');
-  await page.locator('#modal-reserve-purpose').selectOption('custom');
-  await page.locator('#modal-reserve-project').selectOption(String(projectId));
+  await page.getByLabel('Name').fill('Studio Launch Reserve');
+  await page.getByLabel('Target amount').fill('1000');
+  await page.getByLabel('Current amount').fill('250');
+  await page.getByLabel('Scope').selectOption('business');
+  await page.getByLabel('Purpose').selectOption('custom');
+  await page.getByLabel('Project treasury').selectOption(String(projectId));
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
-  await expect(page.getByText('Studio Launch Reserve', { exact: true })).toBeVisible();
+  await expect(page.locator('.fin-treasury-reserve-card').filter({ hasText: 'Studio Launch Reserve' })).toBeVisible();
   await expect.poll(() => page.evaluate((id) => {
     const model = window.Store.getFinancialReadModel();
     return {
@@ -327,11 +327,11 @@ test('treasury project profiles filter wallets and reserve buckets without separ
   await page.getByRole('button', { name: /Unassigned/ }).click();
   await expect(page.getByText('Unassigned project view totals', { exact: true })).toBeVisible();
   await expect(page.getByText('Studio Launch Wallet', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Studio Launch Reserve', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.fin-treasury-reserve-card').filter({ hasText: 'Studio Launch Reserve' })).toHaveCount(0);
 
   await page.getByRole('button', { name: /All Treasury/ }).click();
   await expect(page.getByText('All Treasury canonical totals', { exact: true })).toBeVisible();
-  await expect(page.getByText('Studio Launch Reserve', { exact: true })).toBeVisible();
+  await expect(page.locator('.fin-treasury-reserve-card').filter({ hasText: 'Studio Launch Reserve' })).toBeVisible();
   await expect(page.getByText('Studio Launch Wallet', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: /Studio Launch Treasury/ }).click();
@@ -443,11 +443,14 @@ test('transactions page is the primary ledger workspace', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Audit', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Open ledger', exact: true })).toHaveCount(0);
 
-  await expect(page.getByLabel('Transaction inspector')).toBeVisible();
-  await workspace.locator('.fin-transaction-row').filter({ hasText: 'Ledger workspace review seed' }).getByRole('button', { name: 'Inspect transaction', exact: true }).click();
-  await expect(page.getByLabel('Transaction inspector').getByText('Ledger workspace review seed', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Transaction inspector').getByText('Record ID', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Transaction inspector').getByText('Evidence', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Transaction inspector')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Inspect transaction', exact: true })).toHaveCount(0);
+  const seedRow = workspace.locator('.fin-transaction-row').filter({ hasText: 'Ledger workspace review seed' });
+  await expect(seedRow).toContainText('Record ID');
+  await expect(seedRow).toContainText('Account');
+  await expect(seedRow).toContainText('Category');
+  await expect(seedRow).toContainText('Source');
+  await expect(seedRow.getByRole('button', { name: 'Edit transaction review', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'More filters', exact: true }).click();
   await expect(page.getByLabel('Filter ledger by type')).toBeVisible();
@@ -460,7 +463,7 @@ test('transactions page is the primary ledger workspace', async ({ page }) => {
   await expect(page.locator('.fin-review-summary-line')).toContainText('need category');
   await expect(page.locator('.fin-review-summary-line')).toContainText('filtered records');
   await expect(page.getByRole('button', { name: 'Edit transaction review', exact: true }).first()).toBeVisible();
-  await expect(page.getByLabel('Transaction inspector').getByRole('button', { name: 'Reverse transaction', exact: true })).toBeVisible();
+  await expect(page.locator('.fin-transaction-row--review').first().getByRole('button', { name: 'Reverse transaction', exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -498,11 +501,9 @@ test('ledger review suggests obligation matches without applying them automatica
   await page.getByRole('button', { name: 'Review', exact: true }).click();
 
   const row = page.locator('.fin-transaction-row--review').filter({ hasText: 'Living payment' });
-  await expect(row).toContainText('suggested Living');
-  await row.getByRole('button', { name: 'Inspect transaction', exact: true }).click();
-  await expect(page.getByLabel('Transaction inspector').getByText('Suggested match', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Transaction inspector').getByText('Living', { exact: true }).first()).toBeVisible();
-  await page.getByLabel('Transaction inspector').getByRole('button', { name: 'Edit payment match', exact: true }).click();
+  await expect(row).toContainText('Suggested match');
+  await expect(row).toContainText('Living');
+  await row.getByRole('button', { name: 'Edit payment match', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Match payment to obligation', exact: true })).toBeVisible();
   await expect(page.getByText('Suggested matches', { exact: true })).toBeVisible();
   await page.locator('#modal-body').getByRole('button', { name: 'Living', exact: true }).first().click();
@@ -515,7 +516,7 @@ test('ledger review suggests obligation matches without applying them automatica
   expect(errors).toEqual([]);
 });
 
-test('ledger inspector suggests expected income matches without applying them automatically', async ({ page }) => {
+test('ledger rows suggest expected income matches without applying them automatically', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
 
@@ -542,13 +543,9 @@ test('ledger inspector suggests expected income matches without applying them au
   await page.getByRole('button', { name: 'Cash Movement', exact: true }).click();
   await page.getByLabel('Search ledger').fill('Acme launch income');
   await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
-  await page.locator('.fin-transaction-row').filter({ hasText: 'Acme launch income' }).first().getByRole('button', { name: 'Inspect transaction', exact: true }).click();
-  const inspector = page.getByLabel('Transaction inspector');
-  await expect(inspector.getByText('Suggested income match', { exact: true })).toBeVisible();
-  await expect(inspector.getByText('Acme launch income', { exact: true }).first()).toBeVisible();
-  await inspector.getByRole('button', { name: 'Review expected income match', exact: true }).first().click();
-  await expect(page.getByRole('heading', { name: 'Review pipeline item', exact: true })).toBeVisible();
-  await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
+  const incomeRow = page.locator('.fin-transaction-row').filter({ hasText: 'Acme launch income' }).first();
+  await expect(incomeRow.getByText('Suggested income match', { exact: true })).toBeVisible();
+  await expect(incomeRow.getByText('Acme launch income', { exact: true }).first()).toBeVisible();
   await expect.poll(() => page.evaluate(() => (
     window.Store.getFinancialReadModel().transactions
       .find((entry: any) => String(entry.description) === 'Acme launch income' && String(entry.type) === 'income.received')?.linkedIncomeId || ''
@@ -558,7 +555,7 @@ test('ledger inspector suggests expected income matches without applying them au
       .find((entry: any) => String(entry.title) === 'Acme launch income')?.id || ''
   ));
   expect(incomeId).toBeTruthy();
-  await inspector.getByRole('button', { name: 'Edit transaction review', exact: true }).click();
+  await incomeRow.getByRole('button', { name: 'Edit transaction review', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Review transaction', exact: true })).toBeVisible();
   await page.locator('#modal-review-linked-income').selectOption(incomeId);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
@@ -655,6 +652,7 @@ test('income exposes open, settled, and all income views', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Add income', exact: true })).toBeVisible();
   await page.locator('#modal-income-title').fill('Retainer forecast only');
   await page.locator('#modal-income-amount').fill('600');
+  await page.locator('#modal-income-vat-rate').fill('19');
   await page.locator('#modal-income-probability').fill('0.9');
   await page.locator('#modal-income-date').fill('2026-06-10');
   await page.locator('#modal-income-status').selectOption('expected');
@@ -664,6 +662,7 @@ test('income exposes open, settled, and all income views', async ({ page }) => {
   const retainerRow = page.locator('.fin-table tbody tr').filter({ hasText: 'Retainer forecast only' }).first();
   await expect(retainerRow).toBeVisible();
   await expect(retainerRow.getByText('retainer', { exact: false }).first()).toBeVisible();
+  await expect(retainerRow.getByText('VAT €114.00 (19%) on top', { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.Store.getFinancialReadModel().transactions.length)).toBe(beforeTransactions);
   await retainerRow.getByRole('button', { name: 'Edit Retainer forecast only', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Edit income', exact: true })).toBeVisible();
@@ -673,8 +672,8 @@ test('income exposes open, settled, and all income views', async ({ page }) => {
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => {
     const income = window.Store.getFinancialReadModel().pipelineDeals.find((entry: any) => String(entry.title) === 'Retainer forecast only');
-    return `${income?.status || ''}|${income?.probability || ''}|${income?.incomeType || ''}`;
-  })).toBe('confirmed|0.95|retainer');
+    return `${income?.status || ''}|${income?.probability || ''}|${income?.incomeType || ''}|${income?.value || ''}|${income?.netAmount || ''}|${income?.vatAmount || ''}|${income?.vatRate || ''}`;
+  })).toBe('confirmed|0.95|retainer|714|600|114|19');
   await page.getByRole('button', { name: 'Settled', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Settled', exact: true })).toHaveClass(/active/);
   await page.getByRole('button', { name: 'All', exact: true }).click();
@@ -714,14 +713,13 @@ test('CSV import previews accepted, duplicate, and rejected rows and remains rev
   await page.getByRole('button', { name: 'Cash Movement', exact: true }).click();
   await page.getByLabel('Search ledger').fill('Release deposit');
   await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
-  await page.locator('.fin-transaction-row').filter({ hasText: 'Release deposit' }).getByRole('button', { name: 'Inspect transaction', exact: true }).click();
-  const inspector = page.getByLabel('Transaction inspector');
-  await expect(inspector.getByText('CSV batch', { exact: true })).toBeVisible();
-  await expect(inspector.getByText('2 imported · 1 duplicate (duplicates skipped) · 1 rejected', { exact: true })).toBeVisible();
-  await expect(inspector.getByText('Batch totals', { exact: true })).toBeVisible();
-  await expect(inspector.getByText('€500.00 in · €45.00 out', { exact: true })).toBeVisible();
-  await expect(inspector.getByText('Batch range', { exact: true })).toBeVisible();
-  await expect(inspector.getByText('2026-06-01 to 2026-06-02', { exact: true })).toBeVisible();
+  const releaseRow = page.locator('.fin-transaction-row').filter({ hasText: 'Release deposit' });
+  await expect(releaseRow.locator('.fin-transaction-evidence-grid').getByText('CSV batch', { exact: true })).toBeVisible();
+  await expect(releaseRow.getByText('2 imported · 1 duplicate (duplicates skipped) · 1 rejected', { exact: true })).toBeVisible();
+  await expect(releaseRow.getByText('Batch totals', { exact: true })).toBeVisible();
+  await expect(releaseRow.getByText('€500.00 in · €45.00 out', { exact: true })).toBeVisible();
+  await expect(releaseRow.getByText('Batch range', { exact: true })).toBeVisible();
+  await expect(releaseRow.getByText('2026-06-01 to 2026-06-02', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Clear all', exact: true }).click();
   const releaseBatchId = await page.evaluate(() => (
     window.Store.getImportState().batches.find((batch: any) => String(batch.sourceFile) === 'release-bank.csv')?.id || ''
@@ -870,7 +868,7 @@ test('midnight mode keeps ledger and monthly review surfaces readable', async ({
   await page.getByRole('button', { name: 'Cash Movement', exact: true }).click();
   await expect(page.getByText('Ledger Workspace', { exact: true })).toBeVisible();
   await expectDarkLocalSurfaces(page, '.fin-ledger-status-strip > div');
-  await expect(page.getByRole('button', { name: 'Inspect transaction', exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Edit transaction review', exact: true }).first()).toBeVisible();
 
   await page.getByRole('button', { name: 'Month Close', exact: true }).click();
   await expect(page.getByText(/Month Close (due|closed)/).first()).toBeVisible();
@@ -922,11 +920,10 @@ test('review queue actions categorize, match, update pipeline, and add debt plan
   await page.getByRole('button', { name: 'Cash Movement', exact: true }).click();
   await page.getByLabel('Search ledger').fill('Matchable rent payment');
   await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
-  await page.locator('.fin-transaction-row').filter({ hasText: 'Matchable rent payment' }).getByRole('button', { name: 'Inspect transaction', exact: true }).click();
-  const matchedInspector = page.getByLabel('Transaction inspector');
-  await expect(matchedInspector.getByText('Linked obligation', { exact: true })).toBeVisible();
-  await expect(matchedInspector.getByText('Payment link', { exact: true })).toBeVisible();
-  await expect(matchedInspector.getByText('Matched to obligation', { exact: true })).toBeVisible();
+  const matchedRow = page.locator('.fin-transaction-row').filter({ hasText: 'Matchable rent payment' });
+  await expect(matchedRow.locator('.fin-transaction-evidence-grid').getByText('Linked obligation', { exact: true })).toBeVisible();
+  await expect(matchedRow.locator('.fin-transaction-evidence-grid').getByText('Payment link', { exact: true })).toBeVisible();
+  await expect(matchedRow.getByText('Matched to obligation', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'More filters', exact: true }).click();
   await page.getByLabel('Filter ledger by link state').selectOption('linked');
   await page.getByRole('button', { name: 'Apply filters', exact: true }).click();

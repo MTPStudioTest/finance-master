@@ -32,7 +32,6 @@ window.FinancialMode = (function () {
     let adviceExpanded = false;
     let ledgerMoreFiltersOpen = false;
     let monthlyReviewError = '';
-    let treasuryBurnCut = 0;
     let insightsScenarioState = {
         flexCut: 0,
         debtReduction: 0,
@@ -595,12 +594,6 @@ window.FinancialMode = (function () {
                 return;
             }
 
-            if (action === 'set-treasury-burn-cut') {
-                treasuryBurnCut = Math.max(0, Number(actionEl.getAttribute('data-fin-cut') || '0') || 0);
-                render();
-                return;
-            }
-
             if (action === 'set-treasury-project') {
                 setTreasuryProjectView(actionEl.getAttribute('data-fin-project') || 'all');
                 render();
@@ -822,9 +815,6 @@ window.FinancialMode = (function () {
         const missingReceipts = transactions.filter((entry) => ledgerNeedsReceiptCheck(entry));
         const matchedPayments = transactions.filter((entry) => String(entry && entry.obligationId || '').trim()).length;
         const netMovement = transactions.reduce((sum, entry) => sum + ledgerSignedAmount(entry), 0);
-        const selectedStoredId = getSelectedLedgerTransactionId();
-        const selectedTransaction = transactions.find((entry) => ledgerTransactionId(entry) === selectedStoredId) || transactions[0] || null;
-        const selectedId = selectedTransaction ? ledgerTransactionId(selectedTransaction) : '';
         const statusStrip = `
             <div class="fin-ledger-status-strip" aria-label="Ledger status">
                 <div><span>Records</span><strong>${transactions.length}</strong><small>${allTransactions.length} total</small></div>
@@ -833,51 +823,85 @@ window.FinancialMode = (function () {
                 <div><span>Matched payments</span><strong>${matchedPayments}</strong><small>Linked obligations</small></div>
             </div>
         `;
-        const renderLedgerRow = (entry) => {
+        const renderLedgerRowDetails = (entry, mode = 'ledger') => {
             const id = ledgerTransactionId(entry);
             const signed = ledgerSignedAmount(entry);
             const reviewState = String(entry && entry.reviewStatus || 'clear').toLowerCase();
+            const accountLabel = entry.accountName || entry.fromAccountName || entry.toAccountName || 'Account';
+            const categoryLabel = entry.categoryId || 'uncategorized';
+            const sourceLabel = entry.sourceFile || entry.source || 'local ledger';
+            const evidence = ledgerEvidenceItems(entry);
+            const matchSuggestions = ledgerPaymentMatchSuggestions(entry);
+            const incomeSuggestions = ledgerIncomeMatchSuggestions(entry);
             const chips = [
                 ledgerNeedsCategory(entry) ? 'Needs category' : '',
-                reviewState !== 'clear' ? entry.reviewStatus || 'Needs review' : ''
+                ledgerNeedsMatch(entry) ? 'Match obligation' : '',
+                reviewState !== 'clear' ? entry.reviewStatus || 'Needs review' : '',
+                entry.linkedIncomeTitle || entry.linkedIncomeId ? 'Linked income' : '',
+                entry.obligationId || entry.linkedObligationTitle ? 'Linked obligation' : '',
+                entry.importBatchId ? 'CSV batch' : '',
+                entry.reversalOf || entry.reversedBy ? 'Reversal' : ''
             ].filter(Boolean);
+            const primaryEdit = ledgerNeedsMatch(entry)
+                ? financeIconButton({ action: 'openEditModal', args: `'paymentMatch', '${escapeActionArg(id)}'`, label: 'Edit payment match', icon: 'success', tone: 'success' })
+                : financeIconButton({ action: 'openEditModal', args: `'transactionReview', '${escapeActionArg(id)}'`, label: 'Edit transaction review' });
+            const facts = [
+                ['Date', formatShortDate(entry.timestamp)],
+                ['Account', accountLabel],
+                ['Category', categoryLabel],
+                ['Scope', entry.scope || 'shared'],
+                ['Review', entry.reviewStatus || 'clear'],
+                ['Source', sourceLabel]
+            ];
+            const evidenceHighlights = evidence
+                .filter(([label]) => ['CSV batch', 'Batch totals', 'Batch range', 'Linked income', 'Linked obligation', 'Linked debt', 'Reserve movement', 'Payment link', 'Record ID'].includes(String(label)))
+                .slice(0, 6);
             return `
-                <div class="fin-transaction-row ${id === selectedId ? 'active' : ''}" role="button" tabindex="0" data-fin-action="select-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">
+                <div class="fin-transaction-row ${mode === 'review' ? 'fin-transaction-row--review' : ''}" data-fin-transaction-id="${escapeHtml(id)}">
                     <div class="fin-transaction-row-main">
-                        <strong>${escapeHtml(entry.description || 'Transaction')}</strong>
-                        <small>${formatShortDate(entry.timestamp)} · ${escapeHtml(entry.categoryId || 'uncategorized')} · ${escapeHtml(entry.accountName || entry.fromAccountName || 'Account')} · ${escapeHtml(entry.scope || 'shared')}</small>
+                        <div class="fin-transaction-row-frame">
+                            <span>
+                                <strong>${escapeHtml(entry.description || 'Transaction')}</strong>
+                                <small>${escapeHtml([formatShortDate(entry.timestamp), categoryLabel, accountLabel, entry.scope || 'shared'].filter(Boolean).join(' · '))}</small>
+                            </span>
+                            <span class="fin-transaction-row-primary">
+                                <strong class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</strong>
+                                ${primaryEdit}
+                            </span>
+                        </div>
+                        <div class="fin-transaction-detail-grid">
+                            ${facts.map(([label, value]) => `
+                                <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
+                            `).join('')}
+                        </div>
                         <div class="fin-chip-row">${chips.map((chip) => `<span class="fin-status-pill">${escapeHtml(chip)}</span>`).join('')}</div>
-                    </div>
-                    <div class="fin-transaction-row-side">
-                        <span class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</span>
-                        ${financeTransactionIconButton({ action: 'select-ledger-transaction', transactionId: id, label: 'Inspect transaction' })}
-                    </div>
-                </div>
-            `;
-        };
-        const renderReviewRow = (entry) => {
-            const id = ledgerTransactionId(entry);
-            const signed = ledgerSignedAmount(entry);
-            const needsCategory = ledgerNeedsCategory(entry);
-            const needsMatch = ledgerNeedsMatch(entry);
-            const suggestedMatch = needsMatch ? ledgerPaymentMatchSuggestions(entry)[0] : null;
-            return `
-                <div class="fin-transaction-row fin-transaction-row--review ${id === selectedId ? 'active' : ''}" role="button" tabindex="0" data-fin-action="select-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">
-                    <div class="fin-transaction-row-main">
-                        <strong>${escapeHtml(entry.description || 'Transaction')}</strong>
-                        <small>${formatShortDate(entry.timestamp)} · ${ledgerReviewReason(entry)} · ${escapeHtml(entry.accountName || entry.fromAccountName || 'Account')}${suggestedMatch ? ` · suggested ${escapeHtml(suggestedMatch.title)}` : ''}</small>
-                    </div>
-                    <div class="fin-transaction-row-side">
-                        <span class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</span>
-                        <div class="fin-ledger-actions">
-                            ${needsCategory ? financeIconButton({ action: 'openEditModal', args: `'transactionReview', '${escapeActionArg(id)}'`, label: 'Edit transaction review' }) : ''}
-                            ${needsMatch ? financeIconButton({ action: 'openEditModal', args: `'paymentMatch', '${escapeActionArg(id)}'`, label: 'Edit payment match', icon: 'success', tone: 'success' }) : ''}
-                            ${financeTransactionIconButton({ action: 'select-ledger-transaction', transactionId: id, label: 'Inspect transaction' })}
+                        ${evidenceHighlights.length ? `
+                            <div class="fin-transaction-evidence-grid">
+                                ${evidenceHighlights.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('')}
+                            </div>
+                        ` : ''}
+                        ${matchSuggestions.length ? `
+                            <div class="fin-transaction-suggestion">
+                                <span class="fin-eyebrow">Suggested match</span>
+                                ${matchSuggestions.map((suggestion) => `<strong>${escapeHtml(suggestion.title)}</strong><small>${escapeHtml(suggestion.reason)}</small>`).join('')}
+                            </div>
+                        ` : ''}
+                        ${incomeSuggestions.length ? `
+                            <div class="fin-transaction-suggestion">
+                                <span class="fin-eyebrow">Suggested income match</span>
+                                ${incomeSuggestions.map((suggestion) => `<strong>${escapeHtml(suggestion.title)}</strong><small>${escapeHtml(suggestion.reason)}</small>`).join('')}
+                            </div>
+                        ` : ''}
+                        <div class="fin-transaction-row-footer">
+                            <small>Record ID ${escapeHtml(id)}</small>
+                            <button class="fin-mini-btn" type="button" data-fin-action="reverse-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">Reverse transaction</button>
                         </div>
                     </div>
                 </div>
             `;
         };
+        const renderLedgerRow = (entry) => renderLedgerRowDetails(entry, 'ledger');
+        const renderReviewRow = (entry) => renderLedgerRowDetails(entry, 'review');
         const sourceFilter = sourceOptions.length ? `
             <select id="fin-ledger-source" aria-label="Filter ledger by source">
                 <option value="all"${filters.source === 'all' || !filters.source ? ' selected' : ''}>All sources</option>
@@ -984,7 +1008,6 @@ window.FinancialMode = (function () {
                         <div class="fin-tab-panel">
                             ${panelHtml}
                         </div>
-                        ${renderLedgerInspector(selectedTransaction, view)}
                     </div>
                 </div>
             </section>
@@ -1242,84 +1265,6 @@ window.FinancialMode = (function () {
                 ${labels.map((label) => `<span class="fin-status-pill">${escapeHtml(label)}</span>`).join('')}
                 <button class="fin-mini-btn" type="button" data-fin-action="clear-ledger-filters">Clear all</button>
             </div>
-        `;
-    }
-
-    function renderLedgerInspector(entry, view) {
-        if (!entry) {
-            return `
-                <aside class="fin-transaction-inspector" aria-label="Transaction inspector">
-                    <span class="fin-eyebrow">Transaction inspector</span>
-                    <strong>Select a transaction</strong>
-                    <p>Choose a row to inspect the record, source details, and available actions.</p>
-                </aside>
-            `;
-        }
-        const id = ledgerTransactionId(entry);
-        const signed = ledgerSignedAmount(entry);
-        const isExpense = String(entry && entry.type) === 'expense.recorded';
-        const matched = Boolean(String(entry && entry.obligationId || '').trim());
-        const evidence = ledgerEvidenceItems(entry);
-        const matchSuggestions = ledgerPaymentMatchSuggestions(entry);
-        const incomeSuggestions = ledgerIncomeMatchSuggestions(entry);
-        const details = [
-            ['Type', entry.ledgerType || entry.type || 'transaction'],
-            ['Date', formatShortDate(entry.timestamp)],
-            ['Account', entry.accountName || entry.fromAccountName || entry.toAccountName || 'Account'],
-            ['Category', entry.categoryId || 'uncategorized'],
-            ['Scope', entry.scope || 'shared'],
-            ['Review state', entry.reviewStatus || 'clear']
-        ];
-        return `
-            <aside class="fin-transaction-inspector" aria-label="Transaction inspector">
-                <span class="fin-eyebrow">Transaction inspector</span>
-                <div class="fin-inspector-heading">
-                    <div>
-                        <strong>${escapeHtml(entry.description || 'Transaction')}</strong>
-                        <small>${escapeHtml(entry.notes || entry.note || '')}</small>
-                    </div>
-                    <span class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</span>
-                </div>
-                <dl class="fin-inspector-grid">
-                    ${details.map(([label, value]) => `
-                        <div>
-                            <dt>${escapeHtml(label)}</dt>
-                            <dd>${escapeHtml(value)}</dd>
-                        </div>
-                    `).join('')}
-                </dl>
-                <div class="fin-inspector-evidence">
-                    <span class="fin-eyebrow">Evidence</span>
-                    ${evidence.map(([label, value]) => `
-                        <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
-                    `).join('')}
-                </div>
-                ${matchSuggestions.length ? `
-                    <div class="fin-inspector-suggestions">
-                        <span class="fin-eyebrow">Suggested match</span>
-                        ${matchSuggestions.map((suggestion) => `
-                            <div><strong>${escapeHtml(suggestion.title)}</strong><small>${escapeHtml(suggestion.reason)}</small></div>
-                        `).join('')}
-                    </div>
-                ` : ''}
-                ${incomeSuggestions.length ? `
-                    <div class="fin-inspector-suggestions">
-                        <span class="fin-eyebrow">Suggested income match</span>
-                        ${incomeSuggestions.map((suggestion) => `
-                            <div>
-                                <strong>${escapeHtml(suggestion.title)}</strong>
-                                <small>${escapeHtml(suggestion.reason)}</small>
-                                ${financeIconButton({ action: 'openEditModal', args: `'pipelineReview', '${escapeActionArg(suggestion.id)}'`, label: 'Review expected income match', icon: 'success', tone: 'success' })}
-                            </div>
-                        `).join('')}
-                    </div>
-                ` : ''}
-                <div class="fin-inspector-actions">
-                    ${financeIconButton({ action: 'openEditModal', args: `'transactionReview', '${escapeActionArg(id)}'`, label: 'Edit transaction review' })}
-                    ${isExpense && !matched ? financeIconButton({ action: 'openEditModal', args: `'paymentMatch', '${escapeActionArg(id)}'`, label: 'Edit payment match', icon: 'success', tone: 'success' }) : ''}
-                    <button class="fin-mini-btn" type="button" data-fin-action="reverse-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">Reverse transaction</button>
-                </div>
-            </aside>
         `;
     }
 
@@ -1747,7 +1692,6 @@ window.FinancialMode = (function () {
                     </div>
                     <div class="fin-treasury-meter"><span style="width:${pct}%"></span></div>
                     <div class="fin-treasury-row-actions">
-                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'allocateReserves'">Protect money</button>
                         ${financeIconButton({ action: 'openEditModal', args: `'reserveBucket', '${escapeActionArg(bucket.id)}'`, label: `Adjust target for ${bucket.name || 'reserve bucket'}` })}
                     </div>
                 </div>
@@ -1786,9 +1730,43 @@ window.FinancialMode = (function () {
                         <small>${debt.estimatedPayoffDate ? `Projected payoff ${formatShortDate(debt.estimatedPayoffDate)}` : 'Payoff timeline needs plan'}</small>
                     </div>
                     <div class="fin-treasury-row-actions">
-                        ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'debtPayment', '${escapeActionArg(debt.id)}'`, label: `Record payment for ${debt.name || 'debt item'}`, icon: 'success', tone: 'success' })}
                         ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'debtPlan', '${escapeActionArg(debt.id)}'`, label: `Edit payment plan for ${debt.name || 'debt item'}` })}
-                        ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'debtAdd', '${escapeActionArg(debt.id)}'`, label: `Edit ${debt.name || 'debt item'}` })}
+                    </div>
+                </div>
+            `;
+        }).join('') : renderCompactEmpty('Debt-free operations.');
+    }
+
+    function renderTreasuryDebtDetailRows(debts) {
+        const list = safeArray(debts)
+            .filter((debt) => Math.max(0, Number(debt && debt.outstanding) || 0) > 0)
+            .sort((a, b) => String(a && a.name || '').localeCompare(String(b && b.name || '')));
+        return list.length ? list.map((debt) => {
+            const outstanding = Math.max(0, Number(debt && debt.outstanding) || 0);
+            const monthly = treasuryDebtMonthlyPayment(debt);
+            const hasPlan = treasuryDebtHasPlan(debt);
+            const planLabel = hasPlan ? 'Plan reviewed' : 'Payment plan missing';
+            const fields = [
+                ['Outstanding', formatCurrency(outstanding)],
+                ['Monthly pressure', monthly > 0 ? `${formatCurrency(monthly)} / month` : 'Not set'],
+                ['Next due', debt && debt.dueDate ? formatShortDate(debt.dueDate) : 'Not set'],
+                ['Payoff estimate', debt && debt.estimatedPayoffDate ? formatShortDate(debt.estimatedPayoffDate) : 'Needs plan'],
+                ['Scope', debt && debt.scope ? String(debt.scope) : 'shared'],
+                ['Plan note', debt && debt.paymentPlanNote ? String(debt.paymentPlanNote) : '']
+            ].filter((item) => String(item[1] || '').trim());
+            return `
+                <div class="fin-treasury-detail-row">
+                    <div class="fin-treasury-detail-head">
+                        <span>
+                            <strong>${escapeHtml(debt && debt.name || 'Debt item')}</strong>
+                            <small>${escapeHtml(planLabel)}</small>
+                        </span>
+                        ${renderStatusPill(hasPlan ? 'Reviewed' : 'Needs review')}
+                    </div>
+                    <div class="fin-treasury-detail-grid">
+                        ${fields.map(([label, value]) => `
+                            <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
+                        `).join('')}
                     </div>
                 </div>
             `;
@@ -1927,10 +1905,6 @@ window.FinancialMode = (function () {
         const reserveTarget = buckets.reduce((sum, bucket) => sum + Math.max(0, Number(bucket.targetAmount) || 0), 0);
         const reserveGap = treasuryReserveGap(buckets);
         const flowResult = availableCash - essentialTotal - flexibleTotal - debtMonthlyPressure;
-        const adjustedCut = Math.min(Math.max(0, treasuryBurnCut), Math.max(0, flexibleTotal));
-        const adjustedBurn = Math.max(0, monthlyBurn - adjustedCut);
-        const adjustedResult = flowResult + adjustedCut;
-        const adjustedRunway = adjustedBurn > 0 ? availableCash / adjustedBurn : null;
         const maxFlowValue = Math.max(1, Math.abs(availableCash), essentialTotal, flexibleTotal, debtMonthlyPressure, protectedCash, Math.abs(flowResult));
         let goals = typeof window.Store.getGoalProgress === 'function'
             ? window.Store.getGoalProgress(window.Store.getUiSettings().scopeFilter || 'all')
@@ -2073,7 +2047,10 @@ window.FinancialMode = (function () {
                             <div class="widget-title ui-title">Protected Money</div>
                             <div class="fin-helper-text">Reserve buckets are money with a job. They should feel protected, not spare.</div>
                         </div>
-                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'reserveBucket'">Add reserve bucket</button>
+                        <div class="fin-action-row">
+                            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'allocateReserves'">Allocate cash</button>
+                            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'reserveBucket'">Add reserve bucket</button>
+                        </div>
                     </div>
                     <div class="fin-treasury-vault-summary">
                         <div><span>Total protected</span><strong>${formatCurrency(protectedCash)}</strong></div>
@@ -2101,17 +2078,6 @@ window.FinancialMode = (function () {
                         <div><span>Flexible</span><strong>${formatCurrency(flexibleTotal)}</strong><small>${pluralize(flexibleCosts.length, 'item')}</small></div>
                         <div><span>Debt minimums</span><strong>${formatCurrency(debtMonthlyPressure)}</strong><small>${pluralize(activeDebts.length, 'liability', 'liabilities')}</small></div>
                     </div>
-                    <div class="fin-treasury-simulator" aria-label="Flexible cost reduction simulator">
-                        <div>
-                            <span class="fin-eyebrow">Flexible cost simulator</span>
-                            <strong>${formatCurrency(adjustedBurn)} adjusted burn</strong>
-                            <small>${adjustedCut > 0 ? `${formatCurrency(adjustedCut)} cut · ` : ''}${adjustedResult >= 0 ? 'Adjusted surplus' : 'Adjusted shortfall'} ${formatCurrency(Math.abs(adjustedResult))}${adjustedRunway != null ? ` · ${adjustedRunway.toFixed(1)} months preview` : ''}</small>
-                        </div>
-                        <div class="fin-treasury-simulator-actions">
-                            ${[50, 100, 200].map((amount) => `<button class="fin-mini-btn ${treasuryBurnCut === amount ? 'active' : ''}" type="button" data-fin-action="set-treasury-burn-cut" data-fin-cut="${amount}">Cut ${formatCurrency(amount).replace(/([.,]00)$/, '')}</button>`).join('')}
-                            <button class="fin-mini-btn" type="button" data-fin-action="set-treasury-burn-cut" data-fin-cut="0">Reset</button>
-                        </div>
-                    </div>
                     ${renderCollapsible('treasury-burn-essential', 'Essential Costs', `${formatCurrency(essentialTotal)} / month · ${pluralize(essentialCosts.length, 'item')}`, renderTreasuryCostRows(essentialCosts, 'Essential'))}
                     ${renderCollapsible('treasury-burn-flexible', 'Flexible Costs', `${formatCurrency(flexibleTotal)} / month · ${pluralize(flexibleCosts.length, 'item')}`, renderTreasuryCostRows(flexibleCosts, 'Flexible'))}
                 </div>
@@ -2133,7 +2099,7 @@ window.FinancialMode = (function () {
                         <div><span>Plans missing</span><strong>${missingPlans.length}</strong></div>
                     </div>
                     <div class="fin-treasury-debt-grid">${renderTreasuryDebtCards(activeDebts, 3)}</div>
-                    ${renderCollapsible('treasury-debt-details', 'Debt Details', `${formatCurrency(totalDebt)} open · ${formatCurrency(debtMonthlyPressure)} / month`, renderTreasuryDebtCards(activeDebts, 99))}
+                    ${renderCollapsible('treasury-debt-details', 'Debt Details', `${formatCurrency(totalDebt)} open · ${formatCurrency(debtMonthlyPressure)} / month`, renderTreasuryDebtDetailRows(activeDebts))}
                 </div>
             </section>
 
@@ -2529,6 +2495,10 @@ window.FinancialMode = (function () {
                     id: String(deal && deal.id || ''),
                     title: String(deal && deal.title || 'Expected income'),
                     amount: Number(deal && deal.value) || 0,
+                    netAmount: Number.isFinite(Number(deal && deal.netAmount)) ? Number(deal.netAmount) : null,
+                    vatRate: Number.isFinite(Number(deal && deal.vatRate)) ? Number(deal.vatRate) : 0,
+                    vatAmount: Number.isFinite(Number(deal && deal.vatAmount)) ? Number(deal.vatAmount) : 0,
+                    grossAmount: Number.isFinite(Number(deal && deal.grossAmount)) ? Number(deal.grossAmount) : (Number(deal && deal.value) || 0),
                     probability: safeProbability,
                     weightedAmount: Number.isFinite(Number(deal && deal.weightedAmount)) ? Number(deal.weightedAmount) : ((Number(deal && deal.value) || 0) * safeProbability),
                     expectedDateISO: deal && deal.expectedDateISO,
@@ -2604,7 +2574,7 @@ window.FinancialMode = (function () {
                                 <tbody>
                                     ${displayRows.map((row) => `
                                         <tr>
-                                            <td>${escapeHtml(row.title)}<small>${escapeHtml([row.incomeType === 'retainer' ? 'retainer' : row.incomeType === 'recurring' ? 'recurring' : '', row.projectLabel, row.settlementAccount].filter(Boolean).join(' · '))}</small></td>
+                                            <td>${escapeHtml(row.title)}<small>${escapeHtml([row.incomeType === 'retainer' ? 'retainer' : row.incomeType === 'recurring' ? 'recurring' : '', row.projectLabel, row.settlementAccount].filter(Boolean).join(' · '))}</small>${Number(row.vatAmount) > 0 ? `<small>VAT ${formatCurrency(row.vatAmount)} (${escapeHtml(String(row.vatRate || 0))}%) on top</small>` : ''}</td>
                                             <td>${renderStatusPill(row.status)}</td>
                                             <td>${renderStatusPill(row.dueState)}</td>
                                             <td>${row.expectedDateISO ? formatShortDate(row.expectedDateISO) : 'No date'}</td>
@@ -3709,7 +3679,10 @@ window.FinancialMode = (function () {
                                 <tbody>
                                     ${income.slice(0, 8).map((entry) => `
                                         <tr>
-                                            <td>${escapeHtml(entry.title)}</td>
+                                            <td>
+                                                ${escapeHtml(entry.title)}
+                                                ${Number(entry.vatAmount) > 0 ? `<small>VAT ${formatCurrency(entry.vatAmount)} (${escapeHtml(String(entry.vatRate || 0))}%) on top</small>` : ''}
+                                            </td>
                                             <td>${renderStatusPill(entry.status)}</td>
                                             <td>${entry.dueDate ? formatShortDate(entry.dueDate) : 'No date'}</td>
                                             <td>${formatCurrency(entry.amount)}</td>

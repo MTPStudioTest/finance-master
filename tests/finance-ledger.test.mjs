@@ -340,6 +340,15 @@ test('income status aliases, default probabilities, and due states are normalize
       related_entity_id: 'proposal-override',
       metadata: { title: 'Proposal override', value: 900, status: 'proposal', probability: 0.25, expectedDateISO: '2026-06-20', scope: 'business' },
     },
+    {
+      id: 'vat-income',
+      type: 'pipeline.created',
+      amount: 1190,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'vat-income',
+      metadata: { title: 'VAT income', value: 1190, netAmount: 1000, vatRate: 19, vatAmount: 190, grossAmount: 1190, status: 'confirmed', expectedDateISO: '2026-06-12', scope: 'business' },
+    },
   ], nowIso);
 
   const result = finance.FinanceCompute.computeFinancialContext(events, {
@@ -361,6 +370,15 @@ test('income status aliases, default probabilities, and due states are normalize
   assert.equal(byId.retainer.probability, 0.9);
   assert.equal(byId.retainer.incomeType, 'retainer');
   assert.equal(byId['proposal-override'].probability, 0.25);
+  assert.equal(byId['vat-income'].value, 1190);
+  assert.equal(byId['vat-income'].netAmount, 1000);
+  assert.equal(byId['vat-income'].vatRate, 19);
+  assert.equal(byId['vat-income'].vatAmount, 190);
+  assert.equal(byId['vat-income'].grossAmount, 1190);
+  const treasuryVatIncome = result.treasury.income.find((item) => item.id === 'vat-income');
+  assert.equal(treasuryVatIncome.amount, 1190);
+  assert.equal(treasuryVatIncome.netAmount, 1000);
+  assert.equal(treasuryVatIncome.vatAmount, 190);
 });
 
 test('read model derives transaction evidence from existing metadata and links', () => {

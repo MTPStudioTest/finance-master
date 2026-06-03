@@ -83,6 +83,30 @@
         return defaultIncomeProbability(status, incomeType);
     }
 
+    function applyIncomeVatMetadata(target, metadata, fallbackValue) {
+        if (!target || !metadata) return;
+        if (Object.prototype.hasOwnProperty.call(metadata, 'netAmount')) {
+            target.netAmount = Number.isFinite(Number(metadata.netAmount)) ? Number(metadata.netAmount) : null;
+        } else if (!Object.prototype.hasOwnProperty.call(target, 'netAmount')) {
+            target.netAmount = null;
+        }
+        if (Object.prototype.hasOwnProperty.call(metadata, 'vatRate')) {
+            target.vatRate = Number.isFinite(Number(metadata.vatRate)) ? Number(metadata.vatRate) : 0;
+        } else if (!Object.prototype.hasOwnProperty.call(target, 'vatRate')) {
+            target.vatRate = 0;
+        }
+        if (Object.prototype.hasOwnProperty.call(metadata, 'vatAmount')) {
+            target.vatAmount = Number.isFinite(Number(metadata.vatAmount)) ? Number(metadata.vatAmount) : 0;
+        } else if (!Object.prototype.hasOwnProperty.call(target, 'vatAmount')) {
+            target.vatAmount = 0;
+        }
+        if (Object.prototype.hasOwnProperty.call(metadata, 'grossAmount')) {
+            target.grossAmount = Number.isFinite(Number(metadata.grossAmount)) ? Number(metadata.grossAmount) : fallbackValue;
+        } else if (!Object.prototype.hasOwnProperty.call(target, 'grossAmount')) {
+            target.grossAmount = fallbackValue;
+        }
+    }
+
     function classifyIncomeDueState(deal, nowIso) {
         var status = normalizeIncomeStatus(deal && deal.status);
         if (status === 'paid') return 'settled';
@@ -328,6 +352,7 @@
                     createdAt: event.timestamp,
                     updatedAt: event.timestamp
                 };
+                applyIncomeVatMetadata(pipelineById[relatedId], metadata, pipelineById[relatedId].value);
                 return;
             }
 
@@ -352,6 +377,7 @@
                         createdAt: event.timestamp,
                         updatedAt: event.timestamp
                     };
+                    applyIncomeVatMetadata(pipelineById[relatedId], metadata, pipelineById[relatedId].value);
                 }
                 pipelineById[relatedId].status = normalizeIncomeStatus(metadata.stage || metadata.status || pipelineById[relatedId].status || 'expected');
                 pipelineById[relatedId].scope = String(metadata.scope || pipelineById[relatedId].scope || 'shared');
@@ -378,6 +404,7 @@
                 if (metadata.incomeType || metadata.type) {
                     pipelineById[relatedId].incomeType = String(metadata.incomeType || metadata.type);
                 }
+                applyIncomeVatMetadata(pipelineById[relatedId], metadata, pipelineById[relatedId].value);
                 pipelineById[relatedId].updatedAt = event.timestamp;
                 return;
             }
@@ -404,6 +431,7 @@
                         createdAt: event.timestamp,
                         updatedAt: event.timestamp
                     };
+                    applyIncomeVatMetadata(pipelineById[relatedId], metadata, pipelineById[relatedId].value);
                 }
                 pipelineById[relatedId].value = Number.isFinite(Number(metadata.value)) ? Number(metadata.value) : eventAmount;
                 pipelineById[relatedId].scope = String(metadata.scope || pipelineById[relatedId].scope || 'shared');
@@ -430,6 +458,7 @@
                 if (metadata.incomeType || metadata.type) {
                     pipelineById[relatedId].incomeType = String(metadata.incomeType || metadata.type);
                 }
+                applyIncomeVatMetadata(pipelineById[relatedId], metadata, pipelineById[relatedId].value);
                 pipelineById[relatedId].updatedAt = event.timestamp;
                 return;
             }
@@ -456,6 +485,7 @@
                         createdAt: event.timestamp,
                         updatedAt: event.timestamp
                     };
+                    applyIncomeVatMetadata(pipelineById[relatedId], metadata, pipelineById[relatedId].value);
                 }
                 pipelineById[relatedId].probability = Events.clampProbability(metadata.probability != null ? metadata.probability : eventAmount);
                 pipelineById[relatedId].scope = String(metadata.scope || pipelineById[relatedId].scope || 'shared');
@@ -479,6 +509,7 @@
                 if (metadata.incomeType || metadata.type) {
                     pipelineById[relatedId].incomeType = String(metadata.incomeType || metadata.type);
                 }
+                applyIncomeVatMetadata(pipelineById[relatedId], metadata, pipelineById[relatedId].value);
                 pipelineById[relatedId].updatedAt = event.timestamp;
                 return;
             }

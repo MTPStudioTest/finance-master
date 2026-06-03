@@ -687,6 +687,8 @@ function renderIncome(id = ''): string {
   const item = (Store.getFinancialReadModel().pipelineDeals || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
   const status = String(item?.status || 'expected').toLowerCase();
   const probability = item?.probability ?? INCOME_PROBABILITY_DEFAULTS[status] ?? 0.6;
+  const amount = item && Number.isFinite(Number(item.netAmount)) ? item.netAmount : item?.value;
+  const vatRate = item && Number.isFinite(Number(item.vatRate)) ? item.vatRate : '';
   return `
     <div class="modal-form">
       <h2 id="modal-title">${item ? 'Edit income' : 'Add income'}</h2>
@@ -694,7 +696,8 @@ function renderIncome(id = ''): string {
       <input id="modal-income-id" type="hidden" value="${escapeHtml(item?.id || '')}" />
       <div class="form-group"><label for="modal-income-title">Source</label><input id="modal-income-title" value="${escapeHtml(item?.title || '')}" placeholder="Client or opportunity" /></div>
       <div class="modal-grid-two">
-        <div class="form-group"><label for="modal-income-amount">Amount</label><input id="modal-income-amount" type="number" step="0.01" value="${escapeHtml(item?.value || '')}" /></div>
+        <div class="form-group"><label for="modal-income-amount">Amount before VAT</label><input id="modal-income-amount" type="number" step="0.01" value="${escapeHtml(amount || '')}" /></div>
+        <div class="form-group"><label for="modal-income-vat-rate">VAT on top % <span class="fin-text-med">(optional)</span></label><input id="modal-income-vat-rate" type="number" min="0" max="100" step="0.1" value="${escapeHtml(vatRate)}" placeholder="0" /></div>
         <div class="form-group"><label for="modal-income-probability">Probability</label><input id="modal-income-probability" type="number" min="0" max="1" step="0.05" value="${escapeHtml(probability)}" /></div>
         <div class="form-group"><label for="modal-income-date">Expected date</label><input id="modal-income-date" type="date" value="${escapeHtml(item?.expectedDateISO || today())}" /></div>
         <div class="form-group"><label for="modal-income-status">Status</label><select id="modal-income-status">${INCOME_STATUSES.map((entry) => `<option value="${entry}"${status === entry ? ' selected' : ''}>${entry}</option>`).join('')}</select></div>
@@ -1329,20 +1332,29 @@ function saveFinanceModal(type: string): void {
   }
   if (type === 'income') {
     const amount = Number(value('modal-income-amount'));
+    const vatRateRaw = String(value('modal-income-vat-rate') || '').trim();
+    const vatRate = vatRateRaw ? Number(vatRateRaw) : 0;
     const probability = Number(value('modal-income-probability'));
-    if (!value('modal-income-title') || !Number.isFinite(amount) || amount === 0 || !Number.isFinite(probability) || probability < 0 || probability > 1) {
-      showModalError('Add an income source, a non-zero amount, and a probability between 0 and 1.');
+    if (!value('modal-income-title') || !Number.isFinite(amount) || amount === 0 || !Number.isFinite(probability) || probability < 0 || probability > 1 || !Number.isFinite(vatRate) || vatRate < 0 || vatRate > 100) {
+      showModalError('Add an income source, a non-zero amount, an optional VAT rate between 0 and 100, and a probability between 0 and 1.');
       return;
     }
+    const netAmount = Math.abs(amount);
+    const vatAmount = Math.round((netAmount * (vatRate / 100)) * 100) / 100;
+    const grossAmount = Math.round((netAmount + vatAmount) * 100) / 100;
     append({
       type: 'pipeline.created',
-      amount: Math.abs(amount),
+      amount: grossAmount,
       currency,
       timestamp,
       related_entity_id: value('modal-income-id') || financeId('pipeline'),
       metadata: {
         title: value('modal-income-title'),
-        value: Math.abs(amount),
+        value: grossAmount,
+        netAmount,
+        vatRate,
+        vatAmount,
+        grossAmount,
         probability,
         status: value('modal-income-status'),
         stage: value('modal-income-status'),
@@ -1383,10 +1395,18 @@ function saveFinanceModal(type: string): void {
   }
   
   if (type === 'reserveBucket') {
-    const target = Number(value('modal-reserve-target'));
+    let reserveName = value('modal-reserve-name');
+    let target = Number(value('modal-reserve-target'));
     const current = Number(value('modal-reserve-current')) || 0;
-    if (!value('modal-reserve-name') || !Number.isFinite(target)) {
-      showModalError('Add a name and a target amount.');
+    if ((!Number.isFinite(target) || target <= 0) && current > 0) {
+      const combined = reserveName.match(/^(.*[^\s\d])(\d+(?:\.\d+)?)$/);
+      if (combined) {
+        reserveName = combined[1].trim();
+        target = Number(combined[2]);
+      }
+    }
+    if (!reserveName || !Number.isFinite(target) || target <= 0 || current < 0) {
+      showModalError('Add a name, a positive target amount, and a valid current amount.');
       return;
     }
     append({
@@ -1396,7 +1416,7 @@ function saveFinanceModal(type: string): void {
       timestamp,
       related_entity_id: value('modal-reserve-id') || financeId('reserve'),
       metadata: {
-        name: value('modal-reserve-name'),
+        name: reserveName,
         targetAmount: target,
         currentAmount: current,
         purpose: value('modal-reserve-purpose'),

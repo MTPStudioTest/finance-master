@@ -1064,17 +1064,14 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
 
 #dashboard-financial #fin-content-area .fin-ledger-workspace-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.8fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
     align-items: start;
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-row {
     min-height: 74px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
+    display: block;
     border-bottom: 1px solid rgba(255, 255, 255, 0.065);
     padding: 12px 2px;
 }
@@ -1100,6 +1097,12 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
 
 #dashboard-financial #fin-content-area .fin-transaction-row-main {
     min-width: 0;
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--ds-mode-surface-border);
+    border-radius: var(--ds-radius-sm);
+    background: var(--fin-local-row-bg);
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-row-side {
@@ -1108,6 +1111,67 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     align-items: center;
     justify-content: flex-end;
     gap: 10px;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-row-frame {
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-row-primary {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-detail-grid,
+#dashboard-financial #fin-content-area .fin-transaction-evidence-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-detail-grid > div,
+#dashboard-financial #fin-content-area .fin-transaction-evidence-grid > div {
+    min-width: 0;
+    padding: 8px 9px;
+    border: 1px solid var(--ds-mode-surface-border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--ds-mode-surface) 46%, transparent);
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-detail-grid span,
+#dashboard-financial #fin-content-area .fin-transaction-evidence-grid span {
+    display: block;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    line-height: 1.35;
+    text-transform: uppercase;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-suggestion {
+    display: grid;
+    gap: 3px;
+    padding: 10px;
+    border: 1px solid color-mix(in srgb, var(--fin-stress-low) 36%, transparent);
+    border-radius: var(--ds-radius-sm);
+    background: color-mix(in srgb, var(--fin-stress-low) 10%, transparent);
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-row-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-top: 1px solid var(--ds-mode-surface-border);
+    padding-top: 8px;
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-row strong,
@@ -1301,118 +1365,6 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
 #dashboard-financial #fin-content-area .fin-review-row-action {
     display: flex;
     justify-content: flex-end;
-}
-
-#dashboard-financial #fin-content-area .fin-transaction-inspector {
-    position: sticky;
-    top: 84px;
-    display: grid;
-    gap: 12px;
-    margin-top: 12px;
-    padding: 14px;
-    border: 1px solid rgba(178, 226, 242, 0.14);
-    border-radius: 14px;
-    background: rgba(178, 226, 242, 0.04);
-}
-
-#dashboard-financial #fin-content-area .fin-transaction-inspector p {
-    margin: 0;
-    color: var(--text-secondary);
-    line-height: 1.5;
-}
-
-#dashboard-financial #fin-content-area .fin-inspector-heading {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-}
-
-#dashboard-financial #fin-content-area .fin-inspector-heading strong {
-    display: block;
-    color: var(--text-primary);
-    font-size: 1rem;
-}
-
-#dashboard-financial #fin-content-area .fin-inspector-heading small {
-    display: block;
-    margin-top: 3px;
-    color: var(--text-tertiary);
-    line-height: 1.4;
-}
-
-#dashboard-financial #fin-content-area .fin-inspector-grid {
-    display: grid;
-    gap: 8px;
-    margin: 0;
-}
-
-#dashboard-financial #fin-content-area .fin-inspector-grid div {
-    display: grid;
-    grid-template-columns: minmax(96px, 0.45fr) minmax(0, 1fr);
-    gap: 8px;
-    min-width: 0;
-}
-
-#dashboard-financial #fin-content-area .fin-inspector-grid dt,
-#dashboard-financial #fin-content-area .fin-inspector-grid dd {
-    min-width: 0;
-    margin: 0;
-}
-
-#dashboard-financial #fin-content-area .fin-inspector-grid dt {
-    color: var(--text-tertiary);
-    font-family: var(--font-mono);
-    font-size: 0.58rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-
-#dashboard-financial #fin-content-area .fin-inspector-grid dd {
-    color: var(--text-secondary);
-    overflow-wrap: anywhere;
-}
-
-#dashboard-financial #fin-content-area .fin-inspector-evidence,
-#dashboard-financial #fin-content-area .fin-inspector-suggestions {
-    display: grid;
-    gap: 7px;
-    min-width: 0;
-    padding: 10px;
-    border: 1px solid rgba(178, 226, 242, 0.12);
-    border-radius: 12px;
-    background: rgba(178, 226, 242, 0.04);
-}
-
-#dashboard-financial #fin-content-area .fin-inspector-evidence div,
-#dashboard-financial #fin-content-area .fin-inspector-suggestions div {
-    display: grid;
-    grid-template-columns: minmax(88px, 0.42fr) minmax(0, 1fr);
-    gap: 8px;
-    min-width: 0;
-}
-
-#dashboard-financial #fin-content-area .fin-inspector-suggestions div {
-    grid-template-columns: minmax(0, 1fr);
-}
-
-#dashboard-financial #fin-content-area .fin-inspector-evidence span,
-#dashboard-financial #fin-content-area .fin-inspector-suggestions small {
-    color: var(--text-tertiary);
-}
-
-#dashboard-financial #fin-content-area .fin-inspector-evidence strong,
-#dashboard-financial #fin-content-area .fin-inspector-suggestions strong {
-    min-width: 0;
-    color: var(--text-secondary);
-    font-weight: 600;
-    overflow-wrap: anywhere;
-}
-
-#dashboard-financial #fin-content-area .fin-inspector-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
 }
 
 #dashboard-financial #fin-content-area .fin-subsection-block {
@@ -3050,10 +3002,6 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
         grid-template-columns: 1fr;
     }
 
-    #dashboard-financial #fin-content-area .fin-transaction-inspector {
-        position: static;
-    }
-
     #dashboard-financial #fin-content-area .fin-command-metric--primary {
         grid-column: span 1;
     }
@@ -3204,15 +3152,20 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
         flex-direction: column;
     }
 
+    #dashboard-financial #fin-content-area .fin-transaction-row-frame,
+    #dashboard-financial #fin-content-area .fin-transaction-row-footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    #dashboard-financial #fin-content-area .fin-transaction-row-primary {
+        justify-content: space-between;
+    }
+
     #dashboard-financial #fin-content-area .fin-transaction-row-side,
-    #dashboard-financial #fin-content-area .fin-inspector-heading,
     #dashboard-financial #fin-content-area .fin-review-row {
         align-items: flex-start;
         flex-direction: column;
-        grid-template-columns: 1fr;
-    }
-
-    #dashboard-financial #fin-content-area .fin-inspector-grid div {
         grid-template-columns: 1fr;
     }
 
@@ -4036,8 +3989,7 @@ body.settings-reduced-motion #dashboard-financial #fin-content-area .fin-tile {
 #dashboard-financial #fin-content-area .fin-treasury-compact-row small,
 #dashboard-financial #fin-content-area .fin-treasury-debt-main span,
 #dashboard-financial #fin-content-area .fin-treasury-debt-foot small,
-#dashboard-financial #fin-content-area .fin-treasury-burn-grid small,
-#dashboard-financial #fin-content-area .fin-treasury-simulator small {
+#dashboard-financial #fin-content-area .fin-treasury-burn-grid small {
     color: var(--text-secondary);
 }
 
@@ -4061,30 +4013,6 @@ body.settings-reduced-motion #dashboard-financial #fin-content-area .fin-tile {
     margin-top: 1rem;
 }
 
-#dashboard-financial #fin-content-area .fin-treasury-simulator {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    margin: 1rem 0 0.4rem;
-    padding: 0.9rem;
-    border: 1px solid var(--ds-mode-surface-border);
-    border-radius: var(--ds-radius-sm);
-    background: color-mix(in srgb, var(--fin-stress-med) 8%, transparent);
-}
-
-#dashboard-financial #fin-content-area .fin-treasury-simulator > div:first-child {
-    min-width: 0;
-    display: grid;
-    gap: 0.25rem;
-}
-
-#dashboard-financial #fin-content-area .fin-treasury-simulator strong {
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-}
-
-#dashboard-financial #fin-content-area .fin-treasury-simulator-actions,
 #dashboard-financial #fin-content-area .fin-treasury-debt-foot {
     display: flex;
     flex-wrap: wrap;
@@ -4092,15 +4020,60 @@ body.settings-reduced-motion #dashboard-financial #fin-content-area .fin-tile {
     justify-content: flex-end;
 }
 
-#dashboard-financial #fin-content-area .fin-treasury-simulator-actions .fin-mini-btn.active {
-    border-color: color-mix(in srgb, var(--fin-stress-med) 62%, transparent);
-    color: var(--text-primary);
-    background: color-mix(in srgb, var(--fin-stress-med) 14%, transparent);
-}
-
 #dashboard-financial #fin-content-area .fin-treasury-pressure-line {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     margin-top: 1rem;
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-detail-row {
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.85rem 0;
+    border-top: 1px solid var(--ds-mode-surface-border);
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-detail-row:first-child {
+    border-top: 0;
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-detail-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.85rem;
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-detail-head strong,
+#dashboard-financial #fin-content-area .fin-treasury-detail-grid strong {
+    color: var(--text-primary);
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-detail-head small,
+#dashboard-financial #fin-content-area .fin-treasury-detail-grid span {
+    color: var(--text-secondary);
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.5rem;
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-detail-grid > div {
+    min-width: 0;
+    padding: 0.65rem;
+    border: 1px solid var(--ds-mode-surface-border);
+    border-radius: var(--ds-radius-sm);
+    background: color-mix(in srgb, var(--ds-mode-surface) 46%, transparent);
+}
+
+#dashboard-financial #fin-content-area .fin-treasury-detail-grid span {
+    display: block;
+    margin-bottom: 0.2rem;
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
 }
 
 #dashboard-financial #fin-content-area .fin-treasury-compact-row {
@@ -4149,16 +4122,15 @@ body.settings-reduced-motion #dashboard-financial #fin-content-area .fin-tile {
         gap: 0.45rem;
     }
 
-    #dashboard-financial #fin-content-area .fin-treasury-simulator,
     #dashboard-financial #fin-content-area .fin-treasury-reserve-head,
     #dashboard-financial #fin-content-area .fin-treasury-debt-head,
+    #dashboard-financial #fin-content-area .fin-treasury-detail-head,
     #dashboard-financial #fin-content-area .fin-treasury-compact-row,
     #dashboard-financial #fin-content-area .fin-treasury-profile-actions {
         align-items: stretch;
         flex-direction: column;
     }
 
-    #dashboard-financial #fin-content-area .fin-treasury-simulator-actions,
     #dashboard-financial #fin-content-area .fin-treasury-row-actions,
     #dashboard-financial #fin-content-area .fin-treasury-compact-row > span:last-child {
         justify-content: flex-start;
