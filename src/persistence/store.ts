@@ -164,6 +164,29 @@ function financeTimestamp(entityId: string, requestedTimestamp?: unknown): strin
   return new Date(next).toISOString();
 }
 
+function defaultCashAccountDraft(input: {
+  currency: string;
+  timestamp: string;
+  scope: FinanceScope;
+}): FinanceEventDraft {
+  return {
+    type: 'asset.account_set',
+    amount: 0,
+    currency: input.currency,
+    timestamp: input.timestamp,
+    related_entity_id: entityId('cash'),
+    metadata: {
+      name: 'Operating cash',
+      balance: 0,
+      active: true,
+      scope: input.scope,
+      bucket: 'available',
+      reserved: false,
+      source: 'first-transaction-default-account',
+    },
+  };
+}
+
 function csvCell(value: unknown): string {
   const text = String(value ?? '');
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
@@ -452,6 +475,60 @@ export const Store = {
     const amount = Math.abs(Number(input.amount));
     if (!['income', 'expense', 'adjustment'].includes(ledgerType)) throw new Error('Choose income, expense, or adjustment.');
     if (!Number.isFinite(amount) || amount <= 0) throw new Error('Transaction amount must be positive.');
+    const readModel = this.getFinancialReadModel();
+    const accounts = readModel.fiatAccounts || [];
+    const requestedAccountId = String(input.accountId || '');
+    const fallbackScope = scope(input.scope, 'business');
+    if (!requestedAccountId && accounts.length === 0) {
+      const currency = this.getFinanceSettings().baseCurrency;
+      const timestamp = financeTimestamp('first-transaction-account', input.timestamp);
+      const accountDraft = defaultCashAccountDraft({ currency, timestamp, scope: fallbackScope });
+      const defaultAccountId = String(accountDraft.related_entity_id || '');
+      const signedAmount = ledgerType === 'income'
+        ? amount
+        : ledgerType === 'expense'
+          ? -amount
+          : input.direction === 'decrease'
+            ? -amount
+            : amount;
+      const categoryId = input.categoryId || (ledgerType === 'income' ? 'client-income' : ledgerType === 'adjustment' ? 'adjustment' : 'uncategorized');
+      const transactionId = entityId(ledgerType === 'adjustment' ? 'adjustment' : 'transaction');
+      const transactionDraft: FinanceEventDraft = {
+        type: ledgerType === 'income' ? 'income.received' : ledgerType === 'expense' ? 'expense.recorded' : 'cash.adjusted',
+        amount,
+        currency,
+        timestamp: financeTimestamp(transactionId, timestamp),
+        related_entity_id: transactionId,
+        metadata: {
+          ledgerType: ledgerType === 'adjustment' ? 'adjustment' : undefined,
+          direction: ledgerType === 'adjustment' ? (input.direction === 'decrease' ? 'decrease' : 'increase') : undefined,
+          description: input.description,
+          accountId: defaultAccountId,
+          accountName: 'Operating cash',
+          categoryId,
+          scope: fallbackScope,
+          source: 'manual-ledger',
+        },
+      };
+      const balanceDraft: FinanceEventDraft = {
+        type: 'asset.account_set',
+        amount: signedAmount,
+        currency,
+        timestamp: financeTimestamp(defaultAccountId, timestamp),
+        related_entity_id: defaultAccountId,
+        metadata: {
+          name: 'Operating cash',
+          balance: signedAmount,
+          active: true,
+          scope: fallbackScope,
+          bucket: 'available',
+          reserved: false,
+          transactionId,
+          source: 'manual-ledger',
+        },
+      };
+      return this.appendFinanceEvents([accountDraft, transactionDraft, balanceDraft], { source: 'recordLedgerTransaction.firstAccount' });
+    }
     if (ledgerType === 'income') {
       return this.recordTransaction({
         description: input.description,
@@ -1313,7 +1390,8 @@ export const Store = {
       }
       return;
     }
-    if (!force && repositoryGet(STORAGE_KEYS.demoSeed, '') && ledger.length > 0) return;
+    // An empty ledger is never a stable operating state for the deployed app.
+    // Stale demo flags such as "deleted" must not keep GitHub Pages empty forever.
     const currency = this.getFinanceSettings().baseCurrency;
     const nowIso = new Date().toISOString();
     const drafts = createDemoDrafts(currency);
@@ -1327,6 +1405,7 @@ export const Store = {
     });
     saveLedgerRaw(result.events);
     repositorySet(STORAGE_KEYS.demoSeed, '1');
+    emitFinanceUpdated(this.getFinancialSnapshot(true), 'seedDemoIfNeeded');
   },
 
   clearAndReseedDemo(): void {

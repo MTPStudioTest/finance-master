@@ -135,6 +135,56 @@ test('ledger filters and inline categorization work without a full-ledger modal'
   expect(errors).toEqual([]);
 });
 
+test('empty ledger can create and persist the first manual transaction', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+  await page.evaluate(() => {
+    window.Store.deleteSampleData();
+    window.FinancialMode?.render?.();
+  });
+  await page.getByRole('button', { name: 'Transactions', exact: true }).click();
+  await expect(page.locator('#fin-content-area').getByText('Total records', { exact: true })).toBeVisible();
+  await expect(page.locator('#fin-content-area').getByText('0', { exact: true }).first()).toBeVisible();
+
+  await openQuickAdd(page);
+  await page.getByRole('button', { name: /Add transaction/ }).click();
+  await expect(page.getByLabel('Account')).toContainText('Operating cash (created on save)');
+  await page.getByLabel('Note').fill('First empty-ledger expense');
+  await page.getByLabel('Amount').fill('12.34');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Transactions', exact: true }).click();
+  await expect(page.locator('#fin-content-area').getByText('First empty-ledger expense', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (
+    window.localStorage.getItem('finance-master.ledger.v1') || ''
+  ).includes('First empty-ledger expense'))).toBe(true);
+  await page.reload();
+  await page.getByRole('button', { name: 'Transactions', exact: true }).click();
+  await expect(page.locator('#fin-content-area').getByText('First empty-ledger expense', { exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('stale deleted demo flag cannot keep the deployed app empty after reload', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+  await page.evaluate(async () => {
+    window.Store.deleteSampleData();
+    window.localStorage.setItem('finance-master.demo-seeded.v1', 'deleted');
+    window.localStorage.setItem('finance-master.ledger.v1', '[]');
+    await new Promise<void>((resolve) => {
+      const request = window.indexedDB.deleteDatabase('finance-master');
+      request.onsuccess = () => resolve();
+      request.onerror = () => resolve();
+      request.onblocked = () => resolve();
+    });
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'Transactions', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.Store.getFinanceLedger().length)).toBeGreaterThan(0);
+  await expect(page.locator('#fin-content-area').getByText('Audit log is clean.', { exact: true })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('invoices expose open, settled, and all income views', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');

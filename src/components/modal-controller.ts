@@ -471,6 +471,9 @@ function renderBackupRestore(): string {
 
 function accountOptions(selected = '', allowEmpty = true): string {
   const accounts = Store.getFinancialReadModel().fiatAccounts || [];
+  if (!accounts.length && !allowEmpty) {
+    return '<option value="">Operating cash (created on save)</option>';
+  }
   const empty = allowEmpty
     ? '<option value="">All accounts</option>'
     : '<option value="">Choose an account</option>';
@@ -877,8 +880,10 @@ function addTransactionFromFields(prefix: string): boolean {
   const description = value(`${prefix}-desc`);
   const amount = Math.abs(Number(value(`${prefix}-amount`)));
   const accountId = value(`${prefix}-account`);
-  if (!Number.isFinite(amount) || amount <= 0 || !accountId) {
-    showModalError('Add a positive amount and an account.');
+  const hasAccounts = (Store.getFinancialReadModel().fiatAccounts || []).length > 0;
+  const canCreateDefaultAccount = !hasAccounts && type !== 'transfer';
+  if (!Number.isFinite(amount) || amount <= 0 || (!accountId && !canCreateDefaultAccount)) {
+    showModalError(canCreateDefaultAccount ? 'Add a positive amount.' : 'Add a positive amount and an account.');
     return false;
   }
   try {
