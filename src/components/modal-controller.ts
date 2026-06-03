@@ -273,29 +273,38 @@ function renderOverview(): string {
 function renderQuickAdd(): string {
   return `
     <div class="modal-form">
-      <h2 id="modal-title">Add entry</h2>
-      <p class="modal-copy">Capture only what changes available cash, obligations, reserves, debt, or income clarity.</p>
+      <h2 id="modal-title">Add</h2>
+      <p class="modal-copy">Choose the money event in plain language. Advanced accounting detail can wait until review.</p>
       <div class="quick-add-grid">
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'income'"><strong>Income</strong><span>Confirmed, expected, or risky</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'transaction'"><strong>Cost / cash movement</strong><span>Record received income or paid cost</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'expense'"><strong>Obligation</strong><span>Recurring fixed cost or due item</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'fiatAccount'"><strong>Cash account</strong><span>Add an account balance</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'debtAdd'"><strong>Debt item</strong><span>Track repayment pressure</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'debtPayment'"><strong>Debt payment</strong><span>Reduce a tracked debt</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'goal'"><strong>Goal</strong><span>Buffer or savings target</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'transaction', 'income'"><strong>Income</strong><span>Money received now</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'transaction', 'expense'"><strong>Expense</strong><span>Money paid out</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'transaction', 'transfer'"><strong>Transfer</strong><span>Move cash between accounts</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'income'"><strong>Invoice / expected income</strong><span>Confirmed, likely, uncertain, or overdue</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'expense'"><strong>Recurring cost</strong><span>Fixed obligation that affects runway</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'fiatAccount'"><strong>Reserve account</strong><span>Tax, VAT, buffer, or available cash</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'transaction', 'adjustment'"><strong>Cash adjustment</strong><span>Correct an account balance</span></button>
+        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'goal'"><strong>Savings goal</strong><span>Buffer or target progress</span></button>
         <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'csvImport'"><strong>Import local CSV</strong><span>Bring in transactions for review</span></button>
       </div>
     </div>
   `;
 }
 
-function renderTransaction(): string {
+function renderTransaction(defaultType = 'expense'): string {
+  const safeType = ['expense', 'income', 'transfer', 'adjustment'].includes(defaultType) ? defaultType : 'expense';
+  const title = safeType === 'income'
+    ? 'Add income'
+    : safeType === 'transfer'
+      ? 'Add transfer'
+      : safeType === 'adjustment'
+        ? 'Add cash adjustment'
+        : 'Add expense';
   return `
     <div class="modal-form">
-      <h2 id="modal-title">Add transaction</h2>
-      <p class="modal-copy">Choose the movement type, then enter a positive amount. Corrections are handled by reversing the entry and adding a new one.</p>
+      <h2 id="modal-title">${title}</h2>
+      <p class="modal-copy">Enter a positive amount. Corrections are handled by reversing the entry and adding a new one.</p>
       <div class="modal-grid-three">
-        <div class="form-group"><label for="modal-fast-txn-type">Type</label><select id="modal-fast-txn-type"><option value="expense">Expense</option><option value="income">Income</option><option value="transfer">Transfer</option><option value="adjustment">Adjustment</option></select></div>
+        <div class="form-group"><label for="modal-fast-txn-type">Type</label><select id="modal-fast-txn-type"><option value="expense"${safeType === 'expense' ? ' selected' : ''}>Expense</option><option value="income"${safeType === 'income' ? ' selected' : ''}>Income</option><option value="transfer"${safeType === 'transfer' ? ' selected' : ''}>Transfer</option><option value="adjustment"${safeType === 'adjustment' ? ' selected' : ''}>Adjustment</option></select></div>
         <div class="form-group"><label for="modal-fast-txn-desc">Note</label><input id="modal-fast-txn-desc" placeholder="Client payment or studio rent" data-autofocus /></div>
         <div class="form-group"><label for="modal-fast-txn-amount">Amount</label><input id="modal-fast-txn-amount" type="number" min="0" step="0.01" placeholder="Positive amount" /></div>
         <div class="form-group"><label for="modal-fast-txn-date">Date</label><input id="modal-fast-txn-date" type="date" value="${today()}" /></div>
@@ -904,7 +913,7 @@ function renderDebtPlan(id = ''): string {
 
 function renderModal(type: string, id = ''): string {
   if (type === 'quickAdd') return renderQuickAdd();
-  if (type === 'transaction') return renderTransaction();
+  if (type === 'transaction') return renderTransaction(id);
   if (type === 'financeOverview') return renderOverview();
   if (type === 'settings') return renderSettings();
   if (type === 'weeklyReview') return renderWeeklyReview();
@@ -1511,7 +1520,10 @@ document.addEventListener('keydown', (event) => {
   if (!focusable.length) return;
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
-  if (event.shiftKey && document.activeElement === first) {
+  if (!overlay.contains(document.activeElement)) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  } else if (event.shiftKey && document.activeElement === first) {
     event.preventDefault();
     last.focus();
   } else if (!event.shiftKey && document.activeElement === last) {

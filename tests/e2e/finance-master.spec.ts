@@ -18,34 +18,77 @@ async function openSettings(page: Page): Promise<void> {
 test('grouped navigation exposes every finance workspace section', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
-  await expect(page.locator('[data-fin-nav]')).toHaveCount(6);
+  await expect(page.locator('[data-fin-nav]')).toHaveCount(8);
   await expect(page.locator('#fin-content-area .fin-section-nav')).toHaveCount(0);
   for (const [button, heading] of [
-    ['Dashboard', 'Finance Observatory'],
-    ['Ledger', 'Ledger'],
-    ['Planning', 'Planning'],
-    ['Review', 'Review'],
-    ['Data', 'Data'],
+    ['Today', 'Finance Cockpit'],
+    ['Transactions', 'Transactions'],
+    ['Invoices', 'Invoices'],
+    ['Cashflow Plan', 'Cashflow Plan'],
+    ['Monthly Review', 'Monthly Review'],
+    ['Reports', 'Reports'],
+    ['Import & Backup', 'Import & Backup'],
     ['Settings', 'Settings'],
   ] as const) {
-    await page.getByRole('banner').getByRole('button', { name: button, exact: true }).click();
+    await page.getByRole('complementary').getByRole('button', { name: button, exact: true }).click();
     await expect(page.getByRole('heading', { name: heading, exact: true }).or(page.getByText(heading, { exact: true }).first())).toBeVisible();
   }
   expect(errors).toEqual([]);
 });
 
-test('dashboard prioritizes available cash, formulas, weekly actions, and the 30-day outlook', async ({ page }) => {
+test('today cockpit prioritizes available cash, attention, expected month-end, and the 30-day outlook', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
   const content = page.locator('#fin-content-area');
   await expect(content.getByText('Actually available', { exact: true }).first()).toBeVisible();
+  await expect(content.getByText('Expected month-end', { exact: true }).first()).toBeVisible();
   await expect(content.getByText('Actually available = total active cash minus reserved buckets.', { exact: true })).toBeVisible();
   await expect(content.getByText(/Runway = actually available \/ monthly burn|Runway unknown until recurring costs are added/).first()).toBeVisible();
-  await expect(content.getByText('Action This Week', { exact: true })).toBeVisible();
+  await expect(content.getByText('Attention Needed', { exact: true })).toBeVisible();
   await expect(content.getByText('Next 30 Days', { exact: true })).toBeVisible();
   await expect(content.getByText('Projected net movement', { exact: true })).toBeVisible();
-  await content.locator('.fin-card').filter({ hasText: 'Action This Week' }).getByRole('button', { name: 'Open Review', exact: true }).click();
-  await expect(content.getByText('Resolve unclear items, reconcile accounts, and keep the operating ritual alive.', { exact: true })).toBeVisible();
+  await content.locator('.fin-card').filter({ hasText: 'Attention Needed' }).getByRole('button', { name: 'Open Monthly Review', exact: true }).click();
+  await expect(content.getByText('Resolve unclear items, reconcile accounts, and close the operating loop.', { exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('contextual add menu exposes decision-oriented entry points', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+  await page.getByRole('complementary').getByRole('button', { name: '+ Add', exact: true }).click();
+  for (const label of [
+    'Income Money received now',
+    'Expense Money paid out',
+    'Transfer Move cash between accounts',
+    'Invoice / expected income Confirmed, likely, uncertain, or overdue',
+    'Recurring cost Fixed obligation that affects runway',
+    'Reserve account Tax, VAT, buffer, or available cash',
+    'Cash adjustment Correct an account balance',
+    'Savings goal Buffer or target progress',
+    'Import local CSV Bring in transactions for review',
+  ]) {
+    await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
+  }
+  await page.locator(".quick-add-card[data-action-args=\"'transaction', 'transfer'\"]").click();
+  await expect(page.getByRole('heading', { name: 'Add transfer', exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('transactions expose clean, work, and audit views while invoices expose pipeline confidence', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+  await page.getByRole('complementary').getByRole('button', { name: 'Transactions', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Clean View', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Work View', exact: true }).click();
+  await expect(page.getByText('Needs category', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Audit View', exact: true }).click();
+  await expect(page.getByText('ID / source', { exact: true })).toBeVisible();
+
+  await page.getByRole('complementary').getByRole('button', { name: 'Invoices', exact: true }).click();
+  await expect(page.getByText('Income & Invoices', { exact: true })).toBeVisible();
+  await expect(page.getByText('Confirmed', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Likely', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Uncertain', { exact: true }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -53,20 +96,20 @@ test('dashboard prioritizes available cash, formulas, weekly actions, and the 30
 test('daily capture supports keyboard focus, focus trap, Escape, and focus restoration', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
-  const add = page.getByRole('button', { name: '+ Add', exact: true });
+  const add = page.getByRole('complementary').getByRole('button', { name: '+ Add', exact: true });
   await add.click();
-  await page.locator(".quick-add-card[data-action-args=\"'transaction'\"]").click();
+  await page.locator(".quick-add-card[data-action-args=\"'transaction', 'expense'\"]").click();
   await expect(page.getByLabel('Note')).toBeVisible();
   await page.getByLabel('Note').fill('Test capture');
   await page.getByLabel('Amount').fill('24.50');
   await page.getByLabel('Account').selectOption({ index: 1 });
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await page.getByRole('button', { name: 'Ledger', exact: true }).click();
+  await page.getByRole('button', { name: 'Transactions', exact: true }).click();
   await page.getByRole('button', { name: 'Open ledger', exact: true }).click();
   await expect(page.getByLabel('Transactions').getByText('Test capture', { exact: true })).toBeVisible();
   await page.locator('[data-action="closeModal"]').click();
 
-  const review = page.getByRole('banner').getByRole('button', { name: 'Review', exact: true });
+  const review = page.getByRole('complementary').getByRole('button', { name: 'Monthly Review', exact: true });
   await review.click();
   const reviewLauncher = page.getByRole('button', { name: /Start review|Open review/ }).first();
   await reviewLauncher.click();
@@ -80,7 +123,7 @@ test('daily capture supports keyboard focus, focus trap, Escape, and focus resto
 test('CSV file import previews accepted, duplicate, and rejected rows and remains reversible', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
-  await page.getByRole('button', { name: '+ Add', exact: true }).click();
+  await page.getByRole('complementary').getByRole('button', { name: '+ Add', exact: true }).click();
   await page.locator(".quick-add-card[data-action-args=\"'csvImport'\"]").click();
   await page.locator('#modal-csv-file').setInputFiles({
     name: 'release-bank.csv',
@@ -102,7 +145,7 @@ test('CSV file import previews accepted, duplicate, and rejected rows and remain
   await page.getByRole('button', { name: 'Import valid rows', exact: true }).click();
   await expect(page.getByText('Imported 2 rows', { exact: false })).toBeVisible();
   await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
-  await page.getByRole('button', { name: 'Data', exact: true }).click();
+  await page.getByRole('button', { name: 'Import & Backup', exact: true }).click();
   await expect(page.getByText('Latest CSV batch', { exact: true })).toBeVisible();
   await expect(page.getByText('release-bank.csv', { exact: false })).toBeVisible();
   page.once('dialog', (dialog) => dialog.accept());
@@ -141,14 +184,14 @@ test('backup restore uses a validated in-app preview and rejects malformed JSON'
 test('local data safety controls expose health and require explicit reset confirmation', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
-  await page.getByRole('button', { name: 'Data', exact: true }).click();
+  await page.getByRole('button', { name: 'Import & Backup', exact: true }).click();
   await expect(page.getByText('Local Data Health', { exact: true })).toBeVisible();
   await expect(page.getByText('Local finance data is readable and backup-ready.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Reset local data', exact: true })).toBeVisible();
 
   page.once('dialog', (dialog) => dialog.accept('RESET'));
   await page.getByRole('button', { name: 'Reset local data', exact: true }).click();
-  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  await page.getByRole('button', { name: 'Today', exact: true }).click();
   await expect(page.getByText('Start with a clear baseline', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -159,12 +202,12 @@ test('sample deletion reveals onboarding and sample restore returns the dashboar
   await openSettings(page);
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Delete sample data', exact: true }).click();
-  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  await page.getByRole('button', { name: 'Today', exact: true }).click();
   await expect(page.getByText('Start with a clear baseline', { exact: true })).toBeVisible();
   await openSettings(page);
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Restore sample data', exact: true }).click();
-  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  await page.getByRole('button', { name: 'Today', exact: true }).click();
   await expect(page.getByText('Actually available', { exact: true }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -193,7 +236,7 @@ test('pipeline settlement requires an account and appearance modes persist throu
 test('overdue obligation can be booked as paid and appears in payment review', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
-  await page.getByRole('banner').getByRole('button', { name: 'Review', exact: true }).click();
+  await page.getByRole('complementary').getByRole('button', { name: 'Monthly Review', exact: true }).click();
   const markPaid = page.getByRole('button', { name: 'Mark paid', exact: true }).first();
   await expect(markPaid).toBeVisible();
   await markPaid.click();
@@ -209,22 +252,22 @@ test('review queue actions categorize, match, update pipeline, and add debt plan
   const errors = monitorConsole(page);
   await page.goto('/');
 
-  await page.getByRole('button', { name: '+ Add', exact: true }).click();
-  await page.locator(".quick-add-card[data-action-args=\"'transaction'\"]").click();
+  await page.getByRole('complementary').getByRole('button', { name: '+ Add', exact: true }).click();
+  await page.locator(".quick-add-card[data-action-args=\"'transaction', 'expense'\"]").click();
   await page.getByLabel('Note').fill('Review uncategorized');
   await page.getByLabel('Amount').fill('12');
   await page.getByLabel('Account').selectOption({ index: 1 });
   await page.getByRole('button', { name: 'Create', exact: true }).click();
 
-  await page.getByRole('button', { name: '+ Add', exact: true }).click();
-  await page.locator(".quick-add-card[data-action-args=\"'transaction'\"]").click();
+  await page.getByRole('complementary').getByRole('button', { name: '+ Add', exact: true }).click();
+  await page.locator(".quick-add-card[data-action-args=\"'transaction', 'expense'\"]").click();
   await page.getByLabel('Note').fill('Matchable rent payment');
   await page.getByLabel('Amount').fill('300');
   await page.getByLabel('Account').selectOption({ index: 1 });
   await page.getByLabel('Category').fill('obligation');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
 
-  await page.getByRole('banner').getByRole('button', { name: 'Review', exact: true }).click();
+  await page.getByRole('complementary').getByRole('button', { name: 'Monthly Review', exact: true }).click();
   await expect(page.getByText('Review Queue', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Categorize', exact: true }).first()).toBeVisible();
 
@@ -262,7 +305,9 @@ test('review queue actions categorize, match, update pipeline, and add debt plan
   await page.getByLabel('Minimum payment').fill('150');
   await page.getByLabel('Payment plan note').fill('Monthly minimum agreed.');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page.locator('.modal-list-row').filter({ hasText: 'Debt needs a due date or payment plan' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Add debt payment plan', exact: true })).toHaveCount(0);
+  await page.getByRole('complementary').getByRole('button', { name: 'Monthly Review', exact: true }).click();
+  await expect(page.locator('.modal-list-row').filter({ hasText: 'Credit line' }).filter({ hasText: 'Debt needs a due date or payment plan' })).toHaveCount(0);
 
   expect(errors).toEqual([]);
 });
@@ -273,8 +318,8 @@ test('mobile and tablet capture surfaces avoid horizontal overflow', async ({ pa
     await page.setViewportSize(viewport);
     await page.goto('/');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.getByRole('button', { name: '+ Add', exact: true }).click();
-    await page.locator(".quick-add-card[data-action-args=\"'transaction'\"]").click();
+    await page.getByRole('complementary').getByRole('button', { name: '+ Add', exact: true }).click();
+    await page.locator(".quick-add-card[data-action-args=\"'transaction', 'expense'\"]").click();
     await expect(page.getByLabel('Note')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.keyboard.press('Escape');
@@ -285,10 +330,10 @@ test('mobile and tablet capture surfaces avoid horizontal overflow', async ({ pa
 test('savings goal progress and weekly reconciliation complete the operating ritual', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
-  await page.getByRole('banner').getByRole('button', { name: 'Review', exact: true }).click();
+  await page.getByRole('complementary').getByRole('button', { name: 'Monthly Review', exact: true }).click();
   await expect(page.getByText('Weekly review due', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: '+ Add', exact: true }).click();
+  await page.getByRole('complementary').getByRole('button', { name: '+ Add', exact: true }).click();
   await page.locator(".quick-add-card[data-action-args=\"'goal'\"]").click();
   await page.getByLabel('Goal name').fill('Release buffer');
   await page.getByLabel('Target amount').fill('10000');
@@ -298,10 +343,10 @@ test('savings goal progress and weekly reconciliation complete the operating rit
   await expect(page.getByRole('heading', { name: 'Savings and buffer goals', exact: true })).toBeVisible();
   await expect(page.locator('#modal-body').getByText('Release buffer', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).last().click();
-  await page.getByRole('button', { name: 'Planning', exact: true }).click();
+  await page.getByRole('button', { name: 'Cashflow Plan', exact: true }).click();
   await expect(page.locator('#fin-content-area').getByText('Release buffer', { exact: true })).toBeVisible();
 
-  await page.getByRole('banner').getByRole('button', { name: 'Review', exact: true }).click();
+  await page.getByRole('complementary').getByRole('button', { name: 'Monthly Review', exact: true }).click();
   await page.getByRole('button', { name: /Start review|Open review/ }).first().click();
   for (const checkbox of await page.locator('.review-account-check').all()) {
     await checkbox.check();

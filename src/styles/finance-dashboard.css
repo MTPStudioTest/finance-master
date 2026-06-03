@@ -212,7 +212,7 @@ body.mode-financial .financial-dashboard {
 }
 
 .fin-snapshot-grid--treasury {
-    grid-template-columns: minmax(260px, 1.35fr) repeat(4, minmax(180px, 1fr));
+    grid-template-columns: minmax(260px, 1.35fr) repeat(4, minmax(170px, 1fr));
 }
 
 .fin-tile-primary {
@@ -276,6 +276,7 @@ body.mode-financial .financial-dashboard {
 }
 
 .fin-status-pill--confirmed,
+.fin-status-pill--likely,
 .fin-status-pill--paid,
 .fin-status-pill--received {
     border-color: rgba(168, 230, 207, 0.26);
@@ -290,6 +291,7 @@ body.mode-financial .financial-dashboard {
 }
 
 .fin-status-pill--risky,
+.fin-status-pill--uncertain,
 .fin-status-pill--needs_review {
     border-color: rgba(226, 192, 68, 0.26);
     color: var(--fin-stress-med);
@@ -852,6 +854,69 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     background: rgba(255, 255, 255, 0.02);
 }
 
+#dashboard-financial #fin-content-area .fin-transaction-row {
+    min-height: 74px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+    padding: 12px 2px;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-row:last-child {
+    border-bottom: 0;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-row strong,
+#dashboard-financial #fin-content-area .fin-transaction-row small {
+    display: block;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-row strong {
+    color: var(--text-primary);
+    font-size: 0.94rem;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-row small {
+    margin-top: 4px;
+    color: var(--text-tertiary);
+    font-size: 0.75rem;
+    line-height: 1.35;
+}
+
+#dashboard-financial #fin-content-area .fin-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 8px;
+}
+
+#dashboard-financial #fin-content-area .fin-health-status {
+    display: grid;
+    gap: 7px;
+    border: 1px solid rgba(178, 226, 242, 0.16);
+    border-radius: 14px;
+    padding: 14px;
+    margin-top: 12px;
+    background: rgba(178, 226, 242, 0.055);
+}
+
+#dashboard-financial #fin-content-area .fin-health-status span,
+#dashboard-financial #fin-content-area .fin-health-status small {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+#dashboard-financial #fin-content-area .fin-health-status strong {
+    color: var(--text-primary);
+    font-size: 1.8rem;
+    font-weight: 500;
+}
+
 #dashboard-financial #fin-content-area .fin-tab-subsection {
     margin-top: 12px;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
@@ -1376,6 +1441,11 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     #dashboard-financial #fin-content-area .fin-tabs {
         width: 100%;
         justify-content: space-between;
+    }
+
+    #dashboard-financial #fin-content-area .fin-transaction-row {
+        align-items: flex-start;
+        flex-direction: column;
     }
 
     #dashboard-financial #fin-content-area .fin-collapsible-body,
