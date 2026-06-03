@@ -199,6 +199,104 @@ Important existing product concepts:
 
 ---
 
+## Current implementation status — 2026-06-03
+
+This section records the latest implemented roadmap slices so future work can adapt the roadmap to the actual product state.
+
+### Completed foundation slices
+
+- Phase 1 data-safety hardening is implemented:
+  - URL-based repair/reset no longer deletes local finance data.
+  - Destructive reset, restore, sample restore, and sample delete flows use typed confirmation.
+  - Import & Backup includes local data health metadata, schema/backup status, storage status, and last backup metadata.
+  - Migration guardrails exist for the current local-first schema without changing stored data shape.
+- Phase 2 calculation stabilization is implemented:
+  - Recurring costs normalize weekly, biweekly, monthly, quarterly, and yearly equivalents.
+  - Debt payment plans contribute to burn and runway without double-counting linked recurring obligations.
+  - Actual cash, protected cash, committed short-term obligations, available cash, legacy cash-after-reserves, monthly burn, runway, forecast confidence, and debt burden are centralized in the finance context.
+  - Metric explanations are returned from the compute layer for future surfaces, while the current Overview keeps the cockpit visually minimal without explanation dropdowns.
+- Phase 3 IA simplification is implemented:
+  - Visible navigation now follows the roadmap language: Overview, Cashflow, Transactions, Income, Obligations, Reserves, Monthly Review, Reports, Import & Backup, Settings.
+  - Internal section IDs remain compatible with older stored values.
+  - Settings is limited to app preferences and routes data safety work to Import & Backup.
+
+### Latest UI simplification slices
+
+- Overview has moved from a large attention queue to a calmer Money Picture cockpit:
+  - dominant runway signal
+  - 30-day projected result with a lightweight trend line
+  - cash structure
+  - burn pressure
+  - route to Cash Movement for review work
+- Transactions has been redesigned into a Ledger Workspace:
+  - A compact status strip replaces large KPI cards.
+  - Ledger and Review are the only visible modes.
+  - The earlier Audit mode was removed from the visible workflow after review; technical evidence now lives in the transaction inspector.
+  - The page uses a two-column desktop layout with transaction list on the left and inspector on the right.
+  - On mobile/tablet the inspector stacks without horizontal overflow.
+  - The old `clean | work` stored values are preserved; old/stored `audit` values safely fall back to Ledger.
+- Monthly Review has been simplified into an inline dashboard workflow:
+  - The monthly close flow now lives directly on the Monthly Review page instead of opening a large modal by default.
+  - Cash account reconciliation, review steps, review note, inline validation, and Close month are part of the page.
+  - Overview review actions route to the Monthly Review page instead of opening the old modal.
+  - Review queue, expected obligations, and actual payments use one edit icon per row instead of multiple text buttons.
+  - The old modal renderer remains in code as a compatibility/fallback path, but it is no longer the intended product path.
+- Cross-section row actions now follow the same quieter pattern in Reserves, Income, Cashflow pipeline rows, recurring costs, and debt cards:
+  - Row-level edit/received/archive/plan/payment actions are icon-first with accessible labels.
+  - Top-level creation and navigation buttons remain text buttons where the command needs to be explicit.
+
+### Tests currently covering this baseline
+
+The latest local validation passed:
+
+```txt
+npm test
+npm run typecheck
+npm run build
+npm run test:e2e
+```
+
+The e2e suite covers:
+
+- roadmap navigation labels and aliases
+- Overview Money Picture structure and compact cockpit metrics
+- compact Quick Add menu
+- Ledger Workspace filters, inspector, Review mode actions, and absence of Audit mode
+- local data repair/reset safety
+- Import & Backup safety
+- Monthly Review inline close workflow
+- icon-based review actions for transaction categorization, payment matching, pipeline review, and debt plan confirmation
+- mobile/tablet no-horizontal-overflow checks
+
+### Roadmap adaptation notes
+
+- Phase 3 should be treated as substantially complete for IA and cockpit simplification. Remaining Phase 3 work is polish, density reduction, and consistent icon/action patterns.
+- Phase 5’s Transactions workspace requirements are partially pulled forward and implemented. Future Phase 5 work should focus on import profiles, categorization rules, and transaction detail depth rather than recreating the ledger workspace.
+- Phase 8’s Monthly Review ritual is partially pulled forward and implemented. Future Phase 8 work should refine the review ritual, monthly summary, reserve review, and review history, not reintroduce the large review modal.
+- Product direction learned from the latest review:
+  - Avoid “Audit” as a primary user-facing mode unless a later professional/accountant export surface explicitly needs it.
+  - Avoid repeated text-button clusters in operational rows; prefer one clear edit/action icon that opens the focused workflow.
+  - Avoid heavy dark cards on the light/aurora surface; use readable, high-contrast light cards.
+  - Prefer page-native workflows for important operating rituals; keep modals focused on a single edit or confirmation.
+
+### Recommended next slices
+
+1. **Commit and deploy current baseline**
+   - The current uncommitted work includes Ledger Workspace and Monthly Review simplification.
+   - Run the validation stack again before committing if more edits are made.
+2. **Roadmap/documentation cleanup**
+   - Update the shorter `ROADMAP.md` baseline language so it no longer says Transactions has Clean/Work/Audit views.
+   - Add screenshots or a short product-state note if the deployed UI needs public-facing release notes.
+3. **Continue with focused Phase 3 polish**
+   - Continue standardizing icon-first row actions where they still reduce clutter without hiding decisions.
+   - Reduce remaining dense table/card surfaces where they feel like admin software.
+   - Keep calculation and data safety untouched unless a test exposes a regression.
+4. **Then continue Phase 5/8 depth**
+   - Import profiles, categorization rules, and transaction evidence depth.
+   - Monthly review history, monthly summary, reserve review, and review completion narrative.
+
+---
+
 # Phase 1 — Data Safety, Storage Integrity & Production Hardening
 
 ## Objective
@@ -4233,4 +4331,3 @@ The long-term promise:
 ```txt
 Understand your money as a living system — not just a balance.
 ```
-

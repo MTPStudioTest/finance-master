@@ -28,12 +28,15 @@ window.FinancialMode = (function () {
     let currentHasFinanceData = false;
     let labState = { marketMajors: 0, burnDelta: 0, probFloor: 50 };
     let adviceExpanded = false;
+    let ledgerMoreFiltersOpen = false;
+    let monthlyReviewError = '';
 
     const UI_KEYS = {
         focusMode: 'finance-master.layout.focus-mode',
         pipelineTab: 'finance-master.layout.pipeline-tab',
         ledgerView: 'finance-master.layout.ledger-view',
         ledgerFilters: 'finance-master.layout.ledger-filters',
+        selectedTransaction: 'finance-master.layout.selected-transaction',
         invoicesView: 'finance-master.layout.invoices-view',
         activeSection: 'finance-master.layout.active-section'
     };
@@ -143,7 +146,7 @@ window.FinancialMode = (function () {
     function getLedgerView() {
         try {
             const raw = String(localStorage.getItem(UI_KEYS.ledgerView) || 'clean').toLowerCase();
-            if (raw === 'clean' || raw === 'work' || raw === 'audit') return raw;
+            if (raw === 'clean' || raw === 'work') return raw;
         } catch (error) {
             // noop
         }
@@ -152,7 +155,7 @@ window.FinancialMode = (function () {
 
     function setLedgerView(view) {
         const safe = String(view || 'clean').toLowerCase();
-        if (safe !== 'clean' && safe !== 'work' && safe !== 'audit') return;
+        if (safe !== 'clean' && safe !== 'work') return;
         try {
             localStorage.setItem(UI_KEYS.ledgerView, safe);
         } catch (error) {
@@ -188,6 +191,9 @@ window.FinancialMode = (function () {
             categoryId: '',
             type: 'all',
             reviewStatus: 'all',
+            source: 'all',
+            amountMin: '',
+            amountMax: '',
             dateFrom: '',
             dateTo: ''
         };
@@ -213,6 +219,23 @@ window.FinancialMode = (function () {
     function clearLedgerFilters() {
         try {
             localStorage.removeItem(UI_KEYS.ledgerFilters);
+        } catch (error) {
+            // noop
+        }
+    }
+
+    function getSelectedLedgerTransactionId() {
+        try {
+            return String(localStorage.getItem(UI_KEYS.selectedTransaction) || '').trim();
+        } catch (error) {
+            return '';
+        }
+    }
+
+    function setSelectedLedgerTransactionId(id) {
+        try {
+            if (id) localStorage.setItem(UI_KEYS.selectedTransaction, String(id));
+            else localStorage.removeItem(UI_KEYS.selectedTransaction);
         } catch (error) {
             // noop
         }
@@ -487,6 +510,21 @@ window.FinancialMode = (function () {
                 return;
             }
 
+            if (action === 'select-ledger-transaction') {
+                if (actionEl.classList.contains('fin-transaction-row') && event.target.closest('button, a, input, select, textarea')) return;
+                const id = String(actionEl.getAttribute('data-fin-transaction-id') || '').trim();
+                if (!id) return;
+                setSelectedLedgerTransactionId(id);
+                render();
+                return;
+            }
+
+            if (action === 'toggle-ledger-more-filters') {
+                ledgerMoreFiltersOpen = !ledgerMoreFiltersOpen;
+                render();
+                return;
+            }
+
             if (action === 'apply-ledger-filters') {
                 setLedgerFilters({
                     search: String(document.getElementById('fin-ledger-search')?.value || ''),
@@ -495,6 +533,9 @@ window.FinancialMode = (function () {
                     categoryId: String(document.getElementById('fin-ledger-category')?.value || ''),
                     type: String(document.getElementById('fin-ledger-type')?.value || 'all'),
                     reviewStatus: String(document.getElementById('fin-ledger-review')?.value || 'all'),
+                    source: String(document.getElementById('fin-ledger-source')?.value || 'all'),
+                    amountMin: String(document.getElementById('fin-ledger-amount-min')?.value || ''),
+                    amountMax: String(document.getElementById('fin-ledger-amount-max')?.value || ''),
                     dateFrom: String(document.getElementById('fin-ledger-date-from')?.value || ''),
                     dateTo: String(document.getElementById('fin-ledger-date-to')?.value || '')
                 });
@@ -504,6 +545,7 @@ window.FinancialMode = (function () {
 
             if (action === 'clear-ledger-filters') {
                 clearLedgerFilters();
+                ledgerMoreFiltersOpen = false;
                 render();
                 return;
             }
@@ -523,6 +565,11 @@ window.FinancialMode = (function () {
                         renderAfter: true
                     });
                 }
+                return;
+            }
+
+            if (action === 'complete-monthly-review-inline') {
+                completeMonthlyReviewInline();
                 return;
             }
 
@@ -640,8 +687,13 @@ window.FinancialMode = (function () {
             .sort((a, b) => Date.parse(String(b && b.timestamp || '')) - Date.parse(String(a && a.timestamp || '')));
         const filters = getLedgerFilters();
         const search = String(filters.search || '').trim().toLowerCase();
+        const amountMin = Number(filters.amountMin);
+        const amountMax = Number(filters.amountMax);
+        const sourceOptions = Array.from(new Set(allTransactions.map((entry) => String(entry && entry.source || '').trim()).filter(Boolean))).sort();
         const transactions = allTransactions.filter((entry) => {
             const date = window.FinanceDates?.toDateOnly?.(entry && entry.timestamp) || String(entry && entry.timestamp || '').slice(0, 10);
+            const signed = ledgerSignedAmount(entry);
+            const absoluteAmount = Math.abs(signed);
             const accountMatch = filters.accountId === 'all'
                 || String(entry && entry.accountId || '') === String(filters.accountId)
                 || String(entry && entry.fromAccountId || '') === String(filters.accountId)
@@ -649,8 +701,11 @@ window.FinancialMode = (function () {
             const scopeMatch = filters.scope === 'all' || String(entry && entry.scope || 'shared') === String(filters.scope);
             const typeMatch = filters.type === 'all' || String(entry && entry.ledgerType || '').toLowerCase() === String(filters.type).toLowerCase();
             const reviewMatch = filters.reviewStatus === 'all' || String(entry && entry.reviewStatus || 'clear') === String(filters.reviewStatus);
+            const sourceMatch = !filters.source || filters.source === 'all' || String(entry && entry.source || '') === String(filters.source);
             const categoryMatch = !String(filters.categoryId || '').trim()
                 || String(entry && entry.categoryId || '').toLowerCase().includes(String(filters.categoryId).trim().toLowerCase());
+            const amountMinMatch = !String(filters.amountMin || '').trim() || !Number.isFinite(amountMin) || absoluteAmount >= amountMin;
+            const amountMaxMatch = !String(filters.amountMax || '').trim() || !Number.isFinite(amountMax) || absoluteAmount <= amountMax;
             const dateMatch = (!filters.dateFrom || date >= filters.dateFrom) && (!filters.dateTo || date <= filters.dateTo);
             const searchMatch = !search || [
                 entry && entry.description,
@@ -662,60 +717,91 @@ window.FinancialMode = (function () {
                 entry && entry.id,
                 entry && entry.transactionEntityId
             ].some((part) => String(part || '').toLowerCase().includes(search));
-            return accountMatch && scopeMatch && typeMatch && reviewMatch && categoryMatch && dateMatch && searchMatch;
+            return accountMatch && scopeMatch && typeMatch && reviewMatch && sourceMatch && categoryMatch && amountMinMatch && amountMaxMatch && dateMatch && searchMatch;
         });
         const view = getLedgerView();
-        const uncategorized = allTransactions.filter((entry) => String(entry && entry.categoryId || '').toLowerCase() === 'uncategorized'
-            || String(entry && entry.reviewStatus || '').toLowerCase() === 'needs_review');
-        const unmatchedPayments = allTransactions.filter((entry) => String(entry && entry.type) === 'expense.recorded'
-            && !String(entry && entry.obligationId || '').trim()
-            && String(entry && entry.categoryId || '').toLowerCase() === 'obligation');
-        const missingReceipts = allTransactions.filter((entry) => String(entry && entry.type) === 'expense.recorded'
-            && !String(entry && entry.receiptUrl || '').trim()
-            && String(entry && entry.categoryId || '').toLowerCase() !== 'transfer');
-        const netMovement = transactions.reduce((sum, entry) => {
-            const amount = Number(entry && entry.signedAmount);
-            return sum + (Number.isFinite(amount) ? amount : Number(entry && entry.amount) || 0);
-        }, 0);
-        const ledgerActions = (entry) => {
-            const id = escapeActionArg(entry && (entry.id || entry.transactionEntityId) || '');
-            const isExpense = String(entry && entry.type) === 'expense.recorded';
-            const matched = Boolean(String(entry && entry.obligationId || '').trim());
-            return `
-                <div class="fin-ledger-actions">
-                    <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${id}'">Categorize</button>
-                    ${isExpense && !matched ? `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'paymentMatch', '${id}'">Match</button>` : ''}
-                    <button class="fin-mini-btn" type="button" data-fin-action="reverse-ledger-transaction" data-fin-transaction-id="${id}">Reverse</button>
-                </div>
-            `;
-        };
-        const cleanRows = transactions.map((entry) => {
-            const amount = Number(entry && entry.signedAmount);
-            const signed = Number.isFinite(amount) ? amount : Number(entry && entry.amount) || 0;
+        const reviewTransactions = transactions.filter(isLedgerReviewItem);
+        const uncategorized = transactions.filter((entry) => ledgerNeedsCategory(entry));
+        const unmatchedPayments = transactions.filter((entry) => ledgerNeedsMatch(entry));
+        const missingReceipts = transactions.filter((entry) => ledgerNeedsReceiptCheck(entry));
+        const matchedPayments = transactions.filter((entry) => String(entry && entry.obligationId || '').trim()).length;
+        const netMovement = transactions.reduce((sum, entry) => sum + ledgerSignedAmount(entry), 0);
+        const selectedStoredId = getSelectedLedgerTransactionId();
+        const selectedTransaction = transactions.find((entry) => ledgerTransactionId(entry) === selectedStoredId) || transactions[0] || null;
+        const selectedId = selectedTransaction ? ledgerTransactionId(selectedTransaction) : '';
+        const statusStrip = `
+            <div class="fin-ledger-status-strip" aria-label="Ledger status">
+                <div><span>Records</span><strong>${transactions.length}</strong><small>${allTransactions.length} total</small></div>
+                <div><span>Net movement</span><strong class="${netMovement >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${netMovement >= 0 ? '+' : '-'}${formatCurrency(Math.abs(netMovement))}</strong><small>Current filters</small></div>
+                <div><span>Need review</span><strong>${reviewTransactions.length}</strong><small>Classification or evidence</small></div>
+                <div><span>Matched payments</span><strong>${matchedPayments}</strong><small>Linked obligations</small></div>
+            </div>
+        `;
+        const renderLedgerRow = (entry) => {
+            const id = ledgerTransactionId(entry);
+            const signed = ledgerSignedAmount(entry);
+            const reviewState = String(entry && entry.reviewStatus || 'clear').toLowerCase();
             const chips = [
-                String(entry && entry.categoryId || '').toLowerCase() === 'uncategorized' ? 'Needs category' : '',
-                String(entry && entry.reviewStatus || '').toLowerCase() === 'reviewed' ? 'Reviewed' : '',
-                String(entry && entry.obligationId || '').trim() ? 'Matched' : '',
-                String(entry && entry.type) === 'expense.recorded' ? 'Tax check' : ''
+                ledgerNeedsCategory(entry) ? 'Needs category' : '',
+                reviewState !== 'clear' ? entry.reviewStatus || 'Needs review' : ''
             ].filter(Boolean);
             return `
-                <div class="fin-transaction-row">
-                    <div>
+                <div class="fin-transaction-row ${id === selectedId ? 'active' : ''}" role="button" tabindex="0" data-fin-action="select-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">
+                    <div class="fin-transaction-row-main">
                         <strong>${escapeHtml(entry.description || 'Transaction')}</strong>
                         <small>${formatShortDate(entry.timestamp)} · ${escapeHtml(entry.categoryId || 'uncategorized')} · ${escapeHtml(entry.accountName || entry.fromAccountName || 'Account')} · ${escapeHtml(entry.scope || 'shared')}</small>
                         <div class="fin-chip-row">${chips.map((chip) => `<span class="fin-status-pill">${escapeHtml(chip)}</span>`).join('')}</div>
                     </div>
-                    <span class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</span>
+                    <div class="fin-transaction-row-side">
+                        <span class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</span>
+                        <button class="fin-mini-btn" type="button" data-fin-action="select-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">Open</button>
+                    </div>
                 </div>
             `;
-        }).join('');
+        };
+        const renderReviewRow = (entry) => {
+            const id = ledgerTransactionId(entry);
+            const signed = ledgerSignedAmount(entry);
+            const needsCategory = ledgerNeedsCategory(entry);
+            const needsMatch = ledgerNeedsMatch(entry);
+            return `
+                <div class="fin-transaction-row fin-transaction-row--review ${id === selectedId ? 'active' : ''}" role="button" tabindex="0" data-fin-action="select-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">
+                    <div class="fin-transaction-row-main">
+                        <strong>${escapeHtml(entry.description || 'Transaction')}</strong>
+                        <small>${formatShortDate(entry.timestamp)} · ${ledgerReviewReason(entry)} · ${escapeHtml(entry.accountName || entry.fromAccountName || 'Account')}</small>
+                    </div>
+                    <div class="fin-transaction-row-side">
+                        <span class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</span>
+                        <div class="fin-ledger-actions">
+                            ${needsCategory ? `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${escapeActionArg(id)}'">Categorize</button>` : ''}
+                            ${needsMatch ? `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'paymentMatch', '${escapeActionArg(id)}'">Match</button>` : ''}
+                            <button class="fin-mini-btn" type="button" data-fin-action="select-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">Open</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+        const sourceFilter = sourceOptions.length ? `
+            <select id="fin-ledger-source" aria-label="Filter ledger by source">
+                <option value="all"${filters.source === 'all' || !filters.source ? ' selected' : ''}>All sources</option>
+                ${sourceOptions.map((source) => `<option value="${escapeHtml(source)}"${String(filters.source) === source ? ' selected' : ''}>${escapeHtml(source)}</option>`).join('')}
+            </select>
+        ` : `<input id="fin-ledger-source" aria-label="Filter ledger by source" value="all" type="hidden" />`;
+        const chips = renderLedgerFilterChips(filters);
         const filtersHtml = `
             <div class="fin-ledger-toolbar" aria-label="Ledger filters">
-                <div class="fin-ledger-filter-grid">
+                <div class="fin-ledger-filter-bar">
                     <input id="fin-ledger-search" aria-label="Search ledger" value="${escapeHtml(filters.search)}" placeholder="Search note, account, category, source" />
                     <select id="fin-ledger-account" aria-label="Filter ledger by account">${ledgerAccountOptions(filters.accountId)}</select>
-                    <select id="fin-ledger-scope" aria-label="Filter ledger by scope">${scopeFilterOptions(filters.scope)}</select>
                     <input id="fin-ledger-category" aria-label="Filter ledger by category" value="${escapeHtml(filters.categoryId)}" placeholder="Category" />
+                    <input id="fin-ledger-date-from" aria-label="Ledger date from" type="date" value="${escapeHtml(filters.dateFrom)}" />
+                    <input id="fin-ledger-date-to" aria-label="Ledger date to" type="date" value="${escapeHtml(filters.dateTo)}" />
+                    <button class="fin-mini-btn" type="button" data-fin-action="toggle-ledger-more-filters" aria-expanded="${ledgerMoreFiltersOpen ? 'true' : 'false'}">More filters</button>
+                    <button class="fin-mini-btn fin-mini-btn--primary" type="button" data-fin-action="apply-ledger-filters">Apply filters</button>
+                </div>
+                ${ledgerMoreFiltersOpen ? `
+                <div class="fin-ledger-filter-advanced" aria-label="Advanced ledger filters">
+                    <select id="fin-ledger-scope" aria-label="Filter ledger by scope">${scopeFilterOptions(filters.scope)}</select>
                     <select id="fin-ledger-type" aria-label="Filter ledger by type">
                         <option value="all"${filters.type === 'all' ? ' selected' : ''}>All types</option>
                         <option value="income"${filters.type === 'income' ? ' selected' : ''}>Income</option>
@@ -729,117 +815,338 @@ window.FinancialMode = (function () {
                         <option value="needs_review"${filters.reviewStatus === 'needs_review' ? ' selected' : ''}>Needs review</option>
                         <option value="reviewed"${filters.reviewStatus === 'reviewed' ? ' selected' : ''}>Reviewed</option>
                     </select>
-                    <input id="fin-ledger-date-from" aria-label="Ledger date from" type="date" value="${escapeHtml(filters.dateFrom)}" />
-                    <input id="fin-ledger-date-to" aria-label="Ledger date to" type="date" value="${escapeHtml(filters.dateTo)}" />
+                    ${sourceFilter}
+                    <input id="fin-ledger-amount-min" aria-label="Ledger amount minimum" type="number" min="0" step="0.01" value="${escapeHtml(filters.amountMin)}" placeholder="Minimum amount" />
+                    <input id="fin-ledger-amount-max" aria-label="Ledger amount maximum" type="number" min="0" step="0.01" value="${escapeHtml(filters.amountMax)}" placeholder="Maximum amount" />
+                    <button class="fin-mini-btn" type="button" data-fin-action="clear-ledger-filters">Reset filters</button>
                 </div>
-                <div class="fin-action-row fin-action-row--inline">
-                    <button class="fin-action-btn" type="button" data-fin-action="apply-ledger-filters">Apply filters</button>
-                    <button class="fin-action-btn" type="button" data-fin-action="clear-ledger-filters">Clear filters</button>
-                </div>
+                ` : `
+                    <input id="fin-ledger-scope" value="${escapeHtml(filters.scope)}" type="hidden" />
+                    <input id="fin-ledger-type" value="${escapeHtml(filters.type)}" type="hidden" />
+                    <input id="fin-ledger-review" value="${escapeHtml(filters.reviewStatus)}" type="hidden" />
+                    <input id="fin-ledger-source" value="${escapeHtml(filters.source)}" type="hidden" />
+                    <input id="fin-ledger-amount-min" value="${escapeHtml(filters.amountMin)}" type="hidden" />
+                    <input id="fin-ledger-amount-max" value="${escapeHtml(filters.amountMax)}" type="hidden" />
+                `}
+                ${chips}
             </div>
         `;
         let panelHtml = '';
-        if (view === 'audit') {
-            panelHtml = transactions.length ? `
-                <table class="fin-table fin-table--compact">
-                    <thead><tr><th>Date</th><th>Type</th><th>ID / source</th><th>Account</th><th style="text-align:right">Amount</th><th style="text-align:right">Actions</th></tr></thead>
-                    <tbody>
-                        ${transactions.map((entry) => {
-                            const amount = Number(entry && entry.signedAmount);
-                            const signed = Number.isFinite(amount) ? amount : Number(entry && entry.amount) || 0;
-                            return `
-                                <tr>
-                                    <td>${formatShortDate(entry.timestamp)}</td>
-                                    <td>${escapeHtml(entry.type || entry.ledgerType || 'transaction')}</td>
-                                    <td>${escapeHtml(entry.id || entry.transactionEntityId || '')}<small>${escapeHtml(entry.source || entry.reviewStatus || 'local ledger')}</small></td>
-                                    <td>${escapeHtml(entry.accountName || entry.fromAccountName || entry.toAccountName || 'Account')}</td>
-                                    <td style="text-align:right" class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</td>
-                                    <td style="text-align:right">${ledgerActions(entry)}</td>
-                                </tr>
-                            `;
-                        }).join('')}
-                    </tbody>
-                </table>
-            ` : renderCompactEmpty('Audit log is clean.');
-        } else if (view === 'work') {
+        if (view === 'work') {
             panelHtml = `
-                <div class="fin-status-grid">
-                    <div class="fin-status-card"><span>Needs category</span><strong>${uncategorized.length}</strong><span>Transactions to classify</span></div>
-                    <div class="fin-status-card"><span>Unmatched payments</span><strong>${unmatchedPayments.length}</strong><span>Obligation payments to connect</span></div>
-                    <div class="fin-status-card"><span>Missing receipt check</span><strong>${missingReceipts.length}</strong><span>Expense records to review</span></div>
-                    <div class="fin-status-card"><span>Filtered records</span><strong>${transactions.length}</strong><span>${allTransactions.length} total movements</span></div>
+                <div class="fin-review-summary-line">
+                    <strong>${uncategorized.length}</strong> need category
+                    <span>${unmatchedPayments.length} unmatched payments</span>
+                    <span>${missingReceipts.length} receipt checks</span>
+                    <span>${transactions.length} filtered records</span>
                 </div>
-                ${transactions.length ? `
-                    <table class="fin-table fin-table--compact">
-                        <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Review</th><th style="text-align:right">Amount</th><th style="text-align:right">Actions</th></tr></thead>
-                        <tbody>
-                            ${transactions.map((entry) => {
-                                const amount = Number(entry && entry.signedAmount);
-                                const signed = Number.isFinite(amount) ? amount : Number(entry && entry.amount) || 0;
-                                return `
-                                <tr>
-                                    <td>${formatShortDate(entry.timestamp)}</td>
-                                    <td>${escapeHtml(entry.description || 'Transaction')}</td>
-                                    <td>${escapeHtml(entry.categoryId || 'uncategorized')}</td>
-                                    <td>${escapeHtml(entry.reviewStatus || 'clear')}</td>
-                                    <td style="text-align:right" class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</td>
-                                    <td style="text-align:right">${ledgerActions(entry)}</td>
-                                </tr>
-                            `; }).join('')}
-                        </tbody>
-                    </table>
-                ` : renderCompactEmpty('Begin tracking. Add your first payment.')}
+                ${reviewTransactions.length ? reviewTransactions.map(renderReviewRow).join('') : renderCompactEmpty('No transactions need review for the current filters.')}
             `;
         } else {
-            panelHtml = transactions.length ? cleanRows : renderCompactEmpty('Begin tracking. Add your first payment or sync a CSV.');
+            panelHtml = transactions.length ? transactions.map(renderLedgerRow).join('') : renderCompactEmpty('Begin tracking. Add your first payment or sync a CSV.');
         }
         return `
             <section class="fin-section">
-                <div class="widget ui-card glass fin-card">
+                <div class="widget ui-card glass fin-card fin-ledger-workspace-card">
                     <div class="fin-section-heading-row">
                         <div>
-                            <div class="widget-title ui-title">Transactions</div>
-                            <div class="fin-helper-text">A full page ledger workspace: scan daily movement, classify work items, and inspect raw local evidence without opening a mega-modal.</div>
+                            <div class="widget-title ui-title">Ledger Workspace</div>
+                            <div class="fin-helper-text">Review cash movement, classify records, and inspect evidence when needed.</div>
                         </div>
                         <div class="fin-action-row">
-                            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transaction', 'expense'">Add transaction</button>
                             <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'csvImport'">Import CSV</button>
-                            <button class="fin-mini-btn" type="button" data-action="exportTransactionsCsv">Export CSV</button>
+                            <button class="fin-mini-btn" type="button" data-action="exportTransactionsCsv">Export</button>
+                            <button class="fin-mini-btn fin-mini-btn--primary" type="button" data-action="openEditModal" data-action-args="'transaction', 'expense'">Add transaction</button>
                         </div>
                     </div>
-                    <div class="fin-status-grid">
-                        <div class="fin-status-card"><span>Total records</span><strong>${allTransactions.length}</strong><span>Active local ledger entries</span></div>
-                        <div class="fin-status-card"><span>Filtered movement</span><strong class="${netMovement >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${netMovement >= 0 ? '+' : '-'}${formatCurrency(Math.abs(netMovement))}</strong><span>Current filter result</span></div>
-                        <div class="fin-status-card"><span>Needs review</span><strong>${uncategorized.length}</strong><span>Category or review work</span></div>
-                        <div class="fin-status-card"><span>Matched payments</span><strong>${allTransactions.filter((entry) => String(entry && entry.obligationId || '').trim()).length}</strong><span>Linked to obligations</span></div>
-                    </div>
+                    ${statusStrip}
                     ${filtersHtml}
                     <div class="fin-tabs" role="tablist" aria-label="Transaction view modes">
-                        <button class="fin-tab-btn ${view === 'clean' ? 'active' : ''}" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="clean">Clean View</button>
-                        <button class="fin-tab-btn ${view === 'work' ? 'active' : ''}" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="work">Work View</button>
-                        <button class="fin-tab-btn ${view === 'audit' ? 'active' : ''}" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="audit">Audit View</button>
+                        <button class="fin-tab-btn ${view === 'clean' ? 'active' : ''}" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="clean">Ledger</button>
+                        <button class="fin-tab-btn ${view === 'work' ? 'active' : ''}" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="work">Review</button>
                     </div>
-                    <div class="fin-tab-panel">
-                        ${panelHtml}
+                    <div class="fin-ledger-workspace-grid">
+                        <div class="fin-tab-panel">
+                            ${panelHtml}
+                        </div>
+                        ${renderLedgerInspector(selectedTransaction, view)}
                     </div>
                 </div>
             </section>
         `;
     }
 
+    function ledgerTransactionId(entry) {
+        return String(entry && (entry.id || entry.transactionEntityId) || '').trim();
+    }
+
+    function ledgerSignedAmount(entry) {
+        const amount = Number(entry && entry.signedAmount);
+        if (Number.isFinite(amount)) return amount;
+        const fallback = Number(entry && entry.amount);
+        if (!Number.isFinite(fallback)) return 0;
+        const type = String(entry && (entry.ledgerType || entry.type) || '').toLowerCase();
+        return type.indexOf('expense') !== -1 ? -Math.abs(fallback) : fallback;
+    }
+
+    function ledgerNeedsCategory(entry) {
+        const category = String(entry && entry.categoryId || '').toLowerCase();
+        const review = String(entry && entry.reviewStatus || '').toLowerCase();
+        return !category || category === 'uncategorized' || review === 'needs_review';
+    }
+
+    function ledgerNeedsMatch(entry) {
+        return String(entry && entry.type) === 'expense.recorded'
+            && !String(entry && entry.obligationId || '').trim()
+            && String(entry && entry.categoryId || '').toLowerCase() === 'obligation';
+    }
+
+    function ledgerNeedsReceiptCheck(entry) {
+        return String(entry && entry.type) === 'expense.recorded'
+            && !String(entry && entry.receiptUrl || '').trim()
+            && String(entry && entry.categoryId || '').toLowerCase() !== 'transfer';
+    }
+
+    function isLedgerReviewItem(entry) {
+        return ledgerNeedsCategory(entry) || ledgerNeedsMatch(entry) || ledgerNeedsReceiptCheck(entry);
+    }
+
+    function ledgerReviewReason(entry) {
+        if (ledgerNeedsCategory(entry)) return 'Needs category';
+        if (ledgerNeedsMatch(entry)) return 'Match obligation';
+        if (ledgerNeedsReceiptCheck(entry)) return 'Receipt check';
+        const review = String(entry && entry.reviewStatus || 'Needs review').replace(/_/g, ' ');
+        return review.charAt(0).toUpperCase() + review.slice(1);
+    }
+
+    function ledgerEvidenceLabel(entry) {
+        const parts = [
+            entry && entry.importBatchId ? `Import ${entry.importBatchId}` : '',
+            entry && entry.sourceRowId ? `Row ${entry.sourceRowId}` : '',
+            entry && entry.reversalOf ? `Reversal of ${entry.reversalOf}` : '',
+            entry && entry.reversedBy ? `Reversed by ${entry.reversedBy}` : '',
+            entry && entry.reviewStatus ? entry.reviewStatus : ''
+        ].filter(Boolean);
+        return parts.join(' · ') || 'Local entry';
+    }
+
+    function renderLedgerFilterChips(filters) {
+        const labels = [];
+        if (String(filters.search || '').trim()) labels.push(`Search: ${filters.search}`);
+        if (filters.accountId && filters.accountId !== 'all') labels.push('Account filter');
+        if (String(filters.categoryId || '').trim()) labels.push(`Category: ${filters.categoryId}`);
+        if (filters.dateFrom) labels.push(`From ${filters.dateFrom}`);
+        if (filters.dateTo) labels.push(`To ${filters.dateTo}`);
+        if (filters.scope && filters.scope !== 'all') labels.push(`Scope: ${filters.scope}`);
+        if (filters.type && filters.type !== 'all') labels.push(`Type: ${filters.type}`);
+        if (filters.reviewStatus && filters.reviewStatus !== 'all') labels.push(`Review: ${String(filters.reviewStatus).replace(/_/g, ' ')}`);
+        if (filters.source && filters.source !== 'all') labels.push(`Source: ${filters.source}`);
+        if (String(filters.amountMin || '').trim()) labels.push(`Min ${filters.amountMin}`);
+        if (String(filters.amountMax || '').trim()) labels.push(`Max ${filters.amountMax}`);
+        if (!labels.length) return '';
+        return `
+            <div class="fin-ledger-filter-chips" aria-label="Active ledger filters">
+                ${labels.map((label) => `<span class="fin-status-pill">${escapeHtml(label)}</span>`).join('')}
+                <button class="fin-mini-btn" type="button" data-fin-action="clear-ledger-filters">Clear all</button>
+            </div>
+        `;
+    }
+
+    function renderLedgerInspector(entry, view) {
+        if (!entry) {
+            return `
+                <aside class="fin-transaction-inspector" aria-label="Transaction inspector">
+                    <span class="fin-eyebrow">Transaction inspector</span>
+                    <strong>Select a transaction</strong>
+                    <p>Choose a row to inspect the record, source details, and available actions.</p>
+                </aside>
+            `;
+        }
+        const id = ledgerTransactionId(entry);
+        const signed = ledgerSignedAmount(entry);
+        const isExpense = String(entry && entry.type) === 'expense.recorded';
+        const matched = Boolean(String(entry && entry.obligationId || '').trim());
+        const details = [
+            ['Type', entry.ledgerType || entry.type || 'transaction'],
+            ['Date', formatShortDate(entry.timestamp)],
+            ['Account', entry.accountName || entry.fromAccountName || entry.toAccountName || 'Account'],
+            ['Category', entry.categoryId || 'uncategorized'],
+            ['Scope', entry.scope || 'shared'],
+            ['Review state', entry.reviewStatus || 'clear'],
+            ['Source', entry.source || 'local ledger'],
+            ['Record ID', id],
+            ['Transaction entity', entry.transactionEntityId || '—'],
+            ['Import metadata', ledgerEvidenceLabel(entry)]
+        ];
+        return `
+            <aside class="fin-transaction-inspector" aria-label="Transaction inspector">
+                <span class="fin-eyebrow">Transaction inspector</span>
+                <div class="fin-inspector-heading">
+                    <div>
+                        <strong>${escapeHtml(entry.description || 'Transaction')}</strong>
+                        <small>${escapeHtml(entry.notes || entry.note || '')}</small>
+                    </div>
+                    <span class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</span>
+                </div>
+                <dl class="fin-inspector-grid">
+                    ${details.map(([label, value]) => `
+                        <div>
+                            <dt>${escapeHtml(label)}</dt>
+                            <dd>${escapeHtml(value)}</dd>
+                        </div>
+                    `).join('')}
+                </dl>
+                <div class="fin-inspector-actions">
+                    <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${escapeActionArg(id)}'">Change category</button>
+                    ${isExpense && !matched ? `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'paymentMatch', '${escapeActionArg(id)}'">Match obligation/payment</button>` : ''}
+                    <button class="fin-mini-btn" type="button" data-fin-action="reverse-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">Reverse transaction</button>
+                </div>
+            </aside>
+        `;
+    }
+
+    function completeMonthlyReviewInline() {
+        const accountChecks = Array.from(document.querySelectorAll('.monthly-review-account-check'));
+        const reviewChecks = Array.from(document.querySelectorAll('.monthly-review-check'));
+        if (!accountChecks.length) {
+            monthlyReviewError = 'Add a cash account before completing a monthly review.';
+            render();
+            return;
+        }
+        if (accountChecks.some((input) => !input.checked) || reviewChecks.some((input) => !input.checked)) {
+            monthlyReviewError = 'Confirm each account and each review step before closing the month.';
+            render();
+            return;
+        }
+        const accounts = accountChecks.map((input) => {
+            const index = String(input.getAttribute('data-review-index') || '');
+            const balanceInput = document.getElementById(`monthly-review-balance-${index}`);
+            return {
+                accountId: String(input.getAttribute('data-account-id') || ''),
+                balance: Number(balanceInput && balanceInput.value)
+            };
+        });
+        if (accounts.some((account) => !account.accountId || !Number.isFinite(account.balance))) {
+            monthlyReviewError = 'Enter a valid reconciled balance for every account.';
+            render();
+            return;
+        }
+        try {
+            if (window.Store && typeof window.Store.completeWeeklyReview === 'function') {
+                window.Store.completeWeeklyReview({
+                    accounts,
+                    unresolvedItems: true,
+                    matchPayments: true,
+                    confirmObligations: true,
+                    reviewSignals: true,
+                    closeMonth: true,
+                    notes: String(document.getElementById('monthly-review-notes')?.value || '')
+                });
+            }
+            monthlyReviewError = '';
+            render();
+        } catch (error) {
+            monthlyReviewError = error instanceof Error ? error.message : 'Could not complete this review.';
+            render();
+        }
+    }
+
+    function financeIconButton({ action, args, label, icon = 'edit', tone = 'muted', extraClass = '' }) {
+        return `
+            <button class="fin-mini-btn fin-icon-btn ${extraClass}" type="button" data-action="${escapeHtml(action)}"${args ? ` data-action-args="${escapeHtml(args)}"` : ''} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
+                ${renderSAGGlyph(icon, { size: 'xs', tone })}
+            </button>
+        `;
+    }
+
+    function reviewIconButton(options) {
+        return financeIconButton(options);
+    }
+
     function renderWeeklyReviewSection() {
         const reviewDue = isWeeklyReviewDue();
+        const accounts = safeArray(currentData && currentData.fiatAccounts);
+        const queue = treasuryArray('reviewQueue');
+        const dueObligations = treasuryArray('obligations').filter((entry) => ['overdue', 'due_soon', 'needs_review'].includes(String(entry && entry.status || '')));
+        const runwayReady = Number(currentSnapshot && currentSnapshot.runwayMonths) >= 3;
+        const checks = [
+            ['unresolvedItems', 'Resolve unclear items', queue.filter((item) => String(item && item.kind) === 'transaction' || String(item && item.kind) === 'payment').length === 0, 'Classify or match records that affect the ledger.'],
+            ['matchPayments', 'Match payments', queue.filter((item) => String(item && item.kind) === 'payment').length === 0, 'Tie payments to obligations when there is a clear match.'],
+            ['confirmObligations', 'Confirm obligations', dueObligations.length === 0, 'Pay, defer, or keep due costs flagged for review.'],
+            ['reviewSignals', 'Review signals', runwayReady, 'Read runway, low points, and missing inputs before closing.'],
+            ['closeMonth', 'Close month', true, 'Save the review note and reset the operating loop.']
+        ];
         return `
             <section class="fin-section">
-                <div class="widget ui-card glass fin-card fin-review-prompt">
-                    <div>
-                        <div class="widget-title ui-title">${reviewDue ? 'Monthly review due' : 'Monthly review current'}</div>
-                        <div class="fin-helper-text">Reconcile cash accounts, inspect pipeline and recurring costs, then leave one operating note.</div>
-                        <div class="fin-operating-meta">Last reviewed ${formatShortDate(currentReview && currentReview.lastReviewedAt)}</div>
+                <div class="widget ui-card glass fin-card fin-monthly-review-workspace">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">${reviewDue ? 'Monthly review due' : 'Monthly review current'}</div>
+                            <div class="fin-helper-text">Reconcile cash accounts, inspect the open queue, and leave one operating note.</div>
+                            <div class="fin-operating-meta">Last reviewed ${formatShortDate(currentReview && currentReview.lastReviewedAt)}</div>
+                        </div>
+                        <button class="fin-mini-btn fin-mini-btn--primary" type="button" data-fin-action="complete-monthly-review-inline">Close month</button>
                     </div>
-                    <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">${reviewDue ? 'Start review' : 'Open review'}</button>
+                    <div class="fin-monthly-review-grid">
+                        <div class="fin-monthly-review-panel">
+                            <div class="fin-eyebrow">Cash accounts</div>
+                            ${accounts.length ? accounts.map((account, index) => `
+                                <label class="fin-review-check-row">
+                                    <input class="monthly-review-account-check" type="checkbox" data-account-id="${escapeHtml(account.id)}" data-review-index="${index}" />
+                                    <span><strong>${escapeHtml(account.name || 'Account')}</strong><small>${escapeHtml(account.scope || 'shared')} · Confirm live balance</small></span>
+                                    <input id="monthly-review-balance-${index}" aria-label="${escapeHtml(account.name || 'Account')} reconciled balance" type="number" step="0.01" value="${escapeHtml(account.balance)}" />
+                                </label>
+                            `).join('') : renderCompactEmpty('Add a cash account before completing a review.')}
+                        </div>
+                        <div class="fin-monthly-review-panel">
+                            <div class="fin-eyebrow">Review steps</div>
+                            ${checks.map(([id, label, ready, note]) => `
+                                <label class="fin-review-check-row ${ready ? 'is-ready' : ''}">
+                                    <input id="monthly-review-${id}" class="monthly-review-check" type="checkbox" />
+                                    <span><strong>${escapeHtml(label)}</strong><small>${escapeHtml(note)}</small></span>
+                                    <span class="fin-status-pill">${ready ? 'Ready' : 'Check'}</span>
+                                </label>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <label class="fin-review-notes">
+                        <span class="fin-eyebrow">Review note</span>
+                        <textarea id="monthly-review-notes" rows="3" placeholder="What changed, what needs attention?">${escapeHtml(currentReview && currentReview.notes || '')}</textarea>
+                    </label>
+                    ${monthlyReviewError ? `<div class="fin-inline-error" role="alert">${escapeHtml(monthlyReviewError)}</div>` : ''}
                 </div>
             </section>
+        `;
+    }
+
+    function renderReviewRow(item, actionHtml) {
+        return `
+            <div class="fin-review-row">
+                <span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.reason)} · ${escapeHtml(item.kind || 'review')}</small></span>
+                <span>${renderStatusPill(item.tone === 'urgent' ? 'overdue' : 'needs_review')}</span>
+                <span class="fin-review-row-action">${actionHtml}</span>
+            </div>
+        `;
+    }
+
+    function renderObligationRow(entry, actionHtml) {
+        return `
+            <div class="fin-review-row">
+                <span><strong>${escapeHtml(entry.title)}</strong><small>${entry.dueDate ? formatShortDate(entry.dueDate) : 'No due date'} · ${escapeHtml(entry.scope || 'shared')}</small></span>
+                <span>${renderStatusPill(entry.status)} ${formatCurrency(entry.amount)}</span>
+                <span class="fin-review-row-action">${actionHtml}</span>
+            </div>
+        `;
+    }
+
+    function renderPaymentRow(entry, actionHtml) {
+        const matched = Boolean(entry.obligationId);
+        return `
+            <div class="fin-review-row">
+                <span><strong>${escapeHtml(entry.description || 'Payment')}</strong><small>${formatShortDate(entry.timestamp)} · ${escapeHtml(entry.accountName || 'Account')} · ${escapeHtml(entry.categoryId || 'uncategorized')}</small></span>
+                <span>${renderStatusPill(matched ? 'paid' : 'needs_review')} ${formatCurrency(entry.amount, entry.currency)}</span>
+                <span class="fin-review-row-action">${actionHtml}</span>
+            </div>
         `;
     }
 
@@ -935,7 +1242,7 @@ window.FinancialMode = (function () {
                         </div>
                         <div class="fin-list-item-actions">
                             <div class="fin-list-item-val">${formatCurrency(acc.balance)}</div>
-                            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'fiatAccount', '${escapeHtml(acc.id)}'">Edit</button>
+                            ${financeIconButton({ action: 'openEditModal', args: `'fiatAccount', '${escapeActionArg(acc.id)}'`, label: `Edit ${acc.name || 'cash account'}` })}
                         </div>
                     </div>
                 `).join('') : renderCompactEmpty('Establish your treasury. Add your primary operating account.')}
@@ -969,7 +1276,7 @@ window.FinancialMode = (function () {
                             </div>
                             <div class="fin-list-item-actions">
                                 <div class="fin-list-item-val">${formatCurrency(bucket.currentAmount)} <span style="font-size:0.8rem; color:var(--text-secondary); font-weight:normal;">of ${formatCurrency(bucket.targetAmount)}</span></div>
-                                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'reserveBucket', '${escapeHtml(bucket.id)}'">Edit</button>
+                                ${financeIconButton({ action: 'openEditModal', args: `'reserveBucket', '${escapeActionArg(bucket.id)}'`, label: `Edit ${bucket.name || 'reserve bucket'}` })}
                             </div>
                         </div>
                         <div class="fin-stacked-bar" style="height: 8px;">
@@ -1054,10 +1361,10 @@ window.FinancialMode = (function () {
                         </div>
                         <div class="fin-list-item-actions">
                             <div class="fin-list-item-val">${formatCurrency(expense.monthlyAmount)} / mo</div>
-                            <div style="display:flex; gap:0.25rem;">
+                            <div class="fin-inline-icon-actions">
                                 <button class="fin-mini-btn" type="button" data-action="FinancialMode.moveExpense" data-action-args="'${escapeActionArg(expense.id)}', '-1'" ${i === 0 ? 'disabled style="opacity:0.3"' : ''}>▲</button>
                                 <button class="fin-mini-btn" type="button" data-action="FinancialMode.moveExpense" data-action-args="'${escapeActionArg(expense.id)}', '1'" ${i === essentialCosts.length - 1 ? 'disabled style="opacity:0.3"' : ''}>▼</button>
-                                <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense', '${escapeActionArg(expense.id)}'">Edit</button>
+                                ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'expense', '${escapeActionArg(expense.id)}'`, label: `Edit ${expense.category || 'recurring cost'}` })}
                             </div>
                         </div>
                     </div>
@@ -1080,10 +1387,10 @@ window.FinancialMode = (function () {
                         </div>
                         <div class="fin-list-item-actions">
                             <div class="fin-list-item-val">${formatCurrency(expense.monthlyAmount)} / mo</div>
-                            <div style="display:flex; gap:0.25rem;">
+                            <div class="fin-inline-icon-actions">
                                 <button class="fin-mini-btn" type="button" data-action="FinancialMode.moveExpense" data-action-args="'${escapeActionArg(expense.id)}', '-1'" ${i === 0 ? 'disabled style="opacity:0.3"' : ''}>▲</button>
                                 <button class="fin-mini-btn" type="button" data-action="FinancialMode.moveExpense" data-action-args="'${escapeActionArg(expense.id)}', '1'" ${i === flexCosts.length - 1 ? 'disabled style="opacity:0.3"' : ''}>▼</button>
-                                <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense', '${escapeActionArg(expense.id)}'">Edit</button>
+                                ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'expense', '${escapeActionArg(expense.id)}'`, label: `Edit ${expense.category || 'recurring cost'}` })}
                             </div>
                         </div>
                     </div>
@@ -1110,16 +1417,10 @@ window.FinancialMode = (function () {
                                 <div class="fin-list-item-sub">${escapeHtml(debt.scope || 'shared')}${debt.dueDate ? ` · Due ${formatShortDate(debt.dueDate)}` : ''}</div>
                             </div>
                             <div class="fin-list-item-actions" style="flex-direction: column; align-items: flex-end; gap: 0.25rem;">
-                                <div style="display:flex; gap:0.25rem; justify-content: flex-end;">
-                                    <button class="fin-mini-btn" style="padding: 0 4px; height: 20px; min-width: 20px;" type="button" data-action="FinancialMode.openAddModal" data-action-args="'debtPayment', '${escapeActionArg(debt.id)}'" title="Record payment">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                                    </button>
-                                    <button class="fin-mini-btn" style="padding: 0 4px; height: 20px; min-width: 20px;" type="button" data-action="FinancialMode.openAddModal" data-action-args="'debtPlan', '${escapeActionArg(debt.id)}'" title="Update plan">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                                    </button>
-                                    <button class="fin-mini-btn" style="padding: 0 4px; height: 20px; min-width: 20px;" type="button" data-action="FinancialMode.openAddModal" data-action-args="'debtAdd', '${escapeActionArg(debt.id)}'" title="Edit account">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                                    </button>
+                                <div class="fin-inline-icon-actions">
+                                    ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'debtPayment', '${escapeActionArg(debt.id)}'`, label: `Record payment for ${debt.name || 'debt item'}`, icon: 'success', tone: 'success' })}
+                                    ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'debtPlan', '${escapeActionArg(debt.id)}'`, label: `Edit payment plan for ${debt.name || 'debt item'}` })}
+                                    ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'debtAdd', '${escapeActionArg(debt.id)}'`, label: `Edit ${debt.name || 'debt item'}` })}
                                 </div>
                                 <div class="fin-list-item-val fin-text-med">${formatCurrency(debt.outstanding)}</div>
                             </div>
@@ -1356,8 +1657,10 @@ window.FinancialMode = (function () {
                                             <td style="text-align:right">${formatCurrency(row.amount)}</td>
                                             <td style="text-align:right">
                                                 ${row.status === 'paid' ? '' : `
-                                                    <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'income', '${escapeActionArg(row.id)}'">Edit</button>
-                                                    <button class="fin-mini-btn" type="button" data-action="markAsPaid" data-action-args="'${escapeActionArg(row.id)}'">Received</button>
+                                                    <span class="fin-inline-icon-actions fin-inline-icon-actions--right">
+                                                        ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'income', '${escapeActionArg(row.id)}'`, label: `Edit ${row.title || 'expected income'}` })}
+                                                        ${financeIconButton({ action: 'markAsPaid', args: `'${escapeActionArg(row.id)}'`, label: `Mark ${row.title || 'expected income'} as received`, icon: 'success', tone: 'success' })}
+                                                    </span>
                                                 `}
                                             </td>
                                         </tr>
@@ -1540,7 +1843,7 @@ window.FinancialMode = (function () {
         const type = String(item && item.type || '');
         const id = escapeActionArg(item && item.id || '');
         if (String(item && item.id) === 'month-end-gap') return { label: 'Adjust reserves', action: 'FinancialMode.setSection', args: "'reserves'" };
-        if (String(item && item.id) === 'monthly-review') return { label: 'Start review', action: 'openEditModal', args: "'weeklyReview'" };
+        if (String(item && item.id) === 'monthly-review') return { label: 'Start review', action: 'FinancialMode.setSection', args: "'review'" };
         if (type === 'Overdue') return { label: 'Review income', action: 'FinancialMode.setSection', args: "'invoices'" };
         if (type === 'Due soon') return { label: 'Review obligation', action: 'FinancialMode.setSection', args: "'review'" };
         if (type === 'Missing forecast input') return { label: 'Add income', action: 'FinancialMode.openAddModal', args: "'income'" };
@@ -1624,6 +1927,59 @@ window.FinancialMode = (function () {
             .slice(0, 5);
     }
 
+    function overviewPercent(value, total) {
+        const number = Number(value);
+        const denominator = Number(total);
+        if (!Number.isFinite(number) || !Number.isFinite(denominator) || denominator <= 0) return 0;
+        return Math.max(0, Math.min(100, (number / denominator) * 100));
+    }
+
+    function overviewRunwayStatus(runway) {
+        const value = Number(runway);
+        if (!Number.isFinite(value)) return { label: 'Unknown', className: 'is-watch' };
+        if (value < 3) return { label: 'Thin', className: 'is-critical' };
+        if (value < 6) return { label: 'Watch', className: 'is-watch' };
+        return { label: 'Stable', className: 'is-steady' };
+    }
+
+    function renderOverviewForecastLine(expectedMonthEnd) {
+        const calendar = buildCashCalendar(30);
+        const availableCash = treasuryNumber('availableCash', 0);
+        const events = safeArray(calendar && calendar.events).slice(0, 10);
+        const values = [availableCash];
+        let running = availableCash;
+        events.forEach((event) => {
+            running += Number(event && event.amount) || 0;
+            values.push(running);
+        });
+        if (Number.isFinite(Number(expectedMonthEnd))) values.push(Number(expectedMonthEnd));
+        while (values.length < 5) values.push(values[values.length - 1] || 0);
+
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const range = Math.max(1, max - min);
+        const width = 360;
+        const height = 84;
+        const points = values.map((value, index) => {
+            const x = values.length === 1 ? 0 : (index / (values.length - 1)) * width;
+            const y = height - ((value - min) / range) * 56 - 14;
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+        });
+        const splitIndex = Math.max(1, points.length - 2);
+        const solidPoints = points.slice(0, splitIndex + 1).join(' ');
+        const projectedPoints = points.slice(splitIndex).join(' ');
+        const endPoint = points[points.length - 1] || `${width},${height / 2}`;
+        const [endX, endY] = endPoint.split(',');
+
+        return `
+            <svg class="fin-money-trend" viewBox="0 0 ${width} ${height}" role="img" aria-label="30-day cash movement trend">
+                <polyline class="fin-money-trend-line" points="${solidPoints}"></polyline>
+                <polyline class="fin-money-trend-line fin-money-trend-line--projected" points="${projectedPoints}"></polyline>
+                <circle class="fin-money-trend-dot" cx="${endX}" cy="${endY}" r="4.5"></circle>
+            </svg>
+        `;
+    }
+
     function renderDashboardCockpit() {
         const totalCash = treasuryNumber('actualCash', treasuryNumber('totalCash', Number(currentSnapshot?.realBalance) || 0));
         const reservedCash = treasuryNumber('protectedCash', treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0));
@@ -1633,49 +1989,91 @@ window.FinancialMode = (function () {
         const expectedMonthEnd = overviewExpectedMonthEnd();
         const runway = overviewRunwayValue();
         const runwayLabel = runway == null ? '—' : `${Number(runway).toFixed(1)}`;
-        const runwayClass = runway == null || Number(runway) < 3 ? 'is-critical' : (Number(runway) < 6 ? 'is-watch' : 'is-steady');
+        const runwayStatus = overviewRunwayStatus(runway);
         const resultClass = expectedMonthEnd < 0 ? 'is-critical' : 'is-steady';
+        const protectedPercent = overviewPercent(reservedCash, totalCash);
+        const availablePercent = Math.max(0, 100 - protectedPercent);
+        const burnCoverageDays = monthlyBurn > 0 ? Math.round((availableCash / monthlyBurn) * 30) : null;
+        const burnPressurePercent = burnCoverageDays == null ? 0 : Math.max(8, Math.min(100, 100 - Math.min(100, (burnCoverageDays / 365) * 100)));
+        const runwayCopy = runway == null
+            ? 'Add recurring burn and cash accounts to calculate runway.'
+            : `Available cash covers ${Number(runway).toFixed(1)} months at the current monthly burn.`;
+        const burnDaysLabel = burnCoverageDays == null ? '—' : `${burnCoverageDays} days`;
+        const resultLabel = currentHasFinanceData ? `${expectedMonthEnd >= 0 ? '+' : ''}${formatCurrency(expectedMonthEnd)}` : '—';
 
         return `
             <section class="fin-section">
-                <div class="widget ui-card glass fin-card fin-command-summary" data-fin-command-summary>
-                    <div class="fin-section-heading-row">
+                <div class="widget ui-card glass fin-card fin-money-picture" data-fin-command-summary>
+                    <div class="fin-money-picture-head">
                         <div>
-                            <div class="widget-title ui-title">Treasury Command Summary</div>
+                            <div class="widget-title ui-title">Money Picture</div>
                             <div class="fin-helper-text">The money picture before any review work.</div>
                         </div>
                     </div>
-                    <div class="fin-command-grid">
-                        <div class="fin-command-metric">
-                            <span>Total cash</span>
-                            <strong>${currentHasFinanceData ? formatCurrency(totalCash) : '—'}</strong>
-                            ${renderMetricExplanation('actualCash')}
-                        </div>
-                        <div class="fin-command-metric">
-                            <span>Available</span>
-                            <strong>${currentHasFinanceData ? formatCurrency(availableCash) : '—'}</strong>
-                            ${renderMetricExplanation('availableCash')}
-                        </div>
-                        <div class="fin-command-metric">
-                            <span>Protected</span>
-                            <strong>${currentHasFinanceData ? formatCurrency(reservedCash) : '—'}</strong>
-                            ${renderMetricExplanation('protectedCash')}
-                        </div>
-                        <div class="fin-command-metric fin-command-metric--primary ${resultClass}">
-                            <span>30-day result</span>
-                            <strong>${currentHasFinanceData ? formatCurrency(expectedMonthEnd) : '—'}</strong>
-                        </div>
-                        <div class="fin-command-metric fin-command-metric--primary ${runwayClass}">
+                    <div class="fin-money-picture-grid">
+                        <div class="fin-money-runway ${runwayStatus.className}">
                             <span>Runway</span>
-                            <strong>${runwayLabel}${runway != null ? '<small> months</small>' : ''}</strong>
-                            ${renderMetricExplanation('runway')}
+                            <strong>${runwayLabel}<small> months</small></strong>
+                            <div class="fin-runway-pill"><span></span>${escapeHtml(runwayStatus.label)}</div>
+                            <p>${escapeHtml(runwayCopy)}</p>
                         </div>
-                        <div class="fin-command-metric">
-                            <span>Monthly burn</span>
-                            <strong>${currentHasFinanceData ? formatCurrency(monthlyBurn) : '—'}</strong>
-                            ${renderMetricExplanation('monthlyBurnRate')}
+                        <div class="fin-money-result ${resultClass}">
+                            <span>30-Day Result</span>
+                            <strong>${resultLabel}</strong>
+                            <p>Projected month-end</p>
+                            ${renderOverviewForecastLine(expectedMonthEnd)}
+                            <small>Based on confirmed obligations and expected income.</small>
                         </div>
                     </div>
+                </div>
+            </section>
+
+            <section class="fin-section">
+                <div class="fin-money-secondary-grid">
+                    <div class="widget ui-card glass fin-card fin-money-panel">
+                        <div class="widget-title ui-title">Cash Structure</div>
+                        <div class="fin-helper-text">How your cash is allocated.</div>
+                        <div class="fin-money-panel-main">
+                            <span>Total cash</span>
+                            <strong>${currentHasFinanceData ? formatCurrency(totalCash) : '—'}</strong>
+                        </div>
+                        <div class="fin-money-bar" aria-label="Cash allocation">
+                            <span class="fin-money-bar-available" style="width:${availablePercent}%"></span>
+                            <span class="fin-money-bar-protected" style="width:${protectedPercent}%"></span>
+                        </div>
+                        <div class="fin-money-legend">
+                            <div><span class="fin-dot fin-dot--safe"></span><span>Available</span><strong>${formatCurrency(availableCash)}</strong><small>${availablePercent.toFixed(1)}%</small></div>
+                            <div><span class="fin-dot"></span><span>Protected</span><strong>${formatCurrency(reservedCash)}</strong><small>${protectedPercent.toFixed(1)}%</small></div>
+                        </div>
+                    </div>
+
+                    <div class="widget ui-card glass fin-card fin-money-panel">
+                        <div class="widget-title ui-title">Burn Pressure</div>
+                        <div class="fin-helper-text">Your monthly cash outflow.</div>
+                        <div class="fin-money-panel-main">
+                            <span>Monthly burn</span>
+                            <strong>${currentHasFinanceData ? formatCurrency(monthlyBurn) : '—'}<small> / month</small></strong>
+                        </div>
+                        <div class="fin-money-bar fin-money-bar--burn" aria-label="Burn pressure">
+                            <span style="width:${burnPressurePercent}%"></span>
+                        </div>
+                        <div class="fin-burn-stats">
+                            <div>${renderSAGGlyph('attention', { size: 'sm', tone: 'warning' })}<span>Cash out per month</span><strong>${formatCurrency(monthlyBurn)}</strong></div>
+                            <div>${renderSAGGlyph('success', { size: 'sm', tone: 'warning' })}<span>Days of coverage</span><strong>${escapeHtml(burnDaysLabel)}</strong></div>
+                            <div>${renderSAGGlyph('sprout', { size: 'sm', tone: 'warning' })}<span>Runway</span><strong>${runwayLabel}${runway != null ? ' months' : ''}</strong></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card fin-money-note">
+                    <div class="fin-money-note-icon">${renderSAGGlyph('attention', { size: 'sm', tone: 'muted' })}</div>
+                    <div>
+                        <strong>This view is based on confirmed data and your current settings.</strong>
+                        <span>Review items in Cash Movement to keep your numbers accurate.</span>
+                    </div>
+                    <button class="fin-mini-btn fin-mini-btn--primary" type="button" data-action="FinancialMode.setSection" data-action-args="'ledger'">Open Cash Movement</button>
                 </div>
             </section>
         `;
@@ -1719,7 +2117,7 @@ window.FinancialMode = (function () {
             decision = {
                 title: 'Monthly review is ready',
                 body: 'Close the operating loop before making smaller adjustments.',
-                buttons: [{ label: 'Start review', action: 'openEditModal', args: "'weeklyReview'" }]
+                buttons: [{ label: 'Start review', action: 'FinancialMode.setSection', args: "'review'" }]
             };
         } else if (missingInput) {
             decision = {
@@ -1754,7 +2152,7 @@ window.FinancialMode = (function () {
 
     function renderDashboardAction(item) {
         if (String(item && item.kind) === 'weekly_review') {
-            return `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">Close monthly review</button>`;
+            return `<button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Close monthly review</button>`;
         }
         return renderReviewQueueActions(item);
     }
@@ -1936,8 +2334,10 @@ window.FinancialMode = (function () {
                                             <td>${entry.dueDate ? formatShortDate(entry.dueDate) : 'No date'}</td>
                                             <td>${formatCurrency(entry.amount)}</td>
                                             <td style="text-align:right">
-                                                <button class="fin-mini-btn" data-action="FinancialMode.openAddModal" data-action-args="'income', '${escapeActionArg(entry.id)}'">Edit</button>
-                                                <button class="fin-mini-btn" data-action="markAsPaid" data-action-args="'${escapeActionArg(entry.id)}'">Received</button>
+                                                <span class="fin-inline-icon-actions fin-inline-icon-actions--right">
+                                                    ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'income', '${escapeActionArg(entry.id)}'`, label: `Edit ${entry.title || 'income'}` })}
+                                                    ${financeIconButton({ action: 'markAsPaid', args: `'${escapeActionArg(entry.id)}'`, label: `Mark ${entry.title || 'income'} as received`, icon: 'success', tone: 'success' })}
+                                                </span>
                                             </td>
                                         </tr>
                                     `).join('')}
@@ -1986,25 +2386,17 @@ window.FinancialMode = (function () {
 
     function renderReviewQueue() {
         const queue = treasuryArray('reviewQueue');
-        const reviewDue = isWeeklyReviewDue();
         const unresolvedCount = queue.length;
         return `
             <section class="fin-section">
-                <div class="widget ui-card glass fin-card">
+                <div class="widget ui-card glass fin-card fin-review-list-card">
                     <div class="fin-section-heading-row">
                         <div>
                             <div class="widget-title ui-title">Review Queue</div>
                             <div class="fin-helper-text">${unresolvedCount} unresolved · Only items that need a classification, decision, or check.</div>
                         </div>
-                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">${reviewDue ? 'Start review' : 'Open review'}</button>
                     </div>
-                    ${queue.length ? queue.map((item) => `
-                        <div class="modal-list-row">
-                            <span><strong>${escapeHtml(item.title)}</strong><br><small>${escapeHtml(item.reason)} · ${escapeHtml(item.kind || 'review')}</small></span>
-                            <span>${renderStatusPill(item.tone === 'urgent' ? 'overdue' : 'needs_review')}</span>
-                            <span class="goal-modal-actions">${renderReviewQueueActions(item)}</span>
-                        </div>
-                    `).join('') : renderCompactEmpty('All items reviewed and reconciled.')}
+                    ${queue.length ? queue.map((item) => renderReviewRow(item, renderReviewQueueActions(item))).join('') : renderCompactEmpty('All items reviewed and reconciled.')}
                 </div>
             </section>
         `;
@@ -2014,38 +2406,27 @@ window.FinancialMode = (function () {
         const kind = String(item && item.kind || 'setup');
         const id = escapeActionArg(item && (item.targetId || item.id) || '');
         if (kind === 'transaction') {
-            return `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${id}'">Categorize</button>`;
+            return reviewIconButton({ action: 'openEditModal', args: `'transactionReview', '${id}'`, label: 'Edit transaction review' });
         }
         if (kind === 'payment') {
-            return `
-                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'paymentMatch', '${id}'">Match</button>
-                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${id}'">Categorize</button>
-            `;
+            return reviewIconButton({ action: 'openEditModal', args: `'paymentMatch', '${id}'`, label: 'Edit payment match' });
         }
         if (kind === 'pipeline') {
-            return `
-                <button class="fin-mini-btn" type="button" data-action="markAsPaid" data-action-args="'${id}'">Received</button>
-                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'pipelineReview', '${id}'">Update</button>
-                <button class="fin-mini-btn" type="button" data-action="cancelPipelineFromReview" data-action-args="'${id}'">Cancel</button>
-            `;
+            return reviewIconButton({ action: 'openEditModal', args: `'pipelineReview', '${id}'`, label: 'Edit income review' });
         }
         if (kind === 'debt') {
-            return `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'debtPlan', '${id}'">Add plan</button>`;
+            return reviewIconButton({ action: 'openEditModal', args: `'debtPlan', '${id}'`, label: 'Edit payment plan' });
         }
         if (kind === 'obligation') {
-            return `
-                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'obligationPayment', '${id}'">Mark paid</button>
-                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'obligationDefer', '${id}'">Defer</button>
-                <button class="fin-mini-btn" type="button" data-action="markObligationNeedsReview" data-action-args="'${id}'">Review</button>
-            `;
+            return reviewIconButton({ action: 'openEditModal', args: `'obligationPayment', '${id}'`, label: 'Edit obligation review' });
         }
         if (String(item && item.id) === 'missing-cash') {
-            return `<button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'fiatAccount'">Add account</button>`;
+            return reviewIconButton({ action: 'FinancialMode.openAddModal', args: "'fiatAccount'", label: 'Edit cash accounts' });
         }
         if (String(item && item.id) === 'missing-burn') {
-            return `<button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense'">Add cost</button>`;
+            return reviewIconButton({ action: 'FinancialMode.openAddModal', args: "'expense'", label: 'Edit recurring costs' });
         }
-        return `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">${escapeHtml(item && item.actionLabel || 'Review')}</button>`;
+        return reviewIconButton({ action: 'FinancialMode.setSection', args: "'review'", label: escapeHtml(item && item.actionLabel || 'Review item') });
     }
 
     function renderObligationReviewSection() {
@@ -2060,18 +2441,10 @@ window.FinancialMode = (function () {
                             <div class="widget-title ui-title">Expected Obligations</div>
                             <div class="fin-helper-text">Resolve due costs here: pay, defer, or keep them flagged for review.</div>
                         </div>
-                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense'">Add recurring cost</button>
+                        ${reviewIconButton({ action: 'FinancialMode.openAddModal', args: "'expense'", label: 'Edit recurring costs' })}
                     </div>
                     ${obligations.length ? obligations.map((entry) => `
-                        <div class="modal-list-row">
-                            <span><strong>${escapeHtml(entry.title)}</strong><br><small>${entry.dueDate ? formatShortDate(entry.dueDate) : 'No due date'} · ${escapeHtml(entry.scope || 'shared')}</small></span>
-                            <span>${renderStatusPill(entry.status)} ${formatCurrency(entry.amount)}</span>
-                            <span class="goal-modal-actions">
-                                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'obligationPayment', '${escapeActionArg(entry.id)}'">Mark paid</button>
-                                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'obligationDefer', '${escapeActionArg(entry.id)}'">Defer</button>
-                                <button class="fin-mini-btn" type="button" data-action="markObligationNeedsReview" data-action-args="'${escapeActionArg(entry.id)}'">Review</button>
-                            </span>
-                        </div>
+                        ${renderObligationRow(entry, reviewIconButton({ action: 'openEditModal', args: `'obligationPayment', '${escapeActionArg(entry.id)}'`, label: 'Edit obligation review' }))}
                     `).join('') : renderCompactEmpty('No pressing obligations. You are in the clear.')}
                 </div>
             </section>
@@ -2090,20 +2463,14 @@ window.FinancialMode = (function () {
                             <div class="widget-title ui-title">Actual Payments</div>
                             <div class="fin-helper-text">Payments booked into the ledger. Matched payments are tied to an obligation; the rest are review material.</div>
                         </div>
-                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transaction'">Add payment</button>
+                        ${reviewIconButton({ action: 'openEditModal', args: "'transaction'", label: 'Edit payments' })}
                     </div>
                     ${payments.length ? payments.map((entry) => {
                 const matched = Boolean(entry.obligationId);
-                return `
-                        <div class="modal-list-row">
-                            <span><strong>${escapeHtml(entry.description || 'Payment')}</strong><br><small>${formatShortDate(entry.timestamp)} · ${escapeHtml(entry.accountName || 'Account')} · ${escapeHtml(entry.categoryId || 'uncategorized')}</small></span>
-                            <span>${renderStatusPill(matched ? 'paid' : 'needs_review')} ${formatCurrency(entry.amount, entry.currency)}</span>
-                            <span class="goal-modal-actions">
-                                ${matched ? '' : `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'paymentMatch', '${escapeActionArg(entry.id)}'">Match</button>`}
-                                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${escapeActionArg(entry.id)}'">Categorize</button>
-                            </span>
-                        </div>
-                    `;
+                const action = matched
+                    ? reviewIconButton({ action: 'openEditModal', args: `'transactionReview', '${escapeActionArg(entry.id)}'`, label: 'Edit transaction review' })
+                    : reviewIconButton({ action: 'openEditModal', args: `'paymentMatch', '${escapeActionArg(entry.id)}'`, label: 'Edit payment match' });
+                return renderPaymentRow(entry, action);
             }).join('') : renderCompactEmpty('Awaiting payments. Book transactions to match them against expectations.')}
                 </div>
             </section>
@@ -2237,7 +2604,7 @@ window.FinancialMode = (function () {
                     <div class="fin-liquidity-copy">${horizonText}</div>
                     <div class="fin-liquidity-actions">
                         <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense'">Review recurring costs</button>
-                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">Open weekly review</button>
+                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Open monthly review</button>
                     </div>
                 </div>
                 ${reviewDue ? `
@@ -2246,7 +2613,7 @@ window.FinancialMode = (function () {
                             <div class="widget-title ui-title">Monthly review due</div>
                             <div class="fin-helper-text">Reconcile cash accounts, scan costs and pipeline, then leave one note for the week ahead.</div>
                         </div>
-                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">Start review</button>
+                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Start review</button>
                     </div>
                 ` : ''}
             </section>
@@ -2445,7 +2812,7 @@ window.FinancialMode = (function () {
                                     <td>${new Date(item.paidAt || item.sentAt || Date.now()).toLocaleDateString()}</td>
                                     <td>${formatCurrency(item.amount)}</td>
                                     <td style="text-align:right">
-                                        <button class="fin-mini-btn" data-action="deleteInvoice" data-action-args="'${escapeActionArg(item.id)}'" title="Remove from history">×</button>
+                                        ${financeIconButton({ action: 'deleteInvoice', args: `'${escapeActionArg(item.id)}'`, label: `Remove ${item.client || 'settled income'} from history`, icon: 'warning', tone: 'muted' })}
                                     </td>
                                 </tr>
                             `).join('')}
@@ -2469,9 +2836,11 @@ window.FinancialMode = (function () {
                                     <td>${(Number(deal.probability || 0) * 100).toFixed(0)}%</td>
                                     <td class="fin-val-pos">${formatCurrency((Number(deal.value) || 0) * (Number(deal.probability) || 0))}</td>
                                     <td style="text-align:right">
-                                        <button class="fin-mini-btn" data-action="FinancialMode.openAddModal" data-action-args="'income', '${escapeActionArg(deal.id)}'" title="Edit">${renderSAGGlyph('edit', { size: 'xs', tone: 'muted' })}</button>
-                                        <button class="fin-mini-btn" data-action="markAsPaid" data-action-args="'${escapeActionArg(deal.id)}'" title="Mark as paid">${renderSAGGlyph('success', { size: 'xs', tone: 'success' })}</button>
-                                        <button class="fin-mini-btn" data-action="deleteInvoice" data-action-args="'${escapeActionArg(deal.id)}'" title="Archive">×</button>
+                                        <span class="fin-inline-icon-actions fin-inline-icon-actions--right">
+                                            ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'income', '${escapeActionArg(deal.id)}'`, label: `Edit ${deal.title || 'pipeline item'}` })}
+                                            ${financeIconButton({ action: 'markAsPaid', args: `'${escapeActionArg(deal.id)}'`, label: `Mark ${deal.title || 'pipeline item'} as received`, icon: 'success', tone: 'success' })}
+                                            ${financeIconButton({ action: 'deleteInvoice', args: `'${escapeActionArg(deal.id)}'`, label: `Archive ${deal.title || 'pipeline item'}`, icon: 'warning', tone: 'muted' })}
+                                        </span>
                                     </td>
                                 </tr>
                             `).join('')}

@@ -22,9 +22,11 @@ Every roadmap item must improve one of those answers or make the underlying data
 
 Implemented baseline:
 
-- Grouped app shell: Dashboard, Ledger, Planning, Review, Data, Settings.
-- Finance Observatory as the default landing surface.
-- Page-native Transactions workspace with ledger filters, Clean / Work / Audit views, and inline review actions.
+- Grouped app shell: Overview, Transactions, Income, Cashflow, Monthly Review, Reserves, Obligations, Reports, Import & Backup, Settings.
+- Overview Money Picture cockpit with runway, 30-day projected result, cash structure, and burn pressure.
+- Page-native Transactions Ledger Workspace with compact filters, Ledger / Review modes, a transaction inspector, and no visible Audit mode.
+- Page-native Monthly Review workspace with inline cash reconciliation, review checklist, review note, validation, and Close month.
+- Row actions in Review, Reserves, Income, Cashflow pipeline rows, recurring costs, and debt cards are icon-first where the action is contextual.
 - Initial UI hardening seams for shared dashboard helpers, section composition, and modal helper rendering.
 - Local-first Store/repository architecture with backup support.
 - CSV import preview/import/undo.
@@ -40,6 +42,8 @@ Known baseline limitations:
 - Import/export is useful but not yet a polished data operations center.
 - Planning projections need clearer formulas and stronger scenario controls.
 - Mobile layout has smoke coverage, but dense tables still need more deliberate small-screen design.
+- The old Monthly Review modal renderer still exists as a compatibility fallback, but the intended workflow is now page-native.
+- Transactions has pulled forward part of Phase 5; future ledger work should focus on import profiles, categorization rules, and evidence depth rather than rebuilding the workspace shell.
 
 ## Phase 1A: Hardening The Operating Core
 

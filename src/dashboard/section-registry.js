@@ -2,7 +2,7 @@ export function createSectionRenderer(renderers, renderSectionHeading) {
     const pages = {
         ledger: {
             title: 'Transactions',
-            copy: 'Clean daily view, focused review work, and raw audit evidence when you need it.',
+            copy: 'Clean daily movement, focused review work, and transaction evidence when you need it.',
             sections: ['ledger']
         },
         invoices: {
@@ -55,10 +55,6 @@ export function createSectionRenderer(renderers, renderSectionHeading) {
                 renderSectionHeading('Overview', 'Your local-first treasury cockpit.'),
                 renderers.observatoryHeader(),
                 renderers.dashboardCockpit(),
-                renderers.todaysDecision(),
-                renderers.next30Days(),
-                renderers.nextActions(),
-                renderers.strategicPicture(),
                 `</div>`
             ];
         }
