@@ -239,6 +239,11 @@ This section records the latest implemented roadmap slices so future work can ad
   - CSV imports save the last successful mapping profile for matching headers and reuse it on later imports.
   - Import profiles stay in local import state and are included in backup/restore validation.
   - Transaction review shows deterministic category suggestions from existing ledger categories and recurring obligations, but never mutates data until the user confirms the review.
+  - Import & Backup exposes saved CSV profiles for renaming and deletion.
+  - The transaction inspector now groups evidence from existing ledger metadata: source, source file, import batch, fingerprint, linked income, linked obligations, and record IDs.
+  - Review and inspector flows show deterministic obligation match suggestions that prefill the focused match flow without mutating data until confirmation.
+  - CSV import duplicate handling is explicit: duplicates are skipped by default and can be imported anyway by deliberate selection.
+  - Import batches now record and display imported count, duplicate policy, rejected count, date range, and income/expense totals for easier review before undo.
 - Monthly Review has been simplified into an inline dashboard workflow:
   - The monthly close flow now lives directly on the Monthly Review page instead of opening a large modal by default.
   - Cash account reconciliation, review steps, review note, inline validation, and Close month are part of the page.
@@ -274,8 +279,8 @@ The e2e suite covers:
 
 ### Roadmap adaptation notes
 
-- Phase 3 should be treated as substantially complete for IA and cockpit simplification. Remaining Phase 3 work is polish, density reduction, and consistent icon/action patterns.
-- Phase 5’s Transactions workspace requirements are partially pulled forward and implemented. Import profiles and category suggestions are now started; future Phase 5 work should focus on deeper transaction evidence, import profile management, and matching depth rather than recreating the ledger workspace.
+- Phase 3 should be treated as complete for the current IA, cockpit, dark-mode readability, and icon-action polish baseline.
+- Phase 5’s Transactions workspace requirements are partially pulled forward and implemented. Import profiles, duplicate handling, import batch summaries, category suggestions, transaction evidence, and obligation match suggestions are now started; future Phase 5 work should focus on richer income/reserve/debt linking and deeper import batch inspection rather than recreating the ledger workspace.
 - Phase 8’s Monthly Review ritual is partially pulled forward and implemented. Future Phase 8 work should refine the review ritual, monthly summary, reserve review, and review history, not reintroduce the large review modal.
 - Product direction learned from the latest review:
   - Avoid “Audit” as a primary user-facing mode unless a later professional/accountant export surface explicitly needs it.
@@ -285,14 +290,10 @@ The e2e suite covers:
 
 ### Recommended next slices
 
-1. **Complete focused Phase 3 polish**
-   - Standardize cross-page surfaces, outlines, status pills, spacing, dark-mode readability, and icon-first row actions.
-   - Keep Overview compact and do not reintroduce explanation dropdowns there.
-   - Keep calculation and data safety untouched unless a test exposes a regression.
-2. **Then continue Phase 5 transaction/data depth**
-   - Transaction evidence depth, import profile management, and richer matching support.
+1. **Continue Phase 5 transaction/data depth**
+   - Richer income/reserve/debt linking support and deeper import batch inspection.
    - Do not rebuild the Ledger Workspace shell or expose Audit as a primary mode.
-3. **Then continue Phase 8 monthly review depth**
+2. **Then continue Phase 8 monthly review depth**
    - Review history, monthly summary, reserve review, and review completion narrative.
    - Keep the ritual page-native and avoid returning to the large review modal.
 

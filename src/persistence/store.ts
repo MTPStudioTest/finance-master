@@ -162,6 +162,16 @@ function normalizeImportState(value: unknown): FinanceImportState {
       importedAt: String(batch.importedAt || ''),
       sourceFile: String(batch.sourceFile || ''),
       fingerprints: Array.isArray(batch.fingerprints) ? batch.fingerprints.map(String).filter(Boolean) : [],
+      accountId: String(batch.accountId || '') || undefined,
+      importedCount: Number.isFinite(Number(batch.importedCount)) ? Number(batch.importedCount) : undefined,
+      duplicateCount: Number.isFinite(Number(batch.duplicateCount)) ? Number(batch.duplicateCount) : undefined,
+      duplicateImportedCount: Number.isFinite(Number(batch.duplicateImportedCount)) ? Number(batch.duplicateImportedCount) : undefined,
+      rejectedCount: Number.isFinite(Number(batch.rejectedCount)) ? Number(batch.rejectedCount) : undefined,
+      duplicatePolicy: batch.duplicatePolicy === 'import' ? 'import' as const : (batch.duplicatePolicy === 'skip' ? 'skip' as const : undefined),
+      incomeTotal: Number.isFinite(Number(batch.incomeTotal)) ? Number(batch.incomeTotal) : undefined,
+      expenseTotal: Number.isFinite(Number(batch.expenseTotal)) ? Number(batch.expenseTotal) : undefined,
+      dateFrom: /^\d{4}-\d{2}-\d{2}$/.test(String(batch.dateFrom || '')) ? String(batch.dateFrom) : undefined,
+      dateTo: /^\d{4}-\d{2}-\d{2}$/.test(String(batch.dateTo || '')) ? String(batch.dateTo) : undefined,
     })).filter((batch) => batch.id && batch.importedAt && batch.sourceFile)
     : [];
   const profiles = Array.isArray(state.profiles)
@@ -1265,22 +1275,60 @@ export const Store = {
     return clone(profile);
   },
 
-  importCsvTransactions(rows: CsvTransactionRow[], options: { accountId: string; sourceFile?: string }): CsvImportSummary {
+  renameCsvImportProfile(id: string, name: string): FinanceImportProfile {
+    const imports = this.getImportState();
+    const profileId = String(id || '').trim();
+    const nextName = String(name || '').trim();
+    if (!profileId) throw new Error('Choose a saved CSV profile.');
+    if (!nextName) throw new Error('CSV profile name cannot be empty.');
+    const current = imports.profiles.find((profile) => profile.id === profileId);
+    if (!current) throw new Error('Saved CSV profile was not found.');
+    const updated: FinanceImportProfile = {
+      ...current,
+      name: nextName,
+      updatedAt: new Date().toISOString(),
+    };
+    imports.profiles = imports.profiles.map((profile) => profile.id === profileId ? updated : profile);
+    setJson(STORAGE_KEYS.imports, imports);
+    return clone(updated);
+  },
+
+  deleteCsvImportProfile(id: string): FinanceImportState {
+    const imports = this.getImportState();
+    const profileId = String(id || '').trim();
+    if (!profileId) throw new Error('Choose a saved CSV profile.');
+    imports.profiles = imports.profiles.filter((profile) => profile.id !== profileId);
+    if (imports.lastProfileId === profileId) delete imports.lastProfileId;
+    setJson(STORAGE_KEYS.imports, imports);
+    return clone(imports);
+  },
+
+  importCsvTransactions(rows: CsvTransactionRow[], options: {
+    accountId: string;
+    sourceFile?: string;
+    duplicatePolicy?: 'skip' | 'import';
+    duplicateCount?: number;
+    rejectedCount?: number;
+  }): CsvImportSummary {
     const sourceFile = String(options.sourceFile || 'pasted-transactions.csv');
+    const duplicatePolicy = options.duplicatePolicy === 'import' ? 'import' : 'skip';
     const existing = new Set(this.getActiveFinanceEvents()
       .map((event) => String(event.metadata?.fingerprint || ''))
       .filter(Boolean));
     const batchId = entityId('import');
     let imported = 0;
     let duplicates = 0;
+    let duplicateImported = 0;
     const acceptedFingerprints: string[] = [];
     rows.forEach((row) => {
-      if (existing.has(row.fingerprint)) {
+      const duplicate = existing.has(row.fingerprint);
+      if (duplicate && duplicatePolicy !== 'import') {
         duplicates += 1;
         return;
       }
       existing.add(row.fingerprint);
       acceptedFingerprints.push(row.fingerprint);
+      if (duplicate) duplicateImported += 1;
       this.recordTransaction({
         description: row.description,
         amount: row.amount,
@@ -1295,10 +1343,28 @@ export const Store = {
       });
       imported += 1;
     });
+    const dates = rows.map((row) => String(row.date || '')).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort();
+    const incomeTotal = rows.reduce((sum, row) => sum + (Number(row.amount) > 0 ? Number(row.amount) : 0), 0);
+    const expenseTotal = rows.reduce((sum, row) => sum + (Number(row.amount) < 0 ? Math.abs(Number(row.amount)) : 0), 0);
     const imports = this.getImportState();
-    imports.batches.push({ id: batchId, importedAt: new Date().toISOString(), sourceFile, fingerprints: acceptedFingerprints });
+    imports.batches.push({
+      id: batchId,
+      importedAt: new Date().toISOString(),
+      sourceFile,
+      fingerprints: acceptedFingerprints,
+      accountId: options.accountId,
+      importedCount: imported,
+      duplicateCount: Number(options.duplicateCount || 0) + duplicates,
+      duplicateImportedCount: duplicateImported,
+      rejectedCount: Number(options.rejectedCount || 0),
+      duplicatePolicy,
+      incomeTotal: Math.round(incomeTotal * 100) / 100,
+      expenseTotal: Math.round(expenseTotal * 100) / 100,
+      dateFrom: dates[0],
+      dateTo: dates[dates.length - 1],
+    });
     setJson(STORAGE_KEYS.imports, imports);
-    return { batchId, imported, duplicates };
+    return { batchId, imported, duplicates, duplicateImported };
   },
 
   exportTransactionsCsv(): string {

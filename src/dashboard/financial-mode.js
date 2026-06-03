@@ -568,6 +568,27 @@ window.FinancialMode = (function () {
                 return;
             }
 
+            if (action === 'rename-import-profile') {
+                const id = String(actionEl.getAttribute('data-fin-profile-id') || '').trim();
+                const input = Array.from(elements.content.querySelectorAll('[data-fin-profile-name]'))
+                    .find((node) => String(node.getAttribute('data-fin-profile-name') || '') === id);
+                const name = String(input && input.value || '').trim();
+                if (id && name && window.Store && typeof window.Store.renameCsvImportProfile === 'function') {
+                    window.Store.renameCsvImportProfile(id, name);
+                    render();
+                }
+                return;
+            }
+
+            if (action === 'delete-import-profile') {
+                const id = String(actionEl.getAttribute('data-fin-profile-id') || '').trim();
+                if (id && window.Store && typeof window.Store.deleteCsvImportProfile === 'function') {
+                    window.Store.deleteCsvImportProfile(id);
+                    render();
+                }
+                return;
+            }
+
             if (action === 'complete-monthly-review-inline') {
                 completeMonthlyReviewInline();
                 return;
@@ -764,11 +785,12 @@ window.FinancialMode = (function () {
             const signed = ledgerSignedAmount(entry);
             const needsCategory = ledgerNeedsCategory(entry);
             const needsMatch = ledgerNeedsMatch(entry);
+            const suggestedMatch = needsMatch ? ledgerPaymentMatchSuggestions(entry)[0] : null;
             return `
                 <div class="fin-transaction-row fin-transaction-row--review ${id === selectedId ? 'active' : ''}" role="button" tabindex="0" data-fin-action="select-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">
                     <div class="fin-transaction-row-main">
                         <strong>${escapeHtml(entry.description || 'Transaction')}</strong>
-                        <small>${formatShortDate(entry.timestamp)} · ${ledgerReviewReason(entry)} · ${escapeHtml(entry.accountName || entry.fromAccountName || 'Account')}</small>
+                        <small>${formatShortDate(entry.timestamp)} · ${ledgerReviewReason(entry)} · ${escapeHtml(entry.accountName || entry.fromAccountName || 'Account')}${suggestedMatch ? ` · suggested ${escapeHtml(suggestedMatch.title)}` : ''}</small>
                     </div>
                     <div class="fin-transaction-row-side">
                         <span class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</span>
@@ -930,6 +952,78 @@ window.FinancialMode = (function () {
         return parts.join(' · ') || 'Local entry';
     }
 
+    function ledgerTokens(value) {
+        return String(value || '')
+            .toLowerCase()
+            .split(/[^a-z0-9]+/)
+            .map((token) => token.trim())
+            .filter((token) => token.length >= 4);
+    }
+
+    function ledgerDaysBetween(left, right) {
+        const leftTs = Date.parse(String(left || ''));
+        const rightTs = Date.parse(String(right || ''));
+        if (!Number.isFinite(leftTs) || !Number.isFinite(rightTs)) return Number.POSITIVE_INFINITY;
+        return Math.abs(leftTs - rightTs) / 86400000;
+    }
+
+    function ledgerPaymentMatchSuggestions(entry) {
+        if (!entry || String(entry.type) !== 'expense.recorded' || String(entry.obligationId || '').trim()) return [];
+        const amount = Math.abs(Number(entry.amount) || Number(entry.signedAmount) || 0);
+        const txTokens = new Set(ledgerTokens(entry.description));
+        return treasuryArray('obligations')
+            .filter((item) => String(item && item.status || '') !== 'paid' && String(item && item.type || '') !== 'debt')
+            .map((item) => {
+                const itemAmount = Math.abs(Number(item && item.amount) || 0);
+                const amountDelta = Math.abs(itemAmount - amount);
+                const dayDelta = ledgerDaysBetween(entry.timestamp, item && item.dueDate);
+                const tokenMatch = ledgerTokens(item && item.title).filter((token) => txTokens.has(token)).length;
+                let score = 0;
+                const reasons = [];
+                if (amountDelta < 0.01) {
+                    score += 6;
+                    reasons.push('same amount');
+                } else if (amountDelta <= Math.max(5, amount * 0.05)) {
+                    score += 3;
+                    reasons.push('similar amount');
+                }
+                if (dayDelta <= 3) {
+                    score += 4;
+                    reasons.push('near due date');
+                } else if (dayDelta <= 10) {
+                    score += 2;
+                    reasons.push('close date');
+                }
+                if (tokenMatch) {
+                    score += tokenMatch * 2;
+                    reasons.push('matching description');
+                }
+                return {
+                    id: String(item && item.id || ''),
+                    title: String(item && item.title || 'Obligation'),
+                    reason: reasons.join(' + ') || 'possible obligation',
+                    score
+                };
+            })
+            .filter((item) => item.id && item.score > 0)
+            .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title))
+            .slice(0, 2);
+    }
+
+    function ledgerEvidenceItems(entry) {
+        return [
+            ['Source', entry.source || 'local ledger'],
+            ['Source file', entry.sourceFile || ''],
+            ['Import batch', entry.importBatchId || ''],
+            ['Fingerprint', entry.fingerprint || ''],
+            ['Linked income', entry.linkedIncomeTitle || entry.linkedIncomeId || ''],
+            ['Linked obligation', entry.linkedObligationTitle || entry.obligationTitle || entry.obligationId || ''],
+            ['Reversal', entry.reversalOf ? `Reversal of ${entry.reversalOf}` : (entry.reversedBy ? `Reversed by ${entry.reversedBy}` : '')],
+            ['Record ID', ledgerTransactionId(entry)],
+            ['Transaction entity', entry.transactionEntityId || '']
+        ].filter((item) => String(item[1] || '').trim());
+    }
+
     function renderLedgerFilterChips(filters) {
         const labels = [];
         if (String(filters.search || '').trim()) labels.push(`Search: ${filters.search}`);
@@ -966,17 +1060,15 @@ window.FinancialMode = (function () {
         const signed = ledgerSignedAmount(entry);
         const isExpense = String(entry && entry.type) === 'expense.recorded';
         const matched = Boolean(String(entry && entry.obligationId || '').trim());
+        const evidence = ledgerEvidenceItems(entry);
+        const matchSuggestions = ledgerPaymentMatchSuggestions(entry);
         const details = [
             ['Type', entry.ledgerType || entry.type || 'transaction'],
             ['Date', formatShortDate(entry.timestamp)],
             ['Account', entry.accountName || entry.fromAccountName || entry.toAccountName || 'Account'],
             ['Category', entry.categoryId || 'uncategorized'],
             ['Scope', entry.scope || 'shared'],
-            ['Review state', entry.reviewStatus || 'clear'],
-            ['Source', entry.source || 'local ledger'],
-            ['Record ID', id],
-            ['Transaction entity', entry.transactionEntityId || '—'],
-            ['Import metadata', ledgerEvidenceLabel(entry)]
+            ['Review state', entry.reviewStatus || 'clear']
         ];
         return `
             <aside class="fin-transaction-inspector" aria-label="Transaction inspector">
@@ -996,6 +1088,20 @@ window.FinancialMode = (function () {
                         </div>
                     `).join('')}
                 </dl>
+                <div class="fin-inspector-evidence">
+                    <span class="fin-eyebrow">Evidence</span>
+                    ${evidence.map(([label, value]) => `
+                        <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
+                    `).join('')}
+                </div>
+                ${matchSuggestions.length ? `
+                    <div class="fin-inspector-suggestions">
+                        <span class="fin-eyebrow">Suggested match</span>
+                        ${matchSuggestions.map((suggestion) => `
+                            <div><strong>${escapeHtml(suggestion.title)}</strong><small>${escapeHtml(suggestion.reason)}</small></div>
+                        `).join('')}
+                    </div>
+                ` : ''}
                 <div class="fin-inspector-actions">
                     ${financeIconButton({ action: 'openEditModal', args: `'transactionReview', '${escapeActionArg(id)}'`, label: 'Edit transaction review' })}
                     ${isExpense && !matched ? financeIconButton({ action: 'openEditModal', args: `'paymentMatch', '${escapeActionArg(id)}'`, label: 'Edit payment match', icon: 'success', tone: 'success' }) : ''}
@@ -1051,9 +1157,12 @@ window.FinancialMode = (function () {
         }
     }
 
-    function financeIconButton({ action, args, label, icon = 'edit', tone = 'muted', extraClass = '' }) {
+    function financeIconButton({ action, args, label, icon = 'edit', tone = 'muted', extraClass = '', attrs = '', local = false }) {
+        const actionAttr = local
+            ? `data-fin-action="${escapeHtml(action)}"`
+            : `data-action="${escapeHtml(action)}"${args ? ` data-action-args="${escapeHtml(args)}"` : ''}`;
         return `
-            <button class="fin-mini-btn fin-icon-btn ${extraClass}" type="button" data-action="${escapeHtml(action)}"${args ? ` data-action-args="${escapeHtml(args)}"` : ''} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
+            <button class="fin-mini-btn fin-icon-btn ${extraClass}" type="button" ${actionAttr} ${attrs} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
                 ${renderSAGGlyph(icon, { size: 'xs', tone })}
             </button>
         `;
@@ -1158,10 +1267,68 @@ window.FinancialMode = (function () {
         `;
     }
 
+    function renderImportProfileRows(profiles) {
+        if (!profiles.length) return renderCompactEmpty('Saved CSV mappings will appear here after a successful import.');
+        return `
+            <div class="fin-import-profile-list" aria-label="Saved CSV profiles">
+                ${profiles.map((profile) => {
+                    const mapping = profile.mapping || {};
+                    const mapped = ['date', 'description', 'amount', 'debit', 'credit', 'category', 'scope']
+                        .filter((key) => String(mapping[key] || '').trim()).length;
+                    return `
+                        <div class="fin-import-profile-row">
+                            <div class="fin-import-profile-main">
+                                <input data-fin-profile-name="${escapeHtml(profile.id)}" aria-label="CSV profile name" value="${escapeHtml(profile.name || 'CSV mapping')}" />
+                                <small>${safeArray(profile.headers).length} headers · ${mapped} mapped · ${escapeHtml(profile.defaultCategory || 'uncategorized')} · ${escapeHtml(profile.defaultScope || 'business')} · updated ${formatShortDate(profile.updatedAt)}</small>
+                            </div>
+                            <div class="fin-ledger-actions">
+                                ${financeIconButton({ action: 'rename-import-profile', label: `Rename ${profile.name || 'CSV profile'}`, icon: 'success', tone: 'success', attrs: `data-fin-profile-id="${escapeHtml(profile.id)}"`, local: true })}
+                                ${financeIconButton({ action: 'delete-import-profile', label: `Delete ${profile.name || 'CSV profile'}`, icon: 'close', tone: 'danger', attrs: `data-fin-profile-id="${escapeHtml(profile.id)}"`, local: true })}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    function renderImportBatchRows(batches) {
+        if (!batches.length) return renderCompactEmpty('No local imports found. Bring in your bank statements (CSV).');
+        return `
+            <div class="fin-import-profile-list" aria-label="CSV import batches">
+                ${batches.slice().reverse().slice(0, 4).map((batch, index) => {
+                    const imported = Number(batch.importedCount ?? safeArray(batch.fingerprints).length) || 0;
+                    const duplicateCount = Number(batch.duplicateCount || 0);
+                    const duplicateImported = Number(batch.duplicateImportedCount || 0);
+                    const rejected = Number(batch.rejectedCount || 0);
+                    const policy = batch.duplicatePolicy === 'import' ? 'duplicates imported' : 'duplicates skipped';
+                    const dateRange = batch.dateFrom && batch.dateTo
+                        ? (batch.dateFrom === batch.dateTo ? batch.dateFrom : `${batch.dateFrom} to ${batch.dateTo}`)
+                        : 'date range unknown';
+                    const totalLine = `${formatCurrency(Number(batch.incomeTotal || 0))} in · ${formatCurrency(Number(batch.expenseTotal || 0))} out`;
+                    return `
+                        <div class="fin-import-profile-row">
+                            <div class="fin-import-profile-main">
+                                <strong>${index === 0 ? 'Latest CSV batch' : 'CSV batch'}</strong>
+                                <small>${escapeHtml(batch.sourceFile || 'CSV import')} · ${imported} imported · ${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'} (${policy}) · ${rejected} rejected</small>
+                                <small>${escapeHtml(dateRange)} · ${totalLine}${duplicateImported ? ` · ${duplicateImported} duplicate${duplicateImported === 1 ? '' : 's'} included` : ''}</small>
+                            </div>
+                            <div class="fin-ledger-actions">
+                                <button class="fin-mini-btn" type="button" data-action="undoImportBatch" data-action-args="'${escapeActionArg(batch.id)}'">Undo</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
     function renderDataSection() {
-        const latestImport = window.Store && typeof window.Store.getImportState === 'function'
-            ? safeArray(window.Store.getImportState().batches).slice(-1)[0]
-            : null;
+        const importState = window.Store && typeof window.Store.getImportState === 'function'
+            ? window.Store.getImportState()
+            : { batches: [], profiles: [] };
+        const batches = safeArray(importState.batches);
+        const profiles = safeArray(importState.profiles);
         const dataHealth = window.Store && typeof window.Store.getLocalDataHealth === 'function'
             ? window.Store.getLocalDataHealth()
             : { ok: true, issues: [], eventCount: 0, latestEventAt: null, storageStatus: 'healthy', schemaLabel: 'unknown', backupVersion: 0, lastBackupAt: null, privateModeWarning: false, migrationStatus: 'current' };
@@ -1174,17 +1341,16 @@ window.FinancialMode = (function () {
                     <div class="widget ui-card glass fin-card">
                         <div class="widget-title ui-title">Imports and Backups</div>
                         <div class="fin-helper-text">Everything stays local. Use exports before big changes or device moves.</div>
-                        ${latestImport ? `
-                            <div class="modal-list-row">
-                                <span><strong>Latest CSV batch</strong><br><small>${escapeHtml(latestImport.sourceFile)} · ${latestImport.fingerprints.length} rows · ${formatShortDate(latestImport.importedAt)}</small></span>
-                                <button class="fin-mini-btn" type="button" data-action="undoImportBatch" data-action-args="'${escapeActionArg(latestImport.id)}'">Undo</button>
-                            </div>
-                        ` : renderCompactEmpty('No local imports found. Bring in your bank statements (CSV).')}
+                        ${renderImportBatchRows(batches)}
                         <div class="fin-action-row">
                             <button class="fin-action-btn" type="button" data-action="openEditModal" data-action-args="'csvImport'">Import CSV</button>
                             <button class="fin-action-btn" type="button" data-action="exportTransactionsCsv">Export transactions CSV</button>
                             <button class="fin-action-btn" type="button" data-action="exportFinanceBackup">Export backup</button>
                             <button class="fin-action-btn" type="button" data-action="openEditModal" data-action-args="'backupRestore'">Restore backup</button>
+                        </div>
+                        <div class="fin-subsection-block">
+                            <div class="fin-eyebrow">Saved CSV profiles</div>
+                            ${renderImportProfileRows(profiles)}
                         </div>
                     </div>
                     <div class="widget ui-card glass fin-card">

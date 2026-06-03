@@ -1361,10 +1361,93 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     overflow-wrap: anywhere;
 }
 
+#dashboard-financial #fin-content-area .fin-inspector-evidence,
+#dashboard-financial #fin-content-area .fin-inspector-suggestions {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid rgba(178, 226, 242, 0.12);
+    border-radius: 12px;
+    background: rgba(178, 226, 242, 0.04);
+}
+
+#dashboard-financial #fin-content-area .fin-inspector-evidence div,
+#dashboard-financial #fin-content-area .fin-inspector-suggestions div {
+    display: grid;
+    grid-template-columns: minmax(88px, 0.42fr) minmax(0, 1fr);
+    gap: 8px;
+    min-width: 0;
+}
+
+#dashboard-financial #fin-content-area .fin-inspector-suggestions div {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+#dashboard-financial #fin-content-area .fin-inspector-evidence span,
+#dashboard-financial #fin-content-area .fin-inspector-suggestions small {
+    color: var(--text-tertiary);
+}
+
+#dashboard-financial #fin-content-area .fin-inspector-evidence strong,
+#dashboard-financial #fin-content-area .fin-inspector-suggestions strong {
+    min-width: 0;
+    color: var(--text-secondary);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
 #dashboard-financial #fin-content-area .fin-inspector-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 7px;
+}
+
+#dashboard-financial #fin-content-area .fin-subsection-block {
+    display: grid;
+    gap: 10px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(178, 226, 242, 0.12);
+}
+
+#dashboard-financial #fin-content-area .fin-import-profile-list {
+    display: grid;
+    gap: 8px;
+}
+
+#dashboard-financial #fin-content-area .fin-import-profile-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border: 1px solid rgba(178, 226, 242, 0.12);
+    border-radius: 12px;
+    background: rgba(178, 226, 242, 0.04);
+}
+
+#dashboard-financial #fin-content-area .fin-import-profile-main {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+}
+
+#dashboard-financial #fin-content-area .fin-import-profile-main input {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    border-bottom: 1px solid rgba(178, 226, 242, 0.16);
+    border-radius: 0;
+    background: transparent;
+    color: var(--text-primary);
+    padding: 2px 0 5px;
+    font-weight: 650;
+}
+
+#dashboard-financial #fin-content-area .fin-import-profile-main small {
+    color: var(--text-tertiary);
+    line-height: 1.35;
 }
 
 #dashboard-financial #fin-content-area .fin-health-status {
@@ -2755,6 +2838,11 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
 
     #dashboard-financial #fin-content-area .fin-inspector-grid div {
         grid-template-columns: 1fr;
+    }
+
+    #dashboard-financial #fin-content-area .fin-import-profile-row {
+        grid-template-columns: 1fr;
+        align-items: stretch;
     }
 
     #dashboard-financial #fin-content-area .fin-review-check-row {

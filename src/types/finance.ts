@@ -62,6 +62,16 @@ interface FinanceImportBatch {
   importedAt: string;
   sourceFile: string;
   fingerprints: string[];
+  accountId?: string;
+  importedCount?: number;
+  duplicateCount?: number;
+  duplicateImportedCount?: number;
+  rejectedCount?: number;
+  duplicatePolicy?: 'skip' | 'import';
+  incomeTotal?: number;
+  expenseTotal?: number;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export interface FinanceImportProfile {
@@ -132,6 +142,7 @@ export interface CsvImportSummary {
   batchId: string;
   imported: number;
   duplicates: number;
+  duplicateImported?: number;
 }
 
 export interface CsvColumnMapping {

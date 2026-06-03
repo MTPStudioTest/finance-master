@@ -41,6 +41,7 @@ let csvMapping: CsvColumnMapping = { date: '', description: '' };
 let csvPreview: CsvImportPreview | null = null;
 let csvDefaultCategory = 'uncategorized';
 let csvDefaultScope: FinanceScope = 'business';
+let csvDuplicatePolicy: 'skip' | 'import' = 'skip';
 let csvAppliedProfileName = '';
 let pendingBackup: unknown = null;
 let backupPreview: FinanceBackupPreview | null = null;
@@ -490,6 +491,7 @@ function renderCsvImport(): string {
   const previewRows = csvPreview?.rows || [];
   const rejected = csvPreview?.rejected || [];
   const duplicates = csvPreview?.duplicates || [];
+  const importableRows = previewRows.length + duplicates.length;
   return `
     <div class="modal-form">
       <h2 id="modal-title">Import transactions from CSV</h2>
@@ -540,7 +542,14 @@ function renderCsvImport(): string {
             <span>${rejected.length} rejected</span>
           </div>
           ${previewRows.slice(0, 6).map((row) => `<div class="modal-list-row"><span>${escapeHtml(row.description)}<br><small>${escapeHtml(row.date)} · ${escapeHtml(row.categoryId)} · ${escapeHtml(row.scope)}</small></span><span class="${row.amount >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${money(row.amount)}</span></div>`).join('')}
-          ${duplicates.length ? `<div class="csv-validation-list"><strong>Duplicates skipped</strong>${duplicates.slice(0, 4).map((row) => `<span>${escapeHtml(row.date)} · ${escapeHtml(row.description)}</span>`).join('')}</div>` : ''}
+          ${duplicates.length ? `
+            <div class="csv-validation-list">
+              <strong>Duplicate handling</strong>
+              <label><input type="radio" name="modal-csv-duplicate-policy" value="skip"${csvDuplicatePolicy === 'skip' ? ' checked' : ''} /> Skip duplicates</label>
+              <label><input type="radio" name="modal-csv-duplicate-policy" value="import"${csvDuplicatePolicy === 'import' ? ' checked' : ''} /> Import duplicates anyway</label>
+              ${duplicates.slice(0, 4).map((row) => `<span>${escapeHtml(row.date)} · ${escapeHtml(row.description)}</span>`).join('')}
+            </div>
+          ` : ''}
           ${rejected.length ? `<div class="csv-validation-list csv-validation-list--error"><strong>Rejected rows</strong>${rejected.slice(0, 6).map((row) => `<span>Row ${row.rowNumber}: ${escapeHtml(row.reason)}</span>`).join('')}</div>` : ''}
         </div>
       ` : ''}
@@ -548,7 +557,7 @@ function renderCsvImport(): string {
         <button class="btn-secondary ui-btn ui-btn--secondary" type="button" data-action="closeModal">Cancel</button>
         <button class="ui-btn ui-btn--secondary" type="button" data-action="analyzeCsvImport">Analyze CSV</button>
         <button class="ui-btn ui-btn--secondary" type="button" data-action="previewCsvImport"${hasDocument ? '' : ' disabled'}>Preview import</button>
-        <button class="btn-primary ui-btn ui-btn--primary" type="button" data-action="importCsvData"${previewRows.length ? '' : ' disabled'}>Import valid rows</button>
+        <button class="btn-primary ui-btn ui-btn--primary" type="button" data-action="importCsvData"${importableRows ? '' : ' disabled'}>Import valid rows</button>
       </div>
     </div>
   `;
@@ -839,6 +848,13 @@ function obligationOptions(selected = ''): string {
   `).join('')}`;
 }
 
+function daysBetween(left: unknown, right: unknown): number {
+  const leftTs = Date.parse(String(left || ''));
+  const rightTs = Date.parse(String(right || ''));
+  if (!Number.isFinite(leftTs) || !Number.isFinite(rightTs)) return Number.POSITIVE_INFINITY;
+  return Math.abs(leftTs - rightTs) / 86400000;
+}
+
 function categoryTokens(value: unknown): string[] {
   return String(value || '')
     .toLowerCase()
@@ -890,6 +906,51 @@ function transactionCategorySuggestions(transaction: Record<string, unknown> | n
     .map(({ category, reason }) => ({ category, reason }));
 }
 
+function paymentMatchSuggestions(transaction: Record<string, unknown> | null | undefined): Array<{ id: string; title: string; reason: string }> {
+  if (!transaction || String(transaction.type) !== 'expense.recorded') return [];
+  const amount = Math.abs(Number(transaction.amount) || Number(transaction.signedAmount) || 0);
+  const txTokens = new Set(categoryTokens(transaction.description));
+  type PaymentMatchSuggestion = { id: string; title: string; reason: string; score: number };
+  const obligations = ((Store.computeFinanceContext(true).treasury || {}).obligations || [])
+    .filter((entry: Record<string, unknown>) => String(entry.status || '') !== 'paid' && String(entry.type || '') !== 'debt');
+  return obligations.map((entry: Record<string, unknown>): PaymentMatchSuggestion => {
+    const obligationAmount = Math.abs(Number(entry.amount) || 0);
+    const amountDelta = Math.abs(obligationAmount - amount);
+    const dayDelta = daysBetween(transaction.timestamp, entry.dueDate);
+    const tokenMatch = categoryTokens(entry.title).filter((token) => txTokens.has(token)).length;
+    let score = 0;
+    const reasons: string[] = [];
+    if (amountDelta < 0.01) {
+      score += 6;
+      reasons.push('same amount');
+    } else if (amountDelta <= Math.max(5, amount * 0.05)) {
+      score += 3;
+      reasons.push('similar amount');
+    }
+    if (dayDelta <= 3) {
+      score += 4;
+      reasons.push('near due date');
+    } else if (dayDelta <= 10) {
+      score += 2;
+      reasons.push('close date');
+    }
+    if (tokenMatch) {
+      score += tokenMatch * 2;
+      reasons.push('matching description');
+    }
+    return {
+      id: String(entry.id || ''),
+      title: String(entry.title || 'Obligation'),
+      reason: reasons.join(' + ') || 'possible obligation',
+      score,
+    };
+  })
+    .filter((entry: PaymentMatchSuggestion) => entry.id && entry.score > 0)
+    .sort((left: PaymentMatchSuggestion, right: PaymentMatchSuggestion) => right.score - left.score || left.title.localeCompare(right.title))
+    .slice(0, 3)
+    .map(({ id, title, reason }: PaymentMatchSuggestion) => ({ id, title, reason }));
+}
+
 function renderTransactionReview(id = ''): string {
   const transaction = findTransaction(id);
   const suggestions = transactionCategorySuggestions(transaction);
@@ -919,12 +980,22 @@ function renderTransactionReview(id = ''): string {
 
 function renderPaymentMatch(id = ''): string {
   const transaction = findTransaction(id);
+  const suggestions = paymentMatchSuggestions(transaction);
   return `
     <div class="modal-form">
       <h2 id="modal-title">Match payment to obligation</h2>
       <p class="modal-copy">${escapeHtml(transaction?.description || 'Payment')} · ${money(transaction?.amount)} · ${formatDate(transaction?.timestamp)}</p>
       <input id="modal-match-transaction-id" type="hidden" value="${escapeHtml(id)}" />
       <div class="form-group"><label for="modal-match-obligation-id">Obligation</label><select id="modal-match-obligation-id">${obligationOptions('')}</select></div>
+      ${suggestions.length ? `
+        <div class="csv-validation-list">
+          <strong>Suggested matches</strong>
+          ${suggestions.map((suggestion) => `
+            <button class="fin-mini-btn" type="button" data-action="choosePaymentMatchSuggestion" data-action-args="'${escapeHtml(actionArg(suggestion.id))}'">${escapeHtml(suggestion.title)}</button>
+            <span>${escapeHtml(suggestion.reason)}</span>
+          `).join('')}
+        </div>
+      ` : ''}
       <div class="form-group"><label for="modal-match-notes">Review note</label><textarea id="modal-match-notes" rows="2" placeholder="Optional note for the match"></textarea></div>
       ${formActions('paymentMatch')}
     </div>
@@ -1123,6 +1194,8 @@ function captureCsvFields(): void {
   csvAccountId = value('modal-csv-account') || csvAccountId;
   csvDefaultCategory = value('modal-csv-default-category') || csvDefaultCategory;
   csvDefaultScope = (value('modal-csv-default-scope') || csvDefaultScope) as FinanceScope;
+  const duplicatePolicy = document.querySelector<HTMLInputElement>('input[name="modal-csv-duplicate-policy"]:checked')?.value;
+  csvDuplicatePolicy = duplicatePolicy === 'import' ? 'import' : 'skip';
   if (!csvDocument) return;
   csvMapping = {
     date: value('modal-csv-map-date'),
@@ -1580,6 +1653,13 @@ Object.assign(window, {
       input.focus();
     }
   },
+  choosePaymentMatchSuggestion: (obligationId: string) => {
+    const input = document.getElementById('modal-match-obligation-id') as HTMLSelectElement | null;
+    if (input) {
+      input.value = obligationId;
+      input.focus();
+    }
+  },
   toggleDebtPlanType: (type: string) => {
     const regular = document.getElementById('modal-debt-plan-regular-section');
     const custom = document.getElementById('modal-debt-plan-custom-section');
@@ -1741,14 +1821,27 @@ Object.assign(window, {
       showModalError('Choose a destination account before importing.');
       return;
     }
-    if (!csvPreview?.rows.length) {
-      showModalError('Preview at least one valid, non-duplicate row before importing.');
+    if (!csvPreview) {
+      showModalError('Preview at least one valid row before importing.');
       return;
     }
     try {
-      const summary = Store.importCsvTransactions(csvPreview.rows, { accountId: csvAccountId, sourceFile: csvPreview.sourceFile });
+      const rows = csvDuplicatePolicy === 'import'
+        ? [...csvPreview.rows, ...csvPreview.duplicates]
+        : csvPreview.rows;
+      if (!rows.length) {
+        showModalError('Preview at least one valid row before importing.');
+        return;
+      }
+      const summary = Store.importCsvTransactions(rows, {
+        accountId: csvAccountId,
+        sourceFile: csvPreview.sourceFile,
+        duplicatePolicy: csvDuplicatePolicy,
+        duplicateCount: csvPreview.duplicates.length,
+        rejectedCount: csvPreview.rejected.length,
+      });
       saveCurrentCsvImportProfile();
-      csvSummary = `Imported ${summary.imported} row${summary.imported === 1 ? '' : 's'}${summary.duplicates ? ` · skipped ${summary.duplicates} duplicate${summary.duplicates === 1 ? '' : 's'}` : ''}.`;
+      csvSummary = `Imported ${summary.imported} row${summary.imported === 1 ? '' : 's'}${summary.duplicateImported ? ` · included ${summary.duplicateImported} duplicate${summary.duplicateImported === 1 ? '' : 's'}` : ''}${summary.duplicates ? ` · skipped ${summary.duplicates} duplicate${summary.duplicates === 1 ? '' : 's'}` : ''}.`;
       csvPreview = null;
       openEditModal('csvImport');
     } catch (error) {

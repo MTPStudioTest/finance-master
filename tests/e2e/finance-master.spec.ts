@@ -192,7 +192,7 @@ test('transactions page is the primary ledger workspace', async ({ page }) => {
   await workspace.locator('.fin-transaction-row').filter({ hasText: 'Ledger workspace review seed' }).getByRole('button', { name: 'Inspect transaction', exact: true }).click();
   await expect(page.getByLabel('Transaction inspector').getByText('Ledger workspace review seed', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Transaction inspector').getByText('Record ID', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Transaction inspector').getByText('Import metadata', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Transaction inspector').getByText('Evidence', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'More filters', exact: true }).click();
   await expect(page.getByLabel('Filter ledger by type')).toBeVisible();
@@ -232,6 +232,31 @@ test('ledger filters and inline categorization work without a full-ledger modal'
   await expect(page.locator('#modal-body').getByLabel('Category', { exact: true })).toHaveValue('software');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('#fin-content-area').getByText('software', { exact: true }).first()).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('ledger review suggests obligation matches without applying them automatically', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+  await addExpense(page, 'Living payment', '1120', 'obligation');
+  await page.getByRole('button', { name: 'Transactions', exact: true }).click();
+  await page.getByRole('button', { name: 'Review', exact: true }).click();
+
+  const row = page.locator('.fin-transaction-row--review').filter({ hasText: 'Living payment' });
+  await expect(row).toContainText('suggested Living');
+  await row.getByRole('button', { name: 'Inspect transaction', exact: true }).click();
+  await expect(page.getByLabel('Transaction inspector').getByText('Suggested match', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Transaction inspector').getByText('Living', { exact: true }).first()).toBeVisible();
+  await page.getByLabel('Transaction inspector').getByRole('button', { name: 'Edit payment match', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Match payment to obligation', exact: true })).toBeVisible();
+  await expect(page.getByText('Suggested matches', { exact: true })).toBeVisible();
+  await page.locator('#modal-body').getByRole('button', { name: 'Living', exact: true }).first().click();
+  await expect(page.locator('#modal-match-obligation-id')).not.toHaveValue('');
+  await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (
+    window.Store.getFinancialReadModel().transactions
+      .find((entry: any) => String(entry.description) === 'Living payment')?.obligationId || ''
+  ))).toBe('');
   expect(errors).toEqual([]);
 });
 
@@ -339,6 +364,8 @@ test('CSV import previews accepted, duplicate, and rejected rows and remains rev
   await expect(page.getByText('2 accepted', { exact: true })).toBeVisible();
   await expect(page.getByText('1 duplicate', { exact: true })).toBeVisible();
   await expect(page.getByText('1 rejected', { exact: true })).toBeVisible();
+  await expect(page.getByText('Duplicate handling', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Skip duplicates')).toBeChecked();
   await page.getByRole('button', { name: 'Import valid rows', exact: true }).click();
   await expect(page.getByText('Imported 2 rows', { exact: false })).toBeVisible();
   await expect(page.getByText('Saved mapping: release-bank.csv', { exact: true })).toBeVisible();
@@ -360,14 +387,42 @@ test('CSV import previews accepted, duplicate, and rejected rows and remains rev
   await expect(page.getByText('1 accepted', { exact: true })).toBeVisible();
   await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
 
+  await openQuickAdd(page);
+  await chooseQuickAction(page, /Import CSV/);
+  await page.locator('#modal-csv-file').setInputFiles({
+    name: 'duplicate-bank.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from([
+      'date,description,amount,category,scope',
+      '2026-06-01,Release deposit,500,client-income,business',
+    ].join('\n')),
+  });
+  await page.getByRole('button', { name: 'Preview import', exact: true }).click();
+  await expect(page.getByText('0 accepted', { exact: true })).toBeVisible();
+  await expect(page.getByText('1 duplicate', { exact: true })).toBeVisible();
+  await page.getByLabel('Import duplicates anyway').check();
+  await page.getByRole('button', { name: 'Import valid rows', exact: true }).click();
+  await expect(page.getByText('Imported 1 row · included 1 duplicate', { exact: false })).toBeVisible();
+  await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
+
   await page.getByRole('button', { name: 'Import & Backup', exact: true }).click();
   await expect(page.getByText('Latest CSV batch', { exact: true })).toBeVisible();
-  await expect(page.getByText('release-bank.csv', { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(page.getByText('duplicate-bank.csv', { exact: false })).toBeVisible();
+  await expect(page.getByText('1 imported · 1 duplicate (duplicates imported) · 0 rejected', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Undo', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: 'Undo CSV import', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Undo import', exact: true })).toBeDisabled();
   await page.getByLabel('Type UNDO CSV IMPORT to continue').fill('UNDO CSV IMPORT');
   await page.getByRole('button', { name: 'Undo import', exact: true }).click();
+  await expect(page.getByText('Saved CSV profiles', { exact: true })).toBeVisible();
+  const profileName = page.getByLabel('CSV profile name').first();
+  await expect(profileName).toHaveValue(/bank\.csv$/);
+  const savedProfileName = await profileName.inputValue();
+  await profileName.fill('Studio bank CSV');
+  await page.getByRole('button', { name: `Rename ${savedProfileName}`, exact: true }).click();
+  await expect(page.getByLabel('CSV profile name').first()).toHaveValue('Studio bank CSV');
+  await page.getByRole('button', { name: 'Delete Studio bank CSV', exact: true }).click();
+  await expect(page.getByLabel('CSV profile name')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

@@ -29,8 +29,8 @@ Implemented baseline:
 - Row actions in Review, Reserves, Income, Cashflow pipeline rows, recurring costs, and debt cards are icon-first where the action is contextual.
 - Initial UI hardening seams for shared dashboard helpers, section composition, and modal helper rendering.
 - Local-first Store/repository architecture with backup support.
-- CSV import preview/import/undo with saved mapping reuse for matching header sets.
-- Manual transaction capture, ledger review, deterministic category suggestions, and transaction reversal.
+- CSV import preview/import/undo with saved mapping reuse, explicit duplicate handling, batch summaries, and Import & Backup profile management.
+- Manual transaction capture, ledger review, deterministic category suggestions, deterministic obligation match suggestions, grouped transaction evidence, and transaction reversal.
 - Cash accounts, recurring costs, debt items, income pipeline, goals, and weekly review primitives.
 - Appearance modes: `aurora`, `midnight`, `bright`.
 - Tests for core calculations, currency formatting, income windowing, backup validation, CSV import, goals, weekly review, and E2E reachability.
@@ -43,9 +43,9 @@ Known baseline limitations:
 - Planning projections need clearer formulas and stronger scenario controls.
 - Mobile layout has smoke coverage, but dense tables still need more deliberate small-screen design.
 - The old Monthly Review modal renderer still exists as a compatibility fallback, but the intended workflow is now page-native.
-- Transactions has pulled forward part of Phase 5; future ledger work should focus on import profile management, richer matching, and evidence depth rather than rebuilding the workspace shell.
-- Current active slice: Phase 3 polish closeout. Finish cross-page surface consistency, dark-mode readability, and quiet contextual row actions before deeper workflow expansion.
-- Next handoff after polish: Phase 5 transaction evidence and matching depth, then Phase 8 review history/monthly summary/reserve review.
+- Transactions has pulled forward part of Phase 5; future ledger work should focus on richer income/reserve/debt linking and deeper import batch inspection rather than rebuilding the workspace shell.
+- Current active slice: Phase 5 transaction workflow depth.
+- Next handoff: continue Phase 5 income/reserve/debt linking depth, then Phase 8 review history/monthly summary/reserve review.
 
 ## Phase 1A: Hardening The Operating Core
 

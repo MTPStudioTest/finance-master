@@ -134,8 +134,17 @@
         var defiById = Object.create(null);
         var reserveById = Object.create(null);
         var transactions = [];
+        var reversedByEventId = Object.create(null);
 
         var incomeLast30Minor = 0;
+
+        Events.sortFinancialEvents(events).forEach(function (event) {
+            var metadata = event && event.metadata && typeof event.metadata === 'object' ? event.metadata : {};
+            if (event && event.type === 'finance.event_reversed') {
+                var reversedId = String(metadata.reversed_event_id || event.related_entity_id || '').trim();
+                if (reversedId) reversedByEventId[reversedId] = String(event.id || '').trim();
+            }
+        });
 
         activeEvents.forEach(function (event) {
             var metadata = event.metadata && typeof event.metadata === 'object' ? event.metadata : {};
@@ -171,12 +180,18 @@
                     categoryId: String(metadata.categoryId || 'uncategorized'),
                     scope: String(metadata.scope || 'shared'),
                     source: String(metadata.source || 'manual'),
+                    sourceFile: String(metadata.sourceFile || '').trim(),
+                    sourceRowId: String(metadata.sourceRowId || metadata.rowNumber || '').trim(),
                     importBatchId: String(metadata.importBatchId || '').trim(),
                     fingerprint: String(metadata.fingerprint || '').trim(),
                     obligationId: String(metadata.obligationId || '').trim(),
                     obligationDueDate: String(metadata.obligationDueDate || '').trim(),
                     obligationTitle: String(metadata.obligationTitle || '').trim(),
                     linkedIncomeId: String(metadata.invoiceId || metadata.pipelineId || metadata.linkedIncomeId || '').trim(),
+                    linkedDebtId: String(metadata.debtId || metadata.linkedDebtId || '').trim(),
+                    linkedReserveId: String(metadata.reserveBucketId || metadata.linkedReserveId || '').trim(),
+                    reversalOf: String(metadata.reversed_event_id || metadata.reversalOf || '').trim(),
+                    reversedBy: reversedByEventId[String(event.id || '')] || '',
                     reviewStatus: String(metadata.reviewStatus || '').trim() || (String(metadata.categoryId || 'uncategorized').toLowerCase() === 'uncategorized' ? 'needs_review' : 'clear'),
                     reviewNotes: '',
                     timestamp: event.timestamp
@@ -562,11 +577,15 @@
             var categoryId = review && review.categoryId ? review.categoryId : transaction.categoryId;
             var scope = review && review.scope ? review.scope : transaction.scope;
             var obligationId = transaction.obligationId || (review && review.obligationId) || (matched && matched.id) || '';
+            var linkedIncome = transaction.linkedIncomeId ? (pipelineById[String(transaction.linkedIncomeId)] || invoiceById[String(transaction.linkedIncomeId)] || null) : null;
+            var linkedObligation = obligationId ? (recurringById[String(obligationId).replace(/-\d{4}-\d{2}$/, '')] || matched || null) : null;
             return Object.assign({}, transaction, {
                 categoryId: categoryId,
                 scope: scope,
                 obligationId: obligationId,
                 obligationTitle: transaction.obligationTitle || (review && review.obligationTitle) || (matched && matched.title) || '',
+                linkedIncomeTitle: linkedIncome ? String(linkedIncome.title || linkedIncome.client || 'Linked income') : '',
+                linkedObligationTitle: linkedObligation ? String(linkedObligation.title || linkedObligation.category || 'Linked obligation') : '',
                 reviewStatus: review && review.reviewStatus ? review.reviewStatus : (String(categoryId || '').toLowerCase() === 'uncategorized' ? 'needs_review' : (obligationId ? 'reviewed' : transaction.reviewStatus)),
                 reviewNotes: review && review.notes ? review.notes : transaction.reviewNotes
             });

@@ -116,7 +116,13 @@ declare global {
     getPriceCache(): import('./finance').FinancePriceCache;
     getReviewState(): import('./finance').FinanceReviewState;
     getUiSettings(): FinanceUiSettings;
-    importCsvTransactions(rows: import('./finance').CsvTransactionRow[], options: { accountId: string; sourceFile?: string }): import('./finance').CsvImportSummary;
+    importCsvTransactions(rows: import('./finance').CsvTransactionRow[], options: {
+      accountId: string;
+      sourceFile?: string;
+      duplicatePolicy?: 'skip' | 'import';
+      duplicateCount?: number;
+      rejectedCount?: number;
+    }): import('./finance').CsvImportSummary;
     exportTransactionsCsv(): string;
     markPipelineItemPaid(id: string, context?: Record<string, unknown>): FinanceEvent[];
     reviewTransaction(input: {
@@ -210,6 +216,8 @@ declare global {
       defaultScope?: FinanceScope;
       sourceFile?: string;
     }): import('./finance').FinanceImportProfile;
+    renameCsvImportProfile(id: string, name: string): import('./finance').FinanceImportProfile;
+    deleteCsvImportProfile(id: string): import('./finance').FinanceImportState;
     exportBackup(): import('./finance').FinanceBackupV2;
     previewBackup(input: unknown): import('./finance').FinanceBackupPreview;
     recordBackupExport(exportedAt?: string): void;

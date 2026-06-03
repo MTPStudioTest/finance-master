@@ -133,6 +133,103 @@ test('read model preserves account, scope, category, and recurring schedule meta
   assert.equal(result.snapshot.runwayMonths, 3);
 });
 
+test('read model derives transaction evidence from existing metadata and links', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-03T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-main',
+      type: 'asset.account_set',
+      amount: 3000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating cash', balance: 3000, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'retainer-income',
+      type: 'pipeline.created',
+      amount: 1200,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'retainer-income',
+      metadata: { title: 'June retainer', value: 1200, probability: 1, status: 'paid', expectedDateISO: '2026-06-03', scope: 'business' },
+    },
+    {
+      id: 'settlement-event',
+      type: 'income.received',
+      amount: 1200,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'settlement-entity',
+      metadata: {
+        description: 'June retainer paid',
+        accountId: 'cash-main',
+        accountName: 'Operating cash',
+        categoryId: 'client-income',
+        scope: 'business',
+        source: 'csv-import',
+        sourceFile: 'bank.csv',
+        importBatchId: 'import-june',
+        fingerprint: '2026-06-03|june retainer paid|1200.00',
+        invoiceId: 'retainer-income',
+      },
+    },
+    {
+      id: 'rent-recurring',
+      type: 'expense.recurring_set',
+      amount: 300,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'rent-recurring',
+      metadata: { category: 'Studio rent', monthlyAmount: 300, dueDay: 3, frequency: 'monthly', scope: 'business' },
+    },
+    {
+      id: 'rent-payment',
+      type: 'expense.recorded',
+      amount: 300,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'rent-payment-entity',
+      metadata: {
+        description: 'Studio rent',
+        accountId: 'cash-main',
+        accountName: 'Operating cash',
+        categoryId: 'obligation',
+        scope: 'business',
+        source: 'csv-import',
+        sourceFile: 'bank.csv',
+        importBatchId: 'import-june',
+        fingerprint: '2026-06-03|studio rent|-300.00',
+      },
+    },
+    {
+      id: 'rent-reviewed',
+      type: 'transaction.reviewed',
+      amount: 300,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:05:00.000Z',
+      related_entity_id: 'rent-payment',
+      metadata: { categoryId: 'obligation', scope: 'business', obligationId: 'rent-recurring-2026-06', obligationTitle: 'Studio rent', reviewStatus: 'reviewed' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+  const income = result.readModel.transactions.find((entry) => entry.id === 'settlement-event');
+  const rent = result.readModel.transactions.find((entry) => entry.id === 'rent-payment');
+
+  assert.equal(income.sourceFile, 'bank.csv');
+  assert.equal(income.importBatchId, 'import-june');
+  assert.equal(income.linkedIncomeTitle, 'June retainer');
+  assert.equal(income.fingerprint, '2026-06-03|june retainer paid|1200.00');
+  assert.equal(rent.linkedObligationTitle, 'Studio rent');
+  assert.equal(rent.reviewStatus, 'reviewed');
+});
+
 test('treasury model separates reserved cash from truly available cash', () => {
   const finance = loadFinance();
   const nowIso = '2026-06-02T10:00:00.000Z';
