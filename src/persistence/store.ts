@@ -37,7 +37,7 @@ const DEFAULT_FINANCE_SETTINGS: FinanceSettings = {
 };
 
 const DEFAULT_UI_SETTINGS: FinanceUiSettings = {
-  appearance: 'aurora',
+  appearance: 'bright',
   reducedMotion: false,
   scopeFilter: 'all',
   walletPriceSource: 'manual',
@@ -52,9 +52,11 @@ const DEFAULT_REVIEW_STATE: FinanceReviewState = {
   lastReviewedAt: null,
   accountReconciliations: {},
   checklist: {
-    recurringCosts: false,
-    pipeline: false,
-    signals: false,
+    unresolvedItems: false,
+    matchPayments: false,
+    confirmObligations: false,
+    reviewSignals: false,
+    closeMonth: false,
   },
   notes: '',
 };
@@ -95,7 +97,7 @@ function clamp(value: unknown, min: number, max: number, fallback: number): numb
   return Math.min(max, Math.max(min, parsed));
 }
 
-function appearance(value: unknown, fallback: FinanceUiSettings['appearance'] = 'aurora'): FinanceUiSettings['appearance'] {
+function appearance(value: unknown, fallback: FinanceUiSettings['appearance'] = 'bright'): FinanceUiSettings['appearance'] {
   return value === 'midnight' || value === 'bright' || value === 'aurora' ? value : fallback;
 }
 
@@ -449,7 +451,6 @@ export const Store = {
     const ledgerType = String(input.type || '').toLowerCase();
     const amount = Math.abs(Number(input.amount));
     if (!['income', 'expense', 'adjustment'].includes(ledgerType)) throw new Error('Choose income, expense, or adjustment.');
-    if (!String(input.description || '').trim()) throw new Error('Add a transaction note.');
     if (!Number.isFinite(amount) || amount <= 0) throw new Error('Transaction amount must be positive.');
     if (ledgerType === 'income') {
       return this.recordTransaction({
@@ -824,15 +825,26 @@ export const Store = {
     dueDate: string;
     minimumPayment: number;
     paymentPlanNote: string;
+    planType?: 'regular' | 'custom';
+    frequency?: string;
+    installments?: Array<{ date: string; amount: number }>;
   }): FinanceEvent[] {
     const debt = (this.getFinancialReadModel().debtAccounts || [])
       .find((entry: Record<string, unknown>) => String(entry.id) === String(input.id || ''));
     if (!debt) throw new Error('This debt item could not be found.');
-    const dueDate = window.FinanceDates?.toDateOnly?.(input.dueDate) || '';
-    const minimumPayment = Math.abs(Number(input.minimumPayment));
-    if (!dueDate) throw new Error('Choose a debt due date.');
-    if (!Number.isFinite(minimumPayment) || minimumPayment <= 0) throw new Error('Add a positive minimum payment.');
-    if (!String(input.paymentPlanNote || '').trim()) throw new Error('Add a short payment plan note.');
+    let dueDate = window.FinanceDates?.toDateOnly?.(input.dueDate) || '';
+    let minimumPayment = Math.abs(Number(input.minimumPayment));
+    const planType = input.planType || 'regular';
+    if (planType === 'custom') {
+      const installments = Array.isArray(input.installments) ? input.installments : [];
+      if (!installments.length) throw new Error('Add at least one installment for a custom plan.');
+      const sorted = [...installments].sort((a, b) => a.date.localeCompare(b.date));
+      dueDate = window.FinanceDates?.toDateOnly?.(sorted[0].date) || dueDate;
+      minimumPayment = Math.abs(Number(sorted[0].amount)) || 0;
+    } else {
+      if (!dueDate) throw new Error('Choose a debt due date.');
+      if (!Number.isFinite(minimumPayment) || minimumPayment <= 0) throw new Error('Add a positive minimum payment.');
+    }
     const currency = this.getFinanceSettings().baseCurrency;
     const event = this.appendFinanceEvent({
       type: 'debt.plan_updated',
@@ -846,6 +858,9 @@ export const Store = {
         dueDate,
         minimumPayment,
         paymentPlanNote: String(input.paymentPlanNote || '').trim(),
+        planType,
+        frequency: String(input.frequency || 'monthly'),
+        installments: input.installments || [],
       },
     }, { source: 'saveDebtPlan' });
     return event ? [event] : [];
@@ -939,9 +954,11 @@ export const Store = {
 
   completeWeeklyReview(input: {
     accounts?: Array<{ accountId: string; balance: number }>;
-    recurringCosts?: boolean;
-    pipeline?: boolean;
-    signals?: boolean;
+    unresolvedItems?: boolean;
+    matchPayments?: boolean;
+    confirmObligations?: boolean;
+    reviewSignals?: boolean;
+    closeMonth?: boolean;
     notes?: string;
   } = {}): FinanceReviewState {
     const readModel = this.getFinancialReadModel();
@@ -984,9 +1001,11 @@ export const Store = {
       lastReviewedAt: nowIso,
       accountReconciliations,
       checklist: {
-        recurringCosts: input.recurringCosts !== false,
-        pipeline: input.pipeline !== false,
-        signals: input.signals !== false,
+        unresolvedItems: input.unresolvedItems !== false,
+        matchPayments: input.matchPayments !== false,
+        confirmObligations: input.confirmObligations !== false,
+        reviewSignals: input.reviewSignals !== false,
+        closeMonth: input.closeMonth !== false,
       },
       notes: String(input.notes || ''),
     };
@@ -1287,11 +1306,14 @@ export const Store = {
   },
 
   seedDemoIfNeeded(force = false): void {
-    if (!force && repositoryGet(STORAGE_KEYS.demoSeed, '')) return;
-    if (!force && getLedgerRaw().length) {
-      repositorySet(STORAGE_KEYS.demoSeed, 'existing-ledger');
+    const ledger = getLedgerRaw();
+    if (!force && ledger.length > 0) {
+      if (!repositoryGet(STORAGE_KEYS.demoSeed, '')) {
+        repositorySet(STORAGE_KEYS.demoSeed, 'existing-ledger');
+      }
       return;
     }
+    if (!force && repositoryGet(STORAGE_KEYS.demoSeed, '') && ledger.length > 0) return;
     const currency = this.getFinanceSettings().baseCurrency;
     const nowIso = new Date().toISOString();
     const drafts = createDemoDrafts(currency);

@@ -6,11 +6,11 @@ export interface CsvDocument {
   rows: Array<{ rowNumber: number; values: string[] }>;
 }
 
-export function parseCsvLine(line: string, delimiter: string): string[];
+declare function parseCsvLine(line: string, delimiter: string): string[];
 export function detectCsvDelimiter(headerRow: string): string;
 export function parseCsvDocument(raw: string): CsvDocument;
 export function inferCsvColumnMapping(headers: string[]): CsvColumnMapping;
-export function buildCsvFingerprint(row: Pick<CsvTransactionRow, 'date' | 'description' | 'amount'>): string;
+declare function buildCsvFingerprint(row: Pick<CsvTransactionRow, 'date' | 'description' | 'amount'>): string;
 export function buildCsvImportPreview(document: CsvDocument, mapping: CsvColumnMapping, options?: {
   existingFingerprints?: string[];
   defaultCategory?: string;

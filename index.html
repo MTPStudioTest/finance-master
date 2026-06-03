@@ -13,18 +13,36 @@
   <body class="mode-financial">
     <div class="finance-master-atmosphere" aria-hidden="true"></div>
     <div class="finance-master-shell">
+      <div class="finance-master-mobile-bar">
+        <div>
+          <div class="finance-master-kicker">Local-first treasury</div>
+          <div class="finance-master-brand">Finance Master</div>
+        </div>
+        <button
+          class="finance-master-menu-toggle"
+          type="button"
+          data-action="FinancialMode.toggleMobileNav"
+          aria-label="Open navigation"
+          aria-controls="primary-finance-navigation"
+          aria-expanded="false"
+        >
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+        </button>
+      </div>
+      <button class="finance-master-nav-scrim" type="button" data-action="FinancialMode.closeMobileNav" aria-label="Close navigation"></button>
       <aside class="finance-master-sidebar" aria-label="Finance Master sections">
         <div class="finance-master-sidebar-head">
           <div class="finance-master-kicker">Local-first treasury</div>
           <div class="finance-master-brand">Finance Master</div>
         </div>
-        <button class="finance-master-button finance-master-button--accent finance-master-add" type="button" data-action="openEditModal" data-action-args="'quickAdd'">
-          + Add
-        </button>
-        <nav class="finance-master-nav" aria-label="Primary finance navigation">
+        <nav class="finance-master-nav" id="primary-finance-navigation" aria-label="Primary finance navigation">
           <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'dashboard'" data-fin-nav="dashboard">
-            Today
+            Overview
           </button>
+          
+          <div class="fin-nav-group-label" style="margin-top: 1rem;">Operate</div>
           <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'ledger'" data-fin-nav="ledger">
             Transactions
           </button>
@@ -37,9 +55,21 @@
           <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'review'" data-fin-nav="review">
             Monthly Review
           </button>
+
+          <div class="fin-nav-group-label" style="margin-top: 1rem;">Treasury</div>
+          <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'reserves'" data-fin-nav="reserves">
+            Cash & Reserves
+          </button>
+          <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'fixedCosts'" data-fin-nav="fixedCosts">
+            Fixed Costs & Debt
+          </button>
+          
+          <div class="fin-nav-group-label" style="margin-top: 1rem;">Understand</div>
           <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'reports'" data-fin-nav="reports">
             Reports
           </button>
+          
+          <div class="fin-nav-group-label" style="margin-top: 1rem;">System</div>
           <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'data'" data-fin-nav="data">
             Import & Backup
           </button>
@@ -55,25 +85,19 @@
       </aside>
 
       <div class="finance-master-main">
-        <header class="finance-master-topbar">
-          <div>
-            <div class="finance-master-kicker">Finance Cockpit</div>
-            <div class="finance-master-brand">Your observatory for cashflow, reserves, and decisions.</div>
-          </div>
-          <div class="finance-master-actions">
-            <button class="finance-master-button finance-master-button--accent" type="button" data-action="openEditModal" data-action-args="'quickAdd'">
-              + Add
-            </button>
-          </div>
-        </header>
-
         <main class="financial-dashboard" id="dashboard-financial">
-          <div class="fin-focus-bar">
-            <div class="widget-title ui-title">Finance Cockpit</div>
-          </div>
           <div id="fin-content-area"></div>
         </main>
       </div>
+
+      <!-- Floating Action Button -->
+      <button class="fin-fab-add" type="button" data-action="openEditModal" data-action-args="'quickAdd'" aria-label="New entry">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </button>
+
     </div>
 
     <div class="modal-overlay" id="modal-overlay" aria-hidden="true">

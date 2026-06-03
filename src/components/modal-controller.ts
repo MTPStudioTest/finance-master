@@ -14,6 +14,20 @@ import type {
   FinanceScope,
   FinanceScopeFilter,
 } from '../types/finance';
+import {
+  deactivateButton,
+  escapeHtml,
+  formActions,
+  formatDate,
+  formatTransactionType,
+  scopeFilterOptions,
+  scopeOptions,
+  signedAmount,
+} from './modal-ui';
+import {
+  renderQuickAdd,
+  renderTransaction as renderTransactionWorkflow,
+} from './modal-workflows/core';
 
 const overlay = document.querySelector<HTMLDivElement>('#modal-overlay');
 const body = document.querySelector<HTMLDivElement>('#modal-body');
@@ -39,15 +53,6 @@ const transactionFilters = {
   dateFrom: '',
   dateTo: '',
 };
-
-function escapeHtml(value: unknown): string {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 function value(id: string): string {
   return document.querySelector<HTMLInputElement | HTMLSelectElement>(`#${id}`)?.value.trim() || '';
@@ -78,24 +83,6 @@ function money(amount: unknown): string {
   }).format(Number(amount) || 0);
 }
 
-function scopeOptions(selected = 'shared'): string {
-  return [
-    ['business', 'Business'],
-    ['personal', 'Personal'],
-    ['shared', 'Shared'],
-  ].map(([entry, label]) => `<option value="${entry}"${selected === entry ? ' selected' : ''}>${label}</option>`).join('');
-}
-
-function scopeFilterOptions(selected = 'all'): string {
-  return `<option value="all"${selected === 'all' ? ' selected' : ''}>All scopes</option>${scopeOptions(selected)}`;
-}
-
-function formatDate(value: unknown): string {
-  const parsed = Date.parse(String(value || ''));
-  if (!Number.isFinite(parsed)) return 'Unknown date';
-  return new Date(parsed).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
 function renderDataHealthPanel(): string {
   const health = Store.getLocalDataHealth();
   return `
@@ -112,19 +99,6 @@ function renderDataHealthPanel(): string {
       </div>
     </div>
   `;
-}
-
-function formatTransactionType(value: unknown): string {
-  const raw = String(value || '').replace(/_/g, ' ').replace(/\./g, ' ');
-  return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Transaction';
-}
-
-function signedAmount(entry: Record<string, unknown>): number {
-  const explicit = Number(entry.signedAmount);
-  if (Number.isFinite(explicit)) return explicit;
-  const amount = Math.abs(Number(entry.amount) || 0);
-  if (String(entry.type) === 'expense.recorded') return -amount;
-  return amount;
 }
 
 function optionList(selected = '', emptyLabel = 'Not mapped'): string {
@@ -146,21 +120,6 @@ function showModalError(message: string): void {
   }
   error.textContent = message;
   error.focus();
-}
-
-function formActions(type: string, edit = false): string {
-  return `
-    <div class="modal-actions">
-      <button class="btn-secondary ui-btn ui-btn--secondary" type="button" data-action="closeModal">Cancel</button>
-      <button class="btn-primary ui-btn ui-btn--primary" type="button" data-action="saveFinanceModal" data-action-args="'${type}'">${edit ? 'Save' : 'Create'}</button>
-    </div>
-  `;
-}
-
-function deactivateButton(action: string, edit: boolean): string {
-  return edit
-    ? `<button class="btn-danger ui-btn" type="button" data-action="${action}">Deactivate</button>`
-    : '';
 }
 
 function renderOverview(): string {
@@ -270,174 +229,11 @@ function renderOverview(): string {
   `;
 }
 
-function renderQuickAdd(): string {
-  return `
-    <div class="modal-form">
-      <h2 id="modal-title">Add</h2>
-      <p class="modal-copy">Choose the money event in plain language. Advanced accounting detail can wait until review.</p>
-      <div class="quick-add-grid">
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'transaction', 'income'"><strong>Income</strong><span>Money received now</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'transaction', 'expense'"><strong>Expense</strong><span>Money paid out</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'transaction', 'transfer'"><strong>Transfer</strong><span>Move cash between accounts</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'income'"><strong>Invoice / expected income</strong><span>Confirmed, likely, uncertain, or overdue</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'expense'"><strong>Recurring cost</strong><span>Fixed obligation that affects runway</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'fiatAccount'"><strong>Reserve account</strong><span>Tax, VAT, buffer, or available cash</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'transaction', 'adjustment'"><strong>Cash adjustment</strong><span>Correct an account balance</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'goal'"><strong>Savings goal</strong><span>Buffer or target progress</span></button>
-        <button class="quick-add-card" type="button" data-action="openEditModal" data-action-args="'csvImport'"><strong>Import local CSV</strong><span>Bring in transactions for review</span></button>
-      </div>
-    </div>
-  `;
-}
-
 function renderTransaction(defaultType = 'expense'): string {
-  const safeType = ['expense', 'income', 'transfer', 'adjustment'].includes(defaultType) ? defaultType : 'expense';
-  const title = safeType === 'income'
-    ? 'Add income'
-    : safeType === 'transfer'
-      ? 'Add transfer'
-      : safeType === 'adjustment'
-        ? 'Add cash adjustment'
-        : 'Add expense';
-  return `
-    <div class="modal-form">
-      <h2 id="modal-title">${title}</h2>
-      <p class="modal-copy">Enter a positive amount. Corrections are handled by reversing the entry and adding a new one.</p>
-      <div class="modal-grid-three">
-        <div class="form-group"><label for="modal-fast-txn-type">Type</label><select id="modal-fast-txn-type"><option value="expense"${safeType === 'expense' ? ' selected' : ''}>Expense</option><option value="income"${safeType === 'income' ? ' selected' : ''}>Income</option><option value="transfer"${safeType === 'transfer' ? ' selected' : ''}>Transfer</option><option value="adjustment"${safeType === 'adjustment' ? ' selected' : ''}>Adjustment</option></select></div>
-        <div class="form-group"><label for="modal-fast-txn-desc">Note</label><input id="modal-fast-txn-desc" placeholder="Client payment or studio rent" data-autofocus /></div>
-        <div class="form-group"><label for="modal-fast-txn-amount">Amount</label><input id="modal-fast-txn-amount" type="number" min="0" step="0.01" placeholder="Positive amount" /></div>
-        <div class="form-group"><label for="modal-fast-txn-date">Date</label><input id="modal-fast-txn-date" type="date" value="${today()}" /></div>
-        <div class="form-group"><label for="modal-fast-txn-account">Account</label><select id="modal-fast-txn-account">${accountOptions('', false)}</select></div>
-        <div class="form-group"><label for="modal-fast-txn-to-account">Transfer destination</label><select id="modal-fast-txn-to-account">${accountOptions('', false)}</select></div>
-        <div class="form-group"><label for="modal-fast-txn-direction">Adjustment direction</label><select id="modal-fast-txn-direction"><option value="increase">Increase account</option><option value="decrease">Decrease account</option></select></div>
-        <div class="form-group"><label for="modal-fast-txn-category">Category</label><input id="modal-fast-txn-category" placeholder="uncategorized" /></div>
-        <div class="form-group"><label for="modal-fast-txn-scope">Scope</label><select id="modal-fast-txn-scope">${scopeOptions('business')}</select></div>
-      </div>
-      ${formActions('transaction')}
-    </div>
-  `;
+  return renderTransactionWorkflow(defaultType, { accountOptions, today });
 }
 
-function renderSettings(): string {
-  const settings = Store.getFinanceSettings();
-  const uiSettings = Store.getUiSettings();
-  const latestImport = Store.getImportState().batches.slice(-1)[0];
-  const readModel = Store.getFinancialReadModel();
-  return `
-    <div class="modal-form">
-      <h2 id="modal-title">Finance Master settings</h2>
-      <p class="modal-copy">Keep this operational: currency, display, entities by scope, cash accounts, reserve buckets, recurring costs, debt, and local data.</p>
-      <div class="modal-grid-two">
-        <div class="form-group">
-          <label for="modal-settings-currency">Base currency</label>
-          <select id="modal-settings-currency">
-            ${['EUR', 'USD', 'GBP', 'CHF'].map((currency) => `<option${settings.baseCurrency === currency ? ' selected' : ''}>${currency}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="modal-settings-forecast">Forecast horizon</label>
-          <select id="modal-settings-forecast">
-            ${[30, 60, 90, 180].map((days) => `<option value="${days}"${settings.forecastDays === days ? ' selected' : ''}>${days} days</option>`).join('')}
-          </select>
-        </div>
-      </div>
-      <div class="modal-section">
-        <div class="ui-title">Appearance and scope</div>
-        <p class="modal-copy">Every persisted display mode is available here, including bright mode.</p>
-        <div class="modal-grid-two">
-          <div class="form-group">
-            <label for="modal-settings-appearance">Appearance</label>
-            <select id="modal-settings-appearance">
-              <option value="aurora"${uiSettings.appearance === 'aurora' ? ' selected' : ''}>Aurora</option>
-              <option value="midnight"${uiSettings.appearance === 'midnight' ? ' selected' : ''}>Midnight</option>
-              <option value="bright"${uiSettings.appearance === 'bright' ? ' selected' : ''}>Bright</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="modal-settings-scope">Default scope filter</label>
-            <select id="modal-settings-scope">${scopeFilterOptions(uiSettings.scopeFilter || 'all')}</select>
-          </div>
-        </div>
-        <label class="settings-check"><input id="modal-settings-reduced-motion" type="checkbox"${uiSettings.reducedMotion ? ' checked' : ''} /><span>Reduce motion</span></label>
-        <p class="modal-copy">Market portfolio integrations are postponed and not part of the main treasury workflow.</p>
-      </div>
-      <div class="modal-section">
-        <div class="ui-title">Entities</div>
-        <p class="modal-copy">MVP entities are represented by scope: Personal, Freelance / Business, and Shared studio obligations.</p>
-      </div>
-      <div class="modal-section">
-        <div class="ui-title">Accounts and reserve buckets</div>
-        ${(readModel.fiatAccounts || []).length ? (readModel.fiatAccounts || []).map((account: Record<string, unknown>) => `
-          <div class="modal-list-row">
-            <span><strong>${escapeHtml(account.name)}</strong><br><small>${escapeHtml(account.bucket || 'available')} · ${escapeHtml(account.scope || 'shared')}</small></span>
-            <span>${money(account.balance)}</span>
-            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'fiatAccount', '${escapeHtml(account.id)}'">Edit</button>
-          </div>
-        `).join('') : '<div class="fin-compact-empty">No cash accounts yet.</div>'}
-        <button class="ui-btn ui-btn--secondary" type="button" data-action="openEditModal" data-action-args="'fiatAccount'">Add cash or reserve account</button>
-      </div>
-      <div class="modal-section">
-        <div class="ui-title">Recurring fixed costs and debt</div>
-        ${(readModel.recurringExpenses || []).length ? (readModel.recurringExpenses || []).map((expense: Record<string, unknown>) => `
-          <div class="modal-list-row">
-            <span><strong>${escapeHtml(expense.category)}</strong><br><small>Due day ${escapeHtml(expense.dueDay)} · ${escapeHtml(expense.scope || 'shared')}</small></span>
-            <span>${money(expense.monthlyAmount)}</span>
-            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'expense', '${escapeHtml(expense.id)}'">Edit</button>
-          </div>
-        `).join('') : '<div class="fin-compact-empty">No recurring costs yet.</div>'}
-        ${(readModel.debtAccounts || []).length ? (readModel.debtAccounts || []).map((debt: Record<string, unknown>) => `
-          <div class="modal-list-row">
-            <span><strong>${escapeHtml(debt.name)}</strong><br><small>Debt item · ${escapeHtml(debt.scope || 'shared')}</small></span>
-            <span>${money(debt.outstanding)}</span>
-            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'debtAdd', '${escapeHtml(debt.id)}'">Edit</button>
-          </div>
-        `).join('') : ''}
-        <div class="settings-reset-actions">
-          <button class="ui-btn ui-btn--secondary" type="button" data-action="openEditModal" data-action-args="'expense'">Add recurring cost</button>
-          <button class="ui-btn ui-btn--secondary" type="button" data-action="openEditModal" data-action-args="'debtAdd'">Add debt item</button>
-        </div>
-      </div>
-      <div class="modal-section settings-reset-panel">
-        <div>
-          <div class="ui-title">Data portability</div>
-          <p>Download a complete local backup or restore one after previewing its contents. No backend is used.</p>
-          ${latestImport ? `<p>Latest CSV batch: ${escapeHtml(latestImport.sourceFile)} · ${latestImport.fingerprints.length} row${latestImport.fingerprints.length === 1 ? '' : 's'} · ${formatDate(latestImport.importedAt)}</p>` : ''}
-        </div>
-        <div class="settings-reset-actions">
-          <button class="ui-btn ui-btn--secondary" type="button" data-action="exportFinanceBackup">Export JSON backup</button>
-          <button class="ui-btn ui-btn--secondary" type="button" data-action="chooseFinanceBackup">Restore JSON backup</button>
-          ${latestImport ? `<button class="ui-btn ui-btn--secondary" type="button" data-action="undoImportBatch" data-action-args="'${escapeHtml(latestImport.id)}'">Undo latest CSV import</button>` : ''}
-          <input id="modal-backup-file" type="file" accept="application/json,.json" hidden />
-        </div>
-      </div>
-      ${renderDataHealthPanel()}
-      <div class="modal-section settings-reset-panel">
-        <div>
-          <div class="ui-title">Reset local finance data</div>
-          <p>This clears only Finance Master local storage keys on this browser. Export a backup first if you may need the current data later.</p>
-        </div>
-        <div class="settings-reset-actions">
-          <button class="btn-danger ui-btn" type="button" data-action="resetLocalFinanceData">Reset local finance data</button>
-        </div>
-      </div>
-      <div class="modal-section settings-reset-panel">
-        <div>
-          <div class="ui-title">Sample data</div>
-          <p>Restore the fictional sample ledger or clear it for an empty Observatory. Settings stay untouched.</p>
-        </div>
-        <div class="settings-reset-actions">
-          <button class="ui-btn ui-btn--secondary" type="button" data-action="resetDemoData">Restore sample data</button>
-          <button class="btn-danger ui-btn" type="button" data-action="deleteDemoData">Delete sample data</button>
-        </div>
-      </div>
-      <div class="modal-actions modal-actions--split">
-        <button class="btn-secondary ui-btn ui-btn--secondary" type="button" data-action="closeModal">Cancel</button>
-        <button class="btn-primary ui-btn ui-btn--primary" type="button" data-action="saveFinanceModal" data-action-args="'settings'">Save</button>
-      </div>
-    </div>
-  `;
-}
+
 
 function renderSettleIncome(id = ''): string {
   const item = (Store.getFinancialReadModel().pipelineDeals || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
@@ -458,14 +254,16 @@ function renderWeeklyReview(): string {
   const review = Store.getReviewState();
   const accounts = readModel.fiatAccounts || [];
   const checks = [
-    ['recurring-costs', 'Recurring costs', (readModel.recurringExpenses || []).length > 0, 'Check recurring costs and confirm they still reflect your month.'],
-    ['pipeline', 'Pipeline', (readModel.pipelineDeals || []).some((entry: Record<string, unknown>) => window.FinanceLedger?.isPipelineActive?.(entry.status)), 'Review expected income and timing.'],
-    ['signals', 'Signals', Number(snapshot.confidenceScore) >= 0.75, 'Inspect runway, low points, and missing inputs.'],
+    ['unresolvedItems', '1. Resolve unclear items', snapshot.attentionQueue ? snapshot.attentionQueue.filter((q: any) => q.type === 'Needs review').length === 0 : true, 'Categorize or clarify any ambiguous transactions.'],
+    ['matchPayments', '2. Match payments', true, 'Link incoming cash to expected invoices.'],
+    ['confirmObligations', '3. Confirm obligations', snapshot.attentionQueue ? snapshot.attentionQueue.filter((q: any) => q.type === 'Due soon' || q.type === 'Overdue').length === 0 : true, 'Mark due costs as paid or deferred.'],
+    ['reviewSignals', '4. Review signals', Number(snapshot.runwayMonths) >= 3, 'Inspect runway, low points, and missing inputs.'],
+    ['closeMonth', '5. Close month', true, 'Lock the prior month and reset operating cycle.'],
   ];
   return `
     <div class="modal-form">
-      <h2 id="modal-title">Weekly review</h2>
-      <p class="modal-copy">A short ritual for checking the ground beneath the next week.</p>
+      <h2 id="modal-title">Monthly review</h2>
+      <p class="modal-copy">A 5-step flow to verify your treasury.</p>
       <div class="modal-section">
         <div class="ui-title">Reconcile account balances</div>
         <div class="review-grid">
@@ -694,6 +492,7 @@ function renderIncome(id = ''): string {
         <div class="form-group"><label for="modal-income-probability">Probability</label><input id="modal-income-probability" type="number" min="0" max="1" step="0.05" value="${escapeHtml(item?.probability ?? 0.65)}" /></div>
         <div class="form-group"><label for="modal-income-date">Expected date</label><input id="modal-income-date" type="date" value="${escapeHtml(item?.expectedDateISO || today())}" /></div>
         <div class="form-group"><label for="modal-income-status">Status</label><select id="modal-income-status">${['confirmed', 'expected', 'risky'].map((status) => `<option${item?.status === status ? ' selected' : ''}>${status}</option>`).join('')}</select></div>
+        <div class="form-group"><label for="modal-income-scenario">Scenario Inclusion</label><select id="modal-income-scenario">${['realistic', 'conservative', 'optimistic', 'all'].map((scenario) => `<option${(item?.scenarioInclusion || 'realistic') === scenario ? ' selected' : ''}>${scenario}</option>`).join('')}</select></div>
         <div class="form-group"><label for="modal-income-scope">Scope</label><select id="modal-income-scope">${scopeOptions(String(item?.scope || 'business'))}</select></div>
       </div>
       <div class="form-group"><label for="modal-income-account">Settlement account</label><select id="modal-income-account">${accountOptions(String(item?.destinationAccountId || ''))}</select></div>
@@ -725,25 +524,87 @@ function renderFiatAccount(id = ''): string {
           ].map(([bucket, label]) => `<option value="${bucket}"${String(item?.bucket || 'available') === bucket ? ' selected' : ''}>${label}</option>`).join('')}
         </select></div>
       </div>
-      <div class="modal-actions">
-        ${deactivateButton('deactivateFiatAccount', Boolean(item))}
-        <span class="modal-actions-spacer"></span>
-        <button class="btn-secondary ui-btn ui-btn--secondary" type="button" data-action="closeModal">Cancel</button>
-        <button class="btn-primary ui-btn ui-btn--primary" type="button" data-action="saveFinanceModal" data-action-args="'fiatAccount'">${item ? 'Save' : 'Create'}</button>
-      </div>
+      ${formActions('fiatAccount', Boolean(item))}
     </div>
   `;
 }
 
+function renderReserveBucket(id = '') {
+  const item = (Store.getFinancialReadModel().reserveBuckets || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
+  return `
+    <div class="modal-form">
+      <h2 id="modal-title">${item ? 'Edit reserve bucket' : 'Add reserve bucket'}</h2>
+      <input id="modal-reserve-id" type="hidden" value="${escapeHtml(item?.id || '')}" />
+      <div class="form-group"><label for="modal-reserve-name">Name</label><input id="modal-reserve-name" value="${escapeHtml(item?.name || '')}" placeholder="Tax Reserve 2026" /></div>
+      <div class="modal-grid-two">
+        <div class="form-group"><label for="modal-reserve-target">Target amount</label><input id="modal-reserve-target" type="number" step="0.01" value="${escapeHtml(item?.targetAmount || '')}" /></div>
+        <div class="form-group"><label for="modal-reserve-current">Current amount</label><input id="modal-reserve-current" type="number" step="0.01" value="${escapeHtml(item?.currentAmount || 0)}" /></div>
+        <div class="form-group"><label for="modal-reserve-purpose">Purpose</label><select id="modal-reserve-purpose">
+          ${[
+            ['tax_reserve', 'Taxes'],
+            ['vat_reserve', 'VAT'],
+            ['health_insurance', 'Health insurance'],
+            ['debt_repayment', 'Debt repayment'],
+            ['personal_survival', 'Personal survival'],
+            ['buffer', 'Buffer'],
+            ['custom', 'Custom'],
+          ].map(([val, label]) => `<option value="${val}"${String(item?.purpose || 'tax_reserve') === val ? ' selected' : ''}>${label}</option>`).join('')}
+        </select></div>
+        <div class="form-group"><label for="modal-reserve-priority">Priority</label><select id="modal-reserve-priority">
+          ${[
+            ['critical', 'Critical (Must fill)'],
+            ['high', 'High'],
+            ['medium', 'Medium'],
+            ['low', 'Low (If surplus)'],
+          ].map(([val, label]) => `<option value="${val}"${String(item?.priority || 'high') === val ? ' selected' : ''}>${label}</option>`).join('')}
+        </select></div>
+      </div>
+      ${formActions('reserveBucket', Boolean(item))}
+    </div>
+  `;
+}
+
+function renderAllocateReserves() {
+  const buckets = Store.getFinancialReadModel().reserveBuckets || [];
+  return `
+    <div class="modal-form">
+      <h2 id="modal-title">Allocate Cash</h2>
+      <p class="modal-copy">Move available cash into reserve buckets to protect it.</p>
+      <div class="modal-section">
+        <div class="form-group"><label for="modal-allocate-amount">Amount</label><input id="modal-allocate-amount" type="number" step="0.01" placeholder="0.00" /></div>
+        <div class="form-group"><label for="modal-allocate-bucket">To bucket</label><select id="modal-allocate-bucket">
+          ${buckets.map((b: any) => `<option value="${escapeHtml(b.id)}">${escapeHtml(b.name)} (${money(b.currentAmount)} of ${money(b.targetAmount)})</option>`).join('')}
+        </select></div>
+      </div>
+      ${formActions('allocateReserves')}
+    </div>
+  `;
+}
+
+
 function renderExpense(id = ''): string {
   const item = (Store.getFinancialReadModel().recurringExpenses || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
+  let baseAmount = item?.monthlyAmount || '';
+  if (item && item.monthlyAmount) {
+    if (item.frequency === 'quarterly') baseAmount = item.monthlyAmount * 3;
+    if (item.frequency === 'semi-annually') baseAmount = item.monthlyAmount * 6;
+    if (item.frequency === 'annually') baseAmount = item.monthlyAmount * 12;
+  }
   return `
     <div class="modal-form">
       <h2 id="modal-title">${item ? 'Edit recurring cost' : 'Add recurring cost'}</h2>
       <p class="modal-copy">Recurring costs become upcoming obligations and shape runway.</p>
       <input id="modal-expense-id" type="hidden" value="${escapeHtml(item?.id || '')}" />
       <div class="form-group"><label for="modal-expense-category">Name</label><input id="modal-expense-category" value="${escapeHtml(item?.category || '')}" placeholder="Health insurance or studio rent" /></div>
-      <div class="form-group"><label for="modal-expense-amount">Monthly amount</label><input id="modal-expense-amount" type="number" step="0.01" value="${escapeHtml(item?.monthlyAmount || '')}" /></div>
+      <div class="modal-grid-two">
+        <div class="form-group"><label for="modal-expense-amount">Amount</label><input id="modal-expense-amount" type="number" step="0.01" value="${escapeHtml(baseAmount)}" /></div>
+        <div class="form-group"><label for="modal-expense-frequency">Frequency</label><select id="modal-expense-frequency">
+          <option value="monthly"${item?.frequency === 'monthly' ? ' selected' : ''}>Monthly</option>
+          <option value="quarterly"${item?.frequency === 'quarterly' ? ' selected' : ''}>Quarterly</option>
+          <option value="semi-annually"${item?.frequency === 'semi-annually' ? ' selected' : ''}>Semi-annually</option>
+          <option value="annually"${item?.frequency === 'annually' ? ' selected' : ''}>Annually</option>
+        </select></div>
+      </div>
       <div class="modal-grid-two">
         <div class="form-group"><label for="modal-expense-due-day">Due day</label><input id="modal-expense-due-day" type="number" min="1" max="28" value="${escapeHtml(item?.dueDay || 1)}" /></div>
         <div class="form-group"><label for="modal-expense-scope">Scope</label><select id="modal-expense-scope">${scopeOptions(String(item?.scope || 'personal'))}</select></div>
@@ -896,16 +757,57 @@ function renderPipelineReview(id = ''): string {
 
 function renderDebtPlan(id = ''): string {
   const debt = (Store.getFinancialReadModel().debtAccounts || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
+  const planType = debt?.planType || 'regular';
+  const frequency = debt?.frequency || 'monthly';
+  const installments = debt?.installments || [];
+  
+  const customHtml = installments.map((inst: any, idx: number) => `
+    <div class="custom-installment-row modal-grid-two" data-index="${idx}" style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;">
+      <input type="date" class="modal-debt-plan-inst-date" value="${escapeHtml(inst.date)}" style="flex: 1;" />
+      <input type="number" min="0" step="0.01" class="modal-debt-plan-inst-amount" value="${escapeHtml(inst.amount)}" style="flex: 1;" />
+      <button type="button" class="btn-secondary ui-btn ui-btn--secondary" onclick="this.parentElement.remove()" style="flex: 0 0 auto;">X</button>
+    </div>
+  `).join('');
+
   return `
     <div class="modal-form">
       <h2 id="modal-title">Add debt payment plan</h2>
       <p class="modal-copy">${escapeHtml(debt?.name || 'Debt item')} · ${money(debt?.outstanding)} outstanding</p>
       <input id="modal-debt-plan-id" type="hidden" value="${escapeHtml(id)}" />
-      <div class="modal-grid-two">
-        <div class="form-group"><label for="modal-debt-plan-due-date">Next due date</label><input id="modal-debt-plan-due-date" type="date" value="${escapeHtml(debt?.dueDate || today())}" /></div>
-        <div class="form-group"><label for="modal-debt-plan-minimum">Minimum payment</label><input id="modal-debt-plan-minimum" type="number" min="0" step="0.01" value="${escapeHtml(debt?.minimumPayment || '')}" /></div>
+      <div class="form-group">
+        <label for="modal-debt-plan-type">Plan Type</label>
+        <select id="modal-debt-plan-type" onchange="if(window.toggleDebtPlanType) window.toggleDebtPlanType(this.value)">
+          <option value="regular"${planType === 'regular' ? ' selected' : ''}>Regular Frequencies</option>
+          <option value="custom"${planType === 'custom' ? ' selected' : ''}>Custom Installments</option>
+        </select>
       </div>
-      <div class="form-group"><label for="modal-debt-plan-note">Payment plan note</label><textarea id="modal-debt-plan-note" rows="2" placeholder="Monthly minimum, creditor agreement, or next decision">${escapeHtml(debt?.paymentPlanNote || '')}</textarea></div>
+
+      <div id="modal-debt-plan-regular-section" style="display: ${planType === 'regular' ? 'block' : 'none'};">
+        <div class="modal-grid-two">
+          <div class="form-group"><label for="modal-debt-plan-frequency">Frequency</label>
+            <select id="modal-debt-plan-frequency">
+              <option value="weekly"${frequency === 'weekly' ? ' selected' : ''}>Weekly</option>
+              <option value="monthly"${frequency === 'monthly' ? ' selected' : ''}>Monthly</option>
+              <option value="quarterly"${frequency === 'quarterly' ? ' selected' : ''}>Quarterly</option>
+              <option value="annually"${frequency === 'annually' ? ' selected' : ''}>Annually</option>
+            </select>
+          </div>
+          <div class="form-group"><label for="modal-debt-plan-minimum">Minimum payment</label><input id="modal-debt-plan-minimum" type="number" min="0" step="0.01" value="${escapeHtml(debt?.minimumPayment || '')}" /></div>
+        </div>
+        <div class="form-group"><label for="modal-debt-plan-due-date">Next due date</label><input id="modal-debt-plan-due-date" type="date" value="${escapeHtml(debt?.dueDate || today())}" /></div>
+      </div>
+
+      <div id="modal-debt-plan-custom-section" style="display: ${planType === 'custom' ? 'block' : 'none'};">
+        <div class="form-group">
+          <label>Installments</label>
+          <div id="modal-debt-plan-custom-list">
+            ${customHtml}
+          </div>
+          <button type="button" class="btn-secondary ui-btn ui-btn--secondary" data-action="addCustomInstallment" style="margin-top: 0.5rem;">+ Add Installment</button>
+        </div>
+      </div>
+
+      <div class="form-group"><label for="modal-debt-plan-note">Payment plan note <span class="fin-text-med">(optional)</span></label><textarea id="modal-debt-plan-note" rows="2" placeholder="Monthly minimum, creditor agreement, or next decision">${escapeHtml(debt?.paymentPlanNote || '')}</textarea></div>
       ${formActions('debtPlan')}
     </div>
   `;
@@ -915,7 +817,6 @@ function renderModal(type: string, id = ''): string {
   if (type === 'quickAdd') return renderQuickAdd();
   if (type === 'transaction') return renderTransaction(id);
   if (type === 'financeOverview') return renderOverview();
-  if (type === 'settings') return renderSettings();
   if (type === 'weeklyReview') return renderWeeklyReview();
   if (type === 'goals') return renderGoals();
   if (type === 'goal') return renderGoal(id);
@@ -924,6 +825,8 @@ function renderModal(type: string, id = ''): string {
   if (type === 'settleIncome') return renderSettleIncome(id);
   if (type === 'income') return renderIncome(id);
   if (type === 'fiatAccount') return renderFiatAccount(id);
+  if (type === 'reserveBucket') return renderReserveBucket(id);
+  if (type === 'allocateReserves') return renderAllocateReserves();
   if (type === 'web3Position' || type === 'defiPosition') return '<div class="modal-form"><h2 id="modal-title">Postponed</h2><p class="modal-copy">Market portfolio tracking is outside the focused treasury MVP.</p></div>';
   if (type === 'expense') return renderExpense(id);
   if (type === 'debtAdd' || type === 'debtPayment') return renderDebt(type, id);
@@ -974,8 +877,8 @@ function addTransactionFromFields(prefix: string): boolean {
   const description = value(`${prefix}-desc`);
   const amount = Math.abs(Number(value(`${prefix}-amount`)));
   const accountId = value(`${prefix}-account`);
-  if (!description || !Number.isFinite(amount) || amount <= 0 || !accountId) {
-    showModalError('Add a note, positive amount, and account.');
+  if (!Number.isFinite(amount) || amount <= 0 || !accountId) {
+    showModalError('Add a positive amount and an account.');
     return false;
   }
   try {
@@ -1048,19 +951,8 @@ function downloadTransactionsCsv(): void {
 function saveFinanceModal(type: string): void {
   const currency = Store.getFinanceSettings().baseCurrency;
   const timestamp = new Date().toISOString();
-  if (type === 'settings') {
-    try {
-      Store.saveFinanceSettings({ baseCurrency: value('modal-settings-currency'), forecastDays: Number(value('modal-settings-forecast')) });
-      Store.saveUiSettings({
-        appearance: (value('modal-settings-appearance') || 'aurora') as FinanceUiSettings['appearance'],
-        reducedMotion: checked('modal-settings-reduced-motion'),
-        scopeFilter: (value('modal-settings-scope') || 'all') as FinanceScopeFilter,
-      });
-      applyAppearance(Store);
-      closeModal();
-    } catch (error) {
-      showModalError(error instanceof Error ? error.message : 'Could not save settings.');
-    }
+  if (type === 'transaction') {
+    addTransactionFromFields('modal-fast-txn');
     return;
   }
   if (type === 'income') {
@@ -1082,6 +974,7 @@ function saveFinanceModal(type: string): void {
         probability,
         status: value('modal-income-status'),
         stage: value('modal-income-status'),
+        scenarioInclusion: value('modal-income-scenario') || 'realistic',
         expectedDateISO: value('modal-income-date'),
         destinationAccountId: value('modal-income-account'),
         scope: value('modal-income-scope'),
@@ -1113,14 +1006,72 @@ function saveFinanceModal(type: string): void {
     }, 'modal.fiatAccount');
     return;
   }
-  if (type === 'expense') {
-    const amount = Math.abs(Number(value('modal-expense-amount')));
-    const dueDay = Number(value('modal-expense-due-day'));
-    if (!value('modal-expense-category') || !Number.isFinite(amount) || amount <= 0 || !Number.isFinite(dueDay) || dueDay < 1 || dueDay > 28) {
-      showModalError('Add a cost name, positive monthly amount, and due day from 1 to 28.');
+  
+  if (type === 'reserveBucket') {
+    const target = Number(value('modal-reserve-target'));
+    const current = Number(value('modal-reserve-current')) || 0;
+    if (!value('modal-reserve-name') || !Number.isFinite(target)) {
+      showModalError('Add a name and a target amount.');
       return;
     }
-    append({ type: 'expense.recurring_set', amount, currency, timestamp, related_entity_id: value('modal-expense-id') || financeId('expense'), metadata: { category: value('modal-expense-category'), monthlyAmount: amount, essential: checked('modal-expense-essential'), active: true, dueDay, frequency: 'monthly', scope: value('modal-expense-scope') } }, 'modal.expense');
+    append({
+      type: 'asset.reserve_set',
+      amount: target,
+      currency,
+      timestamp,
+      related_entity_id: value('modal-reserve-id') || financeId('reserve'),
+      metadata: {
+        name: value('modal-reserve-name'),
+        targetAmount: target,
+        currentAmount: current,
+        purpose: value('modal-reserve-purpose'),
+        priority: value('modal-reserve-priority'),
+        active: true,
+      },
+    }, 'modal.reserveBucket');
+    return;
+  }
+  
+  if (type === 'allocateReserves') {
+    const amount = Number(value('modal-allocate-amount'));
+    const bucketId = value('modal-allocate-bucket');
+    if (!bucketId || !Number.isFinite(amount) || amount <= 0) {
+      showModalError('Enter a valid amount to allocate.');
+      return;
+    }
+    const bucket = (Store.getFinancialReadModel().reserveBuckets || []).find((entry: any) => String(entry.id) === bucketId);
+    if (!bucket) {
+      showModalError('Choose an existing reserve bucket before allocating cash.');
+      return;
+    }
+    
+    append({
+      type: 'asset.reserve_allocated',
+      amount: amount,
+      currency,
+      timestamp,
+      related_entity_id: bucketId,
+      metadata: {
+        currentAmount: (Number(bucket.currentAmount) || 0) + amount,
+      },
+    }, 'modal.allocateReserves');
+    return;
+  }
+  
+  if (type === 'expense') {
+    const amount = Math.abs(Number(value('modal-expense-amount')));
+    const frequency = value('modal-expense-frequency') || 'monthly';
+    let monthlyAmount = amount;
+    if (frequency === 'quarterly') monthlyAmount = amount / 3;
+    if (frequency === 'semi-annually') monthlyAmount = amount / 6;
+    if (frequency === 'annually') monthlyAmount = amount / 12;
+    
+    const dueDay = Number(value('modal-expense-due-day'));
+    if (!value('modal-expense-category') || !Number.isFinite(amount) || amount <= 0 || !Number.isFinite(dueDay) || dueDay < 1 || dueDay > 28) {
+      showModalError('Add a cost name, positive amount, and due day from 1 to 28.');
+      return;
+    }
+    append({ type: 'expense.recurring_set', amount, currency, timestamp, related_entity_id: value('modal-expense-id') || financeId('expense'), metadata: { category: value('modal-expense-category'), monthlyAmount, essential: checked('modal-expense-essential'), active: true, dueDay, frequency, scope: value('modal-expense-scope') } }, 'modal.expense');
     return;
   }
   if (type === 'debtAdd') {
@@ -1237,26 +1188,51 @@ function saveFinanceModal(type: string): void {
     return;
   }
   if (type === 'debtPlan') {
+    const planType = (value('modal-debt-plan-type') as 'regular' | 'custom') || 'regular';
+    const frequency = value('modal-debt-plan-frequency');
     const minimumPayment = Number(value('modal-debt-plan-minimum'));
-    if (!value('modal-debt-plan-id') || !value('modal-debt-plan-due-date') || !Number.isFinite(minimumPayment) || minimumPayment <= 0 || !value('modal-debt-plan-note')) {
-      showModalError('Add a due date, positive minimum payment, and payment plan note.');
+    const dueDate = value('modal-debt-plan-due-date');
+    const note = value('modal-debt-plan-note');
+    
+    const installments: Array<{ date: string; amount: number }> = [];
+    if (planType === 'custom') {
+      const dates = document.querySelectorAll<HTMLInputElement>('.modal-debt-plan-inst-date');
+      const amounts = document.querySelectorAll<HTMLInputElement>('.modal-debt-plan-inst-amount');
+      for (let i = 0; i < dates.length; i++) {
+        if (dates[i].value && Number(amounts[i].value) > 0) {
+          installments.push({ date: dates[i].value, amount: Number(amounts[i].value) });
+        }
+      }
+      if (installments.length === 0) {
+        showModalError('Add at least one valid installment for a custom plan.');
+        return;
+      }
+    } else {
+      if (!dueDate || !Number.isFinite(minimumPayment) || minimumPayment <= 0) {
+        showModalError('Add a due date and positive minimum payment.');
+        return;
+      }
+    }
+
+    if (!value('modal-debt-plan-id')) {
+      showModalError('Invalid debt ID.');
       return;
     }
+    
     try {
       Store.saveDebtPlan({
         id: value('modal-debt-plan-id'),
-        dueDate: value('modal-debt-plan-due-date'),
-        minimumPayment,
-        paymentPlanNote: value('modal-debt-plan-note'),
+        dueDate: dueDate || installments[0]?.date || new Date().toISOString(),
+        minimumPayment: minimumPayment || installments[0]?.amount || 0,
+        paymentPlanNote: note,
+        planType,
+        frequency,
+        installments,
       });
       closeModal();
     } catch (error) {
       showModalError(error instanceof Error ? error.message : 'Could not save this debt plan.');
     }
-    return;
-  }
-  if (type === 'transaction') {
-    addTransactionFromFields('modal-fast-txn');
     return;
   }
   if (type === 'goal') {
@@ -1359,6 +1335,27 @@ Object.assign(window, {
       window.alert(error instanceof Error ? error.message : 'Could not cancel this pipeline item.');
     }
   },
+  toggleDebtPlanType: (type: string) => {
+    const regular = document.getElementById('modal-debt-plan-regular-section');
+    const custom = document.getElementById('modal-debt-plan-custom-section');
+    if (regular) regular.style.display = type === 'regular' ? 'block' : 'none';
+    if (custom) custom.style.display = type === 'custom' ? 'block' : 'none';
+  },
+  addCustomInstallment: () => {
+    const list = document.getElementById('modal-debt-plan-custom-list');
+    if (!list) return;
+    const idx = list.children.length;
+    const row = document.createElement('div');
+    row.className = 'custom-installment-row modal-grid-two';
+    row.style.cssText = 'margin-bottom: 0.5rem; display: flex; gap: 0.5rem;';
+    row.dataset.index = String(idx);
+    row.innerHTML = `
+      <input type="date" class="modal-debt-plan-inst-date" value="${today()}" style="flex: 1;" />
+      <input type="number" min="0" step="0.01" class="modal-debt-plan-inst-amount" placeholder="Amount" style="flex: 1;" />
+      <button type="button" class="btn-secondary ui-btn ui-btn--secondary" onclick="this.parentElement.remove()" style="flex: 0 0 auto;">X</button>
+    `;
+    list.appendChild(row);
+  },
   deactivateFiatAccount: () => confirmDeactivate('deactivateFiatAccount', 'modal-fiat-id'),
   deactivateRecurringExpense: () => confirmDeactivate('deactivateRecurringExpense', 'modal-expense-id'),
   deactivateDebtAccount: () => confirmDeactivate('deactivateDebtAccount', 'modal-debt-id'),
@@ -1382,7 +1379,13 @@ Object.assign(window, {
   },
   completeWeeklyReview: () => {
     const accountChecks = [...document.querySelectorAll<HTMLInputElement>('.review-account-check')];
-    const reviewChecks = ['modal-review-recurring-costs', 'modal-review-pipeline', 'modal-review-signals'];
+    const reviewChecks = [
+      'modal-review-unresolvedItems',
+      'modal-review-matchPayments',
+      'modal-review-confirmObligations',
+      'modal-review-reviewSignals',
+      'modal-review-closeMonth',
+    ];
     if (!accountChecks.length || accountChecks.some((input) => !input.checked) || reviewChecks.some((id) => !checked(id))) {
       showModalError('Confirm every account balance and complete each operating check before finishing the review.');
       return;
@@ -1398,9 +1401,11 @@ Object.assign(window, {
     try {
       Store.completeWeeklyReview({
         accounts: accounts.map((account) => ({ accountId: account.accountId, balance: Number(account.rawBalance) })),
-        recurringCosts: true,
-        pipeline: true,
-        signals: true,
+        unresolvedItems: true,
+        matchPayments: true,
+        confirmObligations: true,
+        reviewSignals: true,
+        closeMonth: true,
         notes: value('modal-review-notes'),
       });
       closeModal();
@@ -1419,7 +1424,8 @@ Object.assign(window, {
   undoImportBatch: (batchId: string) => {
     if (!batchId || !window.confirm('Reverse the transactions imported in this CSV batch?')) return;
     Store.undoImportBatch(batchId);
-    openEditModal('settings');
+    closeModal();
+    window.FinancialMode?.render?.();
   },
   chooseCsvImport: () => document.querySelector<HTMLInputElement>('#modal-csv-file')?.click(),
   analyzeCsvImport: () => {

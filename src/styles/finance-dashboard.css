@@ -1,5 +1,12 @@
 /* ========================================
    Financial Mode (Gravity Treasury) Styles
+
+   Organization:
+   1. Tokens and appearance overrides
+   2. Shell and page layout
+   3. Reusable UI primitives
+   4. Page/workflow modules
+   5. Responsive and appearance-specific overrides
    ======================================== */
 
 :root {
@@ -51,6 +58,32 @@
     color: var(--text-primary);
     opacity: 0;
     transition: opacity var(--motion-normal) var(--ease);
+    font-family: var(--font-body);
+}
+
+.fin-dashboard-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--ds-space-6);
+    align-items: start;
+}
+
+@media (min-width: 1100px) {
+    .fin-dashboard-layout {
+        grid-template-columns: 1fr 360px;
+    }
+}
+
+.fin-dashboard-main {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.fin-dashboard-side {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
 }
 
 body.mode-financial .dashboard {
@@ -64,6 +97,24 @@ body.mode-financial .dashboard-vision {
 body.mode-financial .financial-dashboard {
     display: flex;
     opacity: 1;
+}
+
+/* 3. REUSABLE UI PRIMITIVES */
+
+.fin-ui-card {
+    padding: 24px;
+    border-radius: var(--radius-lg);
+}
+
+.fin-ui-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.fin-ui-muted {
+    color: var(--text-tertiary);
 }
 
 /* IA Progressive Disclosure Sections */
@@ -226,6 +277,25 @@ body.mode-financial .financial-dashboard {
     align-items: flex-start;
     gap: 18px;
     margin-bottom: 18px;
+}
+
+.fin-page-header {
+    padding: 0.5rem 0 0.75rem 0;
+}
+
+.fin-page-title {
+    font-family: var(--font-mono);
+    font-size: 1.4rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0;
+}
+
+.fin-page-subtitle {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin: 0.3rem 0 0 0;
+    line-height: 1.4;
 }
 
 .fin-reserve-grid,
@@ -790,6 +860,56 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     margin-top: 10px;
+}
+
+#dashboard-financial #fin-content-area .fin-action-row--inline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+#dashboard-financial #fin-content-area .fin-action-row--inline .fin-action-btn {
+    width: auto;
+    min-width: 128px;
+}
+
+#dashboard-financial #fin-content-area .fin-ledger-toolbar {
+    margin-top: 14px;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+#dashboard-financial #fin-content-area .fin-ledger-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+#dashboard-financial #fin-content-area .fin-ledger-filter-grid input,
+#dashboard-financial #fin-content-area .fin-ledger-filter-grid select {
+    width: 100%;
+    min-height: 40px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.045);
+    color: var(--text-primary);
+    padding: 0 10px;
+}
+
+#dashboard-financial #fin-content-area .fin-ledger-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+#dashboard-financial #fin-content-area .fin-ledger-actions .fin-mini-btn {
+    height: 32px;
+    min-width: 0;
+    padding: 0 9px;
+    border-radius: 9px;
 }
 
 #dashboard-financial #fin-content-area .fin-subdivider {
@@ -1368,6 +1488,187 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     padding: 10px 12px;
 }
 
+/* Dashboard Cockpit Styling */
+#dashboard-financial #fin-content-area .fin-cockpit-overview {
+    padding: 2.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+#dashboard-financial #fin-content-area .fin-cockpit-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+
+#dashboard-financial #fin-content-area .fin-runway-gauge {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+#dashboard-financial #fin-content-area .fin-runway-value {
+    font-family: var(--font-mono);
+    font-size: 3.5rem;
+    line-height: 1;
+    font-weight: 500;
+}
+
+#dashboard-financial #fin-content-area .fin-runway-label {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+#dashboard-financial #fin-content-area .fin-cockpit-burn {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+#dashboard-financial #fin-content-area .fin-burn-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+#dashboard-financial #fin-content-area .fin-burn-value {
+    font-family: var(--font-mono);
+    font-size: 1.75rem;
+    line-height: 1;
+}
+
+#dashboard-financial #fin-content-area .fin-divider {
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 0;
+}
+
+#dashboard-financial #fin-content-area .fin-cockpit-cash {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+#dashboard-financial #fin-content-area .fin-cash-header {
+    font-size: 1.1rem;
+}
+
+#dashboard-financial #fin-content-area .fin-cash-header strong {
+    font-family: var(--font-mono);
+    margin-left: 0.5rem;
+}
+
+#dashboard-financial #fin-content-area .fin-stacked-bar {
+    display: flex;
+    height: 12px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+#dashboard-financial #fin-content-area .fin-bar-segment {
+    height: 100%;
+}
+
+#dashboard-financial #fin-content-area .fin-bar-available {
+    background: var(--text-accent);
+}
+
+#dashboard-financial #fin-content-area .fin-bar-protected {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+#dashboard-financial #fin-content-area .fin-cash-legend {
+    display: flex;
+    gap: 2rem;
+    font-size: 0.85rem;
+}
+
+#dashboard-financial #fin-content-area .fin-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+#dashboard-financial #fin-content-area .fin-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+#dashboard-financial #fin-content-area .fin-dot-available {
+    background: var(--text-accent);
+}
+
+#dashboard-financial #fin-content-area .fin-dot-protected {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+#dashboard-financial #fin-content-area .fin-legend-val {
+    font-family: var(--font-mono);
+    font-weight: 500;
+}
+
+#dashboard-financial #fin-content-area .fin-legend-lbl {
+    color: var(--text-secondary);
+}
+
+#dashboard-financial #fin-content-area .fin-reserve-mini-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+#dashboard-financial #fin-content-area .fin-cockpit-cashflow {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+#dashboard-financial #fin-content-area .fin-cashflow-header {
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+#dashboard-financial #fin-content-area .fin-cashflow-grid {
+    display: flex;
+    gap: 3rem;
+}
+
+#dashboard-financial #fin-content-area .fin-cashflow-grid > div {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+#dashboard-financial #fin-content-area .fin-cashflow-grid span {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+#dashboard-financial #fin-content-area .fin-cashflow-grid strong {
+    font-family: var(--font-mono);
+    font-size: 1.25rem;
+}
+
+#dashboard-financial #fin-content-area .fin-cashflow-copy {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
 #dashboard-financial #fin-content-area .fin-focus-mode-note {
     color: var(--text-tertiary);
     font-size: 0.72rem;
@@ -1436,6 +1737,23 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
 
     #dashboard-financial #fin-content-area .fin-action-row {
         grid-template-columns: 1fr;
+    }
+
+    #dashboard-financial #fin-content-area .fin-action-row--inline {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    #dashboard-financial #fin-content-area .fin-action-row--inline .fin-action-btn {
+        width: 100%;
+    }
+
+    #dashboard-financial #fin-content-area .fin-ledger-filter-grid {
+        grid-template-columns: 1fr;
+    }
+
+    #dashboard-financial #fin-content-area .fin-ledger-actions {
+        justify-content: flex-start;
     }
 
     #dashboard-financial #fin-content-area .fin-tabs {
@@ -1548,4 +1866,356 @@ body.settings-reduced-motion #dashboard-financial #fin-content-area .fin-tile {
 :root[data-appearance='bright'] #dashboard-financial #fin-content-area .fin-compact-empty {
     border-color: rgba(43, 88, 81, 0.16);
     background: rgba(255, 255, 255, 0.38);
+}
+
+/* ----------------------------------------------------- */
+/* Unified Section & Layout Classes (Dashboard Refactor) */
+/* ----------------------------------------------------- */
+
+.fin-section--toolbar {
+    margin-bottom: 0;
+}
+
+.fin-section--toolbar .fin-ui-toolbar {
+    border: none;
+    background: transparent;
+    padding: 0;
+}
+
+.fin-ui-toolbar-copy {
+    font-size: 1.125rem;
+    font-family: var(--font-body);
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.fin-operating-meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.fin-snapshot-grid--cockpit {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.fin-tile-primary {
+    padding: 2rem !important;
+    border-left: 4px solid var(--ds-color-primary) !important;
+}
+
+.fin-tile-primary .fin-tile-label {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.fin-tile-primary .fin-tile-value {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+}
+
+.fin-tile-primary .fin-tile-subline {
+    font-family: var(--font-mono);
+    opacity: 0.7;
+    margin-top: 0.25rem;
+}
+
+/* Money States Row */
+.fin-state-available {
+    padding: 1.5rem !important;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)) !important;
+    border-top: 3px solid var(--fin-safe) !important;
+}
+
+.fin-state-protected {
+    padding: 1.5rem !important;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)) !important;
+    border-top: 3px solid var(--ds-color-primary) !important;
+}
+
+.fin-state-moving {
+    padding: 1.5rem !important;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)) !important;
+    border-top: 3px solid var(--fin-stress-med) !important;
+}
+
+.fin-state-value {
+    font-family: var(--font-mono);
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+}
+
+.fin-reserve-grid {
+    margin-bottom: 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.fin-reserve-item {
+    padding: 0.5rem;
+    background: rgba(0,0,0,0.1);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.fin-reserve-item strong {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+}
+
+/* Next Decisions List */
+.fin-decision-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.fin-decision-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--ds-mode-surface-border);
+}
+
+.fin-decision-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.fin-decision-header strong {
+    font-family: var(--font-body);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.fin-decision-reason {
+    font-family: var(--font-body);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 0.2rem;
+}
+
+.fin-decision-actions {
+    display: flex;
+    justify-content: flex-start;
+}
+
+/* Forecast Confidence */
+.fin-confidence-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.fin-confidence-row {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+}
+
+.fin-divider-line {
+    height: 1px;
+    background: var(--ds-mode-surface-border);
+    margin: 0.25rem 0;
+}
+
+.fin-muted { color: var(--text-secondary); }
+.fin-text-primary { color: var(--text-primary); }
+.fin-text-safe { color: var(--fin-safe); }
+.fin-text-med { color: var(--fin-stress-med); }
+.fin-text-high { color: var(--fin-stress-high); }
+
+/* Unified List Items (Reserves / Fixed Costs) */
+.fin-list-item {
+    padding: 1.25rem !important;
+    margin-bottom: 0.75rem !important;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.fin-list-item-main strong {
+    font-family: var(--font-body);
+    font-weight: 600;
+    display: block;
+}
+
+.fin-list-item-sub {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 0.2rem;
+    text-transform: capitalize;
+}
+
+.fin-list-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.fin-list-item-val {
+    font-family: var(--font-mono);
+    font-size: 1.25rem;
+}
+
+/* Settings View Classes */
+.fin-settings-card {
+    padding: 2rem !important;
+    margin-bottom: 2rem !important;
+}
+
+.fin-settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-width: 400px;
+}
+
+.fin-settings-form label {
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+    display: block;
+}
+
+.settings-check {
+    margin-top: 0.5rem;
+    padding-left: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.fin-settings-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.fin-integrations-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.fin-integration-item {
+    padding: 1rem;
+    border: 1px solid var(--ds-mode-surface-border);
+    border-radius: 6px;
+}
+
+.fin-integration-item strong {
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.fin-integration-item span {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.fin-danger-zone {
+    border-top: 4px solid var(--fin-stress-high) !important;
+    background: rgba(255, 0, 0, 0.02) !important;
+}
+
+
+/* Debt Card Layout */
+.fin-debt-card {
+    padding: 1.25rem !important;
+    margin-bottom: 0.75rem !important;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.fin-debt-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.fin-debt-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.fin-debt-bar-track {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+:root[data-appearance='bright'] .fin-debt-bar-track {
+    background: rgba(43, 88, 81, 0.1);
+}
+
+.fin-debt-bar-fill {
+    height: 100%;
+    background: var(--fin-stress-med);
+    border-radius: 3px;
+}
+
+.fin-debt-bar-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-align: right;
+    font-family: var(--font-mono);
+}
+
+.fin-debt-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    background: rgba(0, 0, 0, 0.1);
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+}
+
+:root[data-appearance='bright'] .fin-debt-details {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+.fin-debt-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+/* Bright mode - Cockpit overrides */
+:root[data-appearance='bright'] .fin-divider {
+    border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+:root[data-appearance='bright'] .fin-stacked-bar {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+:root[data-appearance='bright'] .fin-bar-protected {
+    background: rgba(0, 0, 0, 0.15);
+}
+
+:root[data-appearance='bright'] .fin-reserve-mini-grid {
+    background: rgba(0, 0, 0, 0.04);
 }

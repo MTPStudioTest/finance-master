@@ -25,6 +25,8 @@
         'asset.account_set',
         'asset.position_set',
         'asset.defi_set',
+        'asset.reserve_set',
+        'asset.reserve_allocated',
         'finance.event_reversed'
     ];
 

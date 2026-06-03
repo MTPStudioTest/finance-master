@@ -8,7 +8,7 @@ function aliases(headers, candidates) {
   return headers.find((header) => candidates.includes(normalizeHeader(header))) || '';
 }
 
-export function parseCsvLine(line, delimiter) {
+function parseCsvLine(line, delimiter) {
   const fields = [];
   let field = '';
   let quoted = false;
@@ -95,7 +95,7 @@ function rowValue(document, row, column) {
   return index >= 0 ? String(row.values[index] || '').trim() : '';
 }
 
-export function buildCsvFingerprint(row) {
+function buildCsvFingerprint(row) {
   return `${row.date}|${row.description.trim().toLowerCase()}|${Number(row.amount).toFixed(2)}`;
 }
 

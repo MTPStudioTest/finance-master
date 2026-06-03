@@ -24,6 +24,8 @@ Implemented baseline:
 
 - Grouped app shell: Dashboard, Ledger, Planning, Review, Data, Settings.
 - Finance Observatory as the default landing surface.
+- Page-native Transactions workspace with ledger filters, Clean / Work / Audit views, and inline review actions.
+- Initial UI hardening seams for shared dashboard helpers, section composition, and modal helper rendering.
 - Local-first Store/repository architecture with backup support.
 - CSV import preview/import/undo.
 - Manual transaction capture, ledger review, and transaction reversal.
@@ -33,7 +35,7 @@ Implemented baseline:
 
 Known baseline limitations:
 
-- Some workflows are functional but shallow: transaction categorization, actual payment review, debt repayment planning, and recurring-cost confirmation.
+- Some workflows are functional but still need depth: debt repayment planning, recurring-cost confirmation, reports, and long-term trend views.
 - The data model is implicit across Store events, read models, and dashboard calculations.
 - Import/export is useful but not yet a polished data operations center.
 - Planning projections need clearer formulas and stronger scenario controls.
@@ -101,7 +103,7 @@ Acceptance criteria:
 
 ## Phase 1C: Ledger Reliability
 
-Status: implemented in the Ledger Reliability slice.
+Status: implemented; page-native ledger hardening added in the latest slice.
 
 Goal: Make the ledger the source of truth for actual cash movement.
 
@@ -128,6 +130,8 @@ Planned work:
   - date range
 - Add stable empty states and long-label handling.
 - Add CSV export for transactions.
+- Keep full ledger browsing on the Transactions page instead of routing the user into a large modal.
+- Provide inline Categorize, Match, and Reverse actions in the Work/Audit views.
 
 Acceptance criteria:
 
@@ -135,6 +139,7 @@ Acceptance criteria:
 - Unclear transactions are marked needs-review.
 - Ledger filters do not hide data unexpectedly.
 - Exported CSV is useful for accountant or personal archive review.
+- E2E coverage verifies the Transactions page as the primary ledger workspace.
 
 ## Phase 1D: Local Data Safety
 
@@ -166,6 +171,27 @@ Acceptance criteria:
 - A user understands where data lives and how to back it up.
 - Bad backup files do not mutate current state.
 - Reset and restore flows are visible, explicit, and tested.
+
+## Phase 1E: Structural UI Hardening
+
+Status: initial extraction slice implemented.
+
+Goal: Reduce controller size and prevent page/modal responsibilities from drifting back together.
+
+Implemented work:
+
+- Moved dashboard presentation helpers to `src/dashboard/finance-ui.js`.
+- Moved section routing/composition to `src/dashboard/section-registry.js`.
+- Moved shared modal rendering helpers to `src/components/modal-ui.ts`.
+- Moved quick-add and transaction modal renderers to a focused workflow module.
+- Kept Settings focused on preferences while Import & Backup owns data operations.
+- Added a small CSS organization header and reusable primitive classes.
+
+Acceptance criteria:
+
+- `window.FinancialMode` and modal `data-action` entry points remain compatible.
+- Settings no longer duplicates export, restore, reset, or sample-data workflows.
+- Full verification suite passes after the complete hardening pass.
 
 ## Phase 2: Dashboard Clarity
 

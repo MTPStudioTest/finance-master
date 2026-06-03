@@ -566,6 +566,9 @@
         });
 
         var recurringMonthlyMinor = Events.toMinor(readModel.recurringMonthlyTotal || 0);
+        var essentialRecurringMinor = Events.toMinor(safeArray(readModel.activeRecurringExpenses).filter(function(e){ return e.essential; }).reduce(function(sum, e){ return sum + (Number(e.monthlyAmount) || 0); }, 0));
+        var survivalBurnMinor = essentialRecurringMinor;
+        var comfortBurnMinor = recurringMonthlyMinor;
         var monthlyBurnMinor = null;
 
         if ((readModel.recurringExpenses || []).length > 0) {
@@ -584,19 +587,72 @@
 
         var totalDebtMinor = Events.toMinor(readModel.debtTotal || 0);
 
+        var reserveTotalMinor = Events.toMinor(safeArray(readModel.reserveBuckets).reduce(function(sum, b) { return sum + (Number(b.currentAmount) || 0); }, 0));
+        var trulyAvailableMinor = Math.max(0, realBalanceMinor - reserveTotalMinor);
+        
         var monthlyBurn = monthlyBurnMinor == null ? null : Events.fromMinor(monthlyBurnMinor);
+        var survivalBurn = Events.fromMinor(survivalBurnMinor);
+        var comfortBurn = Events.fromMinor(comfortBurnMinor);
+        
         var runwayMonths = null;
         if (monthlyBurnMinor != null && monthlyBurnMinor > 0) {
-            runwayMonths = round(Events.fromMinor(realBalanceMinor) / Events.fromMinor(monthlyBurnMinor));
+            runwayMonths = round(Events.fromMinor(trulyAvailableMinor) / Events.fromMinor(monthlyBurnMinor));
         }
 
         var breakEvenRevenue = monthlyBurn;
 
         var treasury = buildTreasuryModel(readModel, {}, cfg, nowTs);
 
-        var snapshot = {
+        
+        var attentionQueue = [];
+        
+        // 1. Transactions needing review
+        safeArray(readModel.transactions).forEach(function(tx) {
+            if (tx.reviewStatus === 'needs_review' || tx.categoryId === 'uncategorized') {
+                attentionQueue.push({ type: 'Needs review', title: tx.description, amount: tx.amount, action: 'Review', id: tx.id, original: tx });
+            }
+        });
+        
+        // 2. Overdue invoices
+        safeArray(readModel.invoices).forEach(function(inv) {
+            if (inv.status !== 'Paid' && inv.expectedDate) {
+                var expectedTs = Date.parse(inv.expectedDate);
+                if (Number.isFinite(expectedTs) && expectedTs < nowTs) {
+                    attentionQueue.push({ type: 'Overdue', title: inv.client + ' invoice', amount: inv.amount, action: 'Mark paid', id: inv.id, original: inv });
+                }
+            }
+        });
+        
+        // 3. Due soon obligations
+        safeArray(treasury.upcomingObligations).concat(safeArray(treasury.overdueObligations)).forEach(function(obl) {
+            attentionQueue.push({ type: 'Due soon', title: obl.title, amount: obl.amount, action: 'Review', id: obl.id, original: obl });
+        });
+        
+        // 4. Missing plan for debt
+        safeArray(readModel.debtAccounts).forEach(function(debt) {
+            if (debt.outstanding > 0 && !debt.dueDate && !debt.minimumPayment) {
+                attentionQueue.push({ type: 'Missing plan', title: debt.name, amount: debt.outstanding, action: 'Add plan', id: debt.id, original: debt });
+            }
+        });
+        
+        // 5. Missing forecast input
+        if (safeArray(readModel.pipelineDeals).filter(function(d) { return Ledger.isPipelineActive(d.status); }).length === 0) {
+            attentionQueue.push({ type: 'Missing forecast input', title: 'Income pipeline', amount: null, action: 'Add income', id: 'pipeline-missing' });
+        }
+        
+        // 6. Missing reserves
+        if (safeArray(readModel.reserveBuckets).length === 0) {
+            attentionQueue.push({ type: 'Missing plan', title: 'Reserve buckets', amount: null, action: 'Create reserve', id: 'reserves-missing' });
+        }
+        
+var snapshot = {
             realBalance: Events.fromMinor(realBalanceMinor),
             projectedBalance: Events.fromMinor(projectedBalanceMinor),
+            attentionQueue: attentionQueue,
+            trulyAvailable: Events.fromMinor(trulyAvailableMinor),
+            reserveTotal: Events.fromMinor(reserveTotalMinor),
+            survivalBurn: survivalBurn,
+            comfortBurn: comfortBurn,
             weightedPipeline: Events.fromMinor(weightedPipelineMinor),
             monthlyBurn: monthlyBurn,
             runwayMonths: runwayMonths,

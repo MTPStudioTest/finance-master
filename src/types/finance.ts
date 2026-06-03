@@ -1,7 +1,7 @@
 export type FinanceScope = 'personal' | 'business' | 'shared';
 export type FinanceScopeFilter = 'all' | FinanceScope;
 
-export interface FinanceAccountReconciliation {
+interface FinanceAccountReconciliation {
   accountId: string;
   balance: number;
   reviewedAt: string;
@@ -11,16 +11,16 @@ export interface FinanceReviewState {
   lastReviewedAt: string | null;
   accountReconciliations: Record<string, FinanceAccountReconciliation>;
   checklist: {
-    recurringCosts: boolean;
-    pipeline: boolean;
-    signals: boolean;
+    unresolvedItems: boolean;
+    matchPayments: boolean;
+    confirmObligations: boolean;
+    reviewSignals: boolean;
+    closeMonth: boolean;
   };
   notes: string;
 }
 
-export interface FinanceReviewStateV1 {
-  lastReviewedAt: string | null;
-}
+
 
 export interface FinanceGoal {
   id: string;
@@ -43,7 +43,7 @@ export interface FinanceGoalProgress extends FinanceGoal {
   progressPercent: number;
 }
 
-export interface FinanceImportBatch {
+interface FinanceImportBatch {
   id: string;
   importedAt: string;
   sourceFile: string;
@@ -67,16 +67,7 @@ export interface FinancePriceCache {
   quotes: Record<string, FinancePriceQuote>;
 }
 
-export interface FinanceBackupV1 {
-  version: 1;
-  exportedAt: string;
-  ledger: FinanceEvent[];
-  financeSettings: FinanceSettings;
-  uiSettings: FinanceUiSettings;
-  review: FinanceReviewStateV1;
-  imports: FinanceImportState;
-  prices: FinancePriceCache;
-}
+
 
 export interface FinanceBackupV2 {
   version: 2;
@@ -98,7 +89,7 @@ export interface FinanceBackupV2 {
   prices: FinancePriceCache;
 }
 
-export type FinanceBackup = FinanceBackupV1 | FinanceBackupV2;
+export type FinanceBackup = FinanceBackupV2;
 
 export interface CsvTransactionRow {
   date: string;
@@ -145,7 +136,7 @@ export interface FinanceBackupPreview {
   warnings?: string[];
 }
 
-export interface FinanceDataHealthIssue {
+interface FinanceDataHealthIssue {
   key: string;
   label: string;
   message: string;
@@ -161,17 +152,7 @@ export interface FinanceDataHealth {
   storageKeys: string[];
 }
 
-export interface LedgerRepository {
-  get(): FinanceEvent[];
-  set(events: FinanceEvent[]): void;
-  remove(): void;
-}
 
-export interface SettingsRepository<T> {
-  get(fallback: T): T;
-  set(value: T): void;
-  remove(): void;
-}
 
 export interface PriceProvider {
   id: string;

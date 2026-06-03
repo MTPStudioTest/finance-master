@@ -34,11 +34,30 @@
 - Grouped top-level shell: Dashboard, Ledger, Planning, Review, Data, Settings (`index.html`, `src/dashboard/financial-mode.js`).
 - Persisted active section in `localStorage` through `FinancialMode.setSection(section)` (`src/dashboard/financial-mode.js`).
 - Dashboard keeps the Observatory as the default emotional center (`src/dashboard/financial-mode.js`).
-- Ledger surfaces transaction previews, full ledger modal, account cards, and recurring/debt cards (`src/dashboard/financial-mode.js`).
+- Ledger surfaces a page-native transaction workspace with filtering, work actions, audit evidence, account cards, and recurring/debt cards (`src/dashboard/financial-mode.js`).
 - Planning surfaces pipeline tabs, goals, cash calendar, account/debt planning, projection, and scenario lab (`src/dashboard/financial-mode.js`).
 - Review surfaces queue, signals, and weekly review status (`src/dashboard/financial-mode.js`).
 - Data surfaces CSV import, backup export/restore, latest import undo, and sample data controls (`src/dashboard/financial-mode.js`).
 - Settings surfaces persisted currency, horizon, scope, reduced motion, and all appearance modes (`src/dashboard/financial-mode.js`, `src/components/modal-controller.ts`).
+
+## Hardening Slice: Page-Native Ledger
+
+- Transactions is now treated as a first-class ledger workspace, not a preview plus a large modal.
+- The Transactions page exposes full ledger filtering, Clean / Work / Audit views, CSV import/export, and inline Categorize, Match, and Reverse actions (`src/dashboard/financial-mode.js`).
+- The old full-ledger modal remains available as compatibility code, but normal ledger browsing no longer depends on it.
+- Invoice view tabs now have persisted page state and a wired click handler (`src/dashboard/financial-mode.js`).
+- Monthly Review completion now validates the current five-step checklist instead of stale legacy checklist ids (`src/components/modal-controller.ts`).
+- E2E coverage has been refreshed around the current grouped IA, floating quick-add button, page-native ledger, invoices, local data controls, and review workflows (`tests/e2e/finance-master.spec.ts`).
+
+## Hardening Slice: Structure And System Boundaries
+
+- Shared dashboard UI helpers moved out of the main renderer (`src/dashboard/finance-ui.js`).
+- Section composition moved into a registry so the `FinancialMode` controller no longer owns the page-routing table (`src/dashboard/section-registry.js`).
+- Shared modal UI helpers moved out of the modal controller (`src/components/modal-ui.ts`).
+- Quick-add and transaction modal renderers moved into a focused workflow module (`src/components/modal-workflows/core.ts`).
+- Settings is now focused on preferences and system boundaries; data export, restore, reset, CSV import, and sample data remain in Import & Backup (`src/dashboard/financial-mode.js`).
+- Undoing a CSV import now closes any modal and re-renders the current page instead of opening a removed Settings modal (`src/components/modal-controller.ts`).
+- Dashboard CSS has a lightweight organization header and reusable primitive classes for future cleanup (`src/styles/finance-dashboard.css`).
 
 ## Postponed
 
@@ -53,8 +72,8 @@
 
 ## Source Map
 
-- App shell and dashboard IA: `index.html`, `src/dashboard/financial-mode.js`, `src/styles/base.css`, `src/styles/finance-dashboard.css`.
-- Modal reachability and validation: `src/components/modal-controller.ts`.
+- App shell and dashboard IA: `index.html`, `src/dashboard/financial-mode.js`, `src/dashboard/section-registry.js`, `src/dashboard/finance-ui.js`, `src/styles/base.css`, `src/styles/finance-dashboard.css`.
+- Modal reachability and validation: `src/components/modal-controller.ts`, `src/components/modal-ui.ts`, `src/components/modal-workflows/core.ts`.
 - Store/settings/persistence: `src/persistence/store.ts`, `src/settings/apply-appearance.ts`, `src/settings/storage-keys.ts`.
 - Core finance calculations: `src/finance/compute.js`, `src/dashboard/financial-engine.js`.
 - Import/backup: `src/finance/csv-import.js`, `src/persistence/backup-validation.js`, `src/persistence/store.ts`.

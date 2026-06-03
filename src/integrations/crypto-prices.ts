@@ -1,6 +1,6 @@
 import type { FinancePriceQuote, PriceProvider } from '../types/finance';
 
-export class ManualPriceProvider implements PriceProvider {
+class ManualPriceProvider implements PriceProvider {
   id = 'manual';
 
   async getQuotes(_symbols: string[], _currency: string): Promise<FinancePriceQuote[]> {
@@ -17,7 +17,7 @@ const COINGECKO_IDS: Record<string, string> = {
 
 const PRICE_FETCH_TIMEOUT_MS = 8000;
 
-export class CoinGeckoPriceProvider implements PriceProvider {
+class CoinGeckoPriceProvider implements PriceProvider {
   id = 'coingecko';
 
   async getQuotes(symbols: string[], currency: string): Promise<FinancePriceQuote[]> {

@@ -87,9 +87,11 @@ declare global {
     clearAndReseedDemo(): void;
     completeWeeklyReview(input?: {
       accounts?: Array<{ accountId: string; balance: number }>;
-      recurringCosts?: boolean;
-      pipeline?: boolean;
-      signals?: boolean;
+      unresolvedItems?: boolean;
+      matchPayments?: boolean;
+      confirmObligations?: boolean;
+      reviewSignals?: boolean;
+      closeMonth?: boolean;
       notes?: string;
     }): import('./finance').FinanceReviewState;
     computeFinanceContext(force?: boolean, filter?: FinanceScopeFilter): FinanceContext;

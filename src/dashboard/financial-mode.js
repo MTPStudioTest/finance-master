@@ -1,3 +1,15 @@
+import { createSectionRenderer } from './section-registry.js';
+import {
+    escapeActionArg,
+    escapeHtml,
+    formatShortDate,
+    pluralize,
+    renderCompactEmpty,
+    renderSectionHeading,
+    renderStatusPill,
+    scopeFilterOptions
+} from './finance-ui.js';
+
 /**
  * FinancialMode — UI Controller for Dashi "Financial Mode (Gravity Treasury)"
  * UI-only refinements: hierarchy, progressive disclosure, and calm interaction.
@@ -20,16 +32,20 @@ window.FinancialMode = (function () {
         focusMode: 'finance-master.layout.focus-mode',
         pipelineTab: 'finance-master.layout.pipeline-tab',
         ledgerView: 'finance-master.layout.ledger-view',
+        ledgerFilters: 'finance-master.layout.ledger-filters',
+        invoicesView: 'finance-master.layout.invoices-view',
         activeSection: 'finance-master.layout.active-section'
     };
 
-    const SECTIONS = ['dashboard', 'ledger', 'invoices', 'planning', 'review', 'reports', 'data', 'settings'];
+    const SECTIONS = ['dashboard', 'ledger', 'invoices', 'planning', 'review', 'reports', 'data', 'settings', 'reserves', 'fixedCosts'];
 
     // Elements
     const elements = {
         container: document.getElementById('dashboard-financial'),
         content: document.getElementById('fin-content-area'),
-        switchBtns: document.querySelectorAll('.fin-switch-btn')
+        switchBtns: document.querySelectorAll('.fin-switch-btn'),
+        mobileNavToggle: document.querySelector('[data-action="FinancialMode.toggleMobileNav"]'),
+        sidebar: document.querySelector('.finance-master-sidebar')
     };
 
     function collapsedKey(sectionId) {
@@ -86,11 +102,12 @@ window.FinancialMode = (function () {
 
     function getActiveSection() {
         try {
-            const raw = String(localStorage.getItem(UI_KEYS.activeSection) || 'dashboard').toLowerCase();
-            if (raw === 'today') return 'dashboard';
-            if (raw === 'transactions') return 'ledger';
-            if (raw === 'cashflow') return 'planning';
-            if (raw === 'import') return 'data';
+            const raw = String(localStorage.getItem(UI_KEYS.activeSection) || 'dashboard');
+            const lower = raw.toLowerCase();
+            if (lower === 'today') return 'dashboard';
+            if (lower === 'transactions') return 'ledger';
+            if (lower === 'cashflow') return 'planning';
+            if (lower === 'import') return 'data';
             return SECTIONS.indexOf(raw) !== -1 ? raw : 'dashboard';
         } catch (error) {
             return 'dashboard';
@@ -98,13 +115,20 @@ window.FinancialMode = (function () {
     }
 
     function setActiveSection(section) {
-        const next = String(section || 'dashboard').toLowerCase();
+        let next = String(section || 'dashboard');
+        const lower = next.toLowerCase();
+        if (lower === 'today') next = 'dashboard';
+        if (lower === 'transactions') next = 'ledger';
+        if (lower === 'cashflow') next = 'planning';
+        if (lower === 'import') next = 'data';
+        
         const safeSection = SECTIONS.indexOf(next) !== -1 ? next : 'dashboard';
         try {
             localStorage.setItem(UI_KEYS.activeSection, safeSection);
         } catch (error) {
             // noop
         }
+        closeMobileNav();
         render();
     }
 
@@ -128,12 +152,107 @@ window.FinancialMode = (function () {
         }
     }
 
+    function getInvoicesView() {
+        try {
+            const raw = String(localStorage.getItem(UI_KEYS.invoicesView) || 'open').toLowerCase();
+            if (raw === 'open' || raw === 'settled' || raw === 'all') return raw;
+        } catch (error) {
+            // noop
+        }
+        return 'open';
+    }
+
+    function setInvoicesView(view) {
+        const safe = String(view || 'open').toLowerCase();
+        if (safe !== 'open' && safe !== 'settled' && safe !== 'all') return;
+        try {
+            localStorage.setItem(UI_KEYS.invoicesView, safe);
+        } catch (error) {
+            // noop
+        }
+    }
+
+    function defaultLedgerFilters() {
+        return {
+            search: '',
+            accountId: 'all',
+            scope: 'all',
+            categoryId: '',
+            type: 'all',
+            reviewStatus: 'all',
+            dateFrom: '',
+            dateTo: ''
+        };
+    }
+
+    function getLedgerFilters() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(UI_KEYS.ledgerFilters) || '{}');
+            return Object.assign(defaultLedgerFilters(), parsed && typeof parsed === 'object' ? parsed : {});
+        } catch (error) {
+            return defaultLedgerFilters();
+        }
+    }
+
+    function setLedgerFilters(filters) {
+        try {
+            localStorage.setItem(UI_KEYS.ledgerFilters, JSON.stringify(Object.assign(defaultLedgerFilters(), filters || {})));
+        } catch (error) {
+            // noop
+        }
+    }
+
+    function clearLedgerFilters() {
+        try {
+            localStorage.removeItem(UI_KEYS.ledgerFilters);
+        } catch (error) {
+            // noop
+        }
+    }
+
+    function ledgerAccountOptions(selected) {
+        const accounts = safeArray(currentData && currentData.fiatAccounts);
+        return [
+            `<option value="all"${selected === 'all' || !selected ? ' selected' : ''}>All accounts</option>`,
+            ...accounts.map((account) => `<option value="${escapeHtml(account.id)}"${String(selected) === String(account.id) ? ' selected' : ''}>${escapeHtml(account.name || 'Account')}</option>`)
+        ].join('');
+    }
+
     function updateTopNavigation(section) {
         document.querySelectorAll('[data-fin-nav]').forEach((button) => {
             const active = String(button.getAttribute('data-fin-nav') || '') === section;
             button.classList.toggle('active', active);
             button.setAttribute('aria-current', active ? 'page' : 'false');
         });
+    }
+
+    function setMobileNavOpen(open) {
+        const isOpen = Boolean(open);
+        const isMobile = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(max-width: 760px)').matches
+            : false;
+        document.body.classList.toggle('finance-nav-open', isOpen);
+        if (elements.mobileNavToggle) {
+            elements.mobileNavToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            elements.mobileNavToggle.setAttribute('aria-label', isOpen ? 'Close navigation' : 'Open navigation');
+        }
+        if (elements.sidebar) {
+            if (isMobile && !isOpen) {
+                elements.sidebar.setAttribute('aria-hidden', 'true');
+                elements.sidebar.setAttribute('inert', '');
+            } else {
+                elements.sidebar.removeAttribute('aria-hidden');
+                elements.sidebar.removeAttribute('inert');
+            }
+        }
+    }
+
+    function toggleMobileNav() {
+        setMobileNavOpen(!document.body.classList.contains('finance-nav-open'));
+    }
+
+    function closeMobileNav() {
+        setMobileNavOpen(false);
     }
 
     function isSectionCollapsed(sectionId) {
@@ -144,43 +263,8 @@ window.FinancialMode = (function () {
         writeStoredBoolean(collapsedKey(sectionId), Boolean(collapsed));
     }
 
-    function pluralize(count, singular, plural) {
-        const value = Number(count) || 0;
-        return `${value} ${value === 1 ? singular : (plural || `${singular}s`)}`;
-    }
-
-    function scopeFilterOptions(selected) {
-        return [
-            ['all', 'All scopes'],
-            ['business', 'Business'],
-            ['personal', 'Personal'],
-            ['shared', 'Shared']
-        ].map(([value, label]) => `<option value="${value}"${selected === value ? ' selected' : ''}>${label}</option>`).join('');
-    }
-
-    function formatShortDate(value) {
-        const timestamp = Date.parse(String(value || ''));
-        if (!Number.isFinite(timestamp)) return 'Not yet';
-        return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-    }
-
     function safeArray(value) {
         return Array.isArray(value) ? value : [];
-    }
-
-    function escapeHtml(value) {
-        return String(value == null ? '' : value)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
-
-    function escapeActionArg(value) {
-        return String(value == null ? '' : value)
-            .replace(/\\/g, '\\\\')
-            .replace(/'/g, '\\\'');
     }
 
     function renderSAGGlyph(iconKey, options = {}) {
@@ -237,10 +321,6 @@ window.FinancialMode = (function () {
             return { text: 'Expanding', tone: 'expanding', icon: 'sprout' };
         }
         return { text: 'Stable', tone: 'nourishing', icon: 'success' };
-    }
-
-    function renderCompactEmpty(text) {
-        return `<div class="fin-compact-empty">${text}</div>`;
     }
 
     function renderCollapsible(sectionId, title, summary, bodyHtml) {
@@ -302,7 +382,7 @@ window.FinancialMode = (function () {
 
     function renderCashflowRhythm(data) {
         const rhythm = data || buildCashflowRhythmData();
-        if (!rhythm.hasData) return renderCompactEmpty('No cashflow history yet.');
+        if (!rhythm.hasData) return renderCompactEmpty('No cashflow history. Record your first operating month to unlock rhythms.');
         const barWidth = 100 / Math.max(1, rhythm.buckets.length);
         return `
             <div class="fin-rhythm">
@@ -348,6 +428,13 @@ window.FinancialMode = (function () {
         });
 
         window.addEventListener('finance:updated', render);
+        window.addEventListener('resize', () => {
+            setMobileNavOpen(document.body.classList.contains('finance-nav-open'));
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') closeMobileNav();
+        });
+        closeMobileNav();
         render();
     }
 
@@ -392,6 +479,37 @@ window.FinancialMode = (function () {
                 return;
             }
 
+            if (action === 'apply-ledger-filters') {
+                setLedgerFilters({
+                    search: String(document.getElementById('fin-ledger-search')?.value || ''),
+                    accountId: String(document.getElementById('fin-ledger-account')?.value || 'all'),
+                    scope: String(document.getElementById('fin-ledger-scope')?.value || 'all'),
+                    categoryId: String(document.getElementById('fin-ledger-category')?.value || ''),
+                    type: String(document.getElementById('fin-ledger-type')?.value || 'all'),
+                    reviewStatus: String(document.getElementById('fin-ledger-review')?.value || 'all'),
+                    dateFrom: String(document.getElementById('fin-ledger-date-from')?.value || ''),
+                    dateTo: String(document.getElementById('fin-ledger-date-to')?.value || '')
+                });
+                render();
+                return;
+            }
+
+            if (action === 'clear-ledger-filters') {
+                clearLedgerFilters();
+                render();
+                return;
+            }
+
+            if (action === 'reverse-ledger-transaction') {
+                const id = String(actionEl.getAttribute('data-fin-transaction-id') || '').trim();
+                if (!id) return;
+                if (window.confirm('Reverse this transaction and its linked account balance update?')) {
+                    window.Store.reverseTransaction(id, 'ledger.page.reverse');
+                    render();
+                }
+                return;
+            }
+
             if (action === 'set-scenario-preset') {
                 const preset = String(actionEl.getAttribute('data-fin-preset') || 'baseline');
                 const presets = {
@@ -403,6 +521,13 @@ window.FinancialMode = (function () {
                 if (window.Store && typeof window.Store.saveUiSettings === 'function') {
                     window.Store.saveUiSettings({ scenario: labState });
                 }
+                render();
+                return;
+            }
+
+            if (action === 'set-invoices-view') {
+                const view = String(actionEl.getAttribute('data-fin-invoices-view') || 'open').trim();
+                setInvoicesView(view);
                 render();
                 return;
             }
@@ -463,60 +588,88 @@ window.FinancialMode = (function () {
 
     /* --- IA Layer Renderers --- */
 
-    function renderSection(activeSection, focusMode) {
-        if (activeSection === 'ledger') {
-            return [renderSectionHeading('Transactions', 'Clean daily view, focused review work, and raw audit evidence when you need it.'), renderLedgerSection(), renderOperationsInvestmentsRow()];
-        }
-        if (activeSection === 'invoices') {
-            return [renderSectionHeading('Invoices', 'Expected income, confidence, overdue follow-up, and settlement into real cash.'), renderInvoicesSection()];
-        }
-        if (activeSection === 'planning') {
-            return [renderSectionHeading('Cashflow Plan', 'Baseline, expected month, and conservative or optimistic scenarios for the next decisions.'), renderScenarioOutcomes(), renderCashCalendar(), renderPipelineTabs(), renderGoals(), renderOperationsInvestmentsRow(), renderProjection(), renderScenarioLab()];
-        }
-        if (activeSection === 'review') {
-            return [renderSectionHeading('Monthly Review', 'Resolve unclear items, reconcile accounts, and close the operating loop.'), renderReviewQueue(), renderObligationReviewSection(), renderPaymentReviewSection(), renderTensionSignals(), renderWeeklyReviewSection()];
-        }
-        if (activeSection === 'reports') {
-            return [renderSectionHeading('Reports', 'Patterns across cash rhythm, reserves, income concentration, and financial health.'), renderReportsSection()];
-        }
-        if (activeSection === 'data') {
-            return [renderSectionHeading('Import & Backup', 'Local imports, backups, import batches, and sample ledger controls.'), renderDataSection()];
-        }
-        if (activeSection === 'settings') {
-            return [renderSectionHeading('Settings', 'Operational preferences, appearance, scope, and postponed integrations.'), renderSettingsSection()];
-        }
-        return [
-            renderObservatoryHeader(),
-            renderSetupChecklist(),
-            renderTreasurySnapshot(),
-            renderCashReserveBurnRow(),
-            renderActionThisWeek(),
-            renderNext30Days()
-        ];
-    }
-
-    function renderSectionHeading(title, copy) {
-        return `
-            <section class="fin-section fin-section-heading">
-                <div class="widget ui-card glass fin-card fin-section-intro">
-                    <div class="widget-title ui-title">${title}</div>
-                    <div class="fin-helper-text">${copy}</div>
-                </div>
-            </section>
-        `;
+    function renderSection(activeSection) {
+        return createSectionRenderer({
+            ledger: renderLedgerSection,
+            invoices: renderInvoicesSection,
+            scenarioOutcomes: renderScenarioOutcomes,
+            cashCalendar: renderCashCalendar,
+            pipelineTabs: renderPipelineTabs,
+            goals: renderGoals,
+            projection: renderProjection,
+            scenarioLab: renderScenarioLab,
+            reviewQueue: renderReviewQueue,
+            obligationReview: renderObligationReviewSection,
+            paymentReview: renderPaymentReviewSection,
+            tensionSignals: renderTensionSignals,
+            weeklyReview: renderWeeklyReviewSection,
+            reports: renderReportsSection,
+            data: renderDataSection,
+            settings: renderSettingsSection,
+            reserves: renderReservesSection,
+            fixedCosts: renderFixedCostsSection,
+            observatoryHeader: renderObservatoryHeader,
+            dashboardCockpit: renderDashboardCockpit,
+            attentionQueue: renderAttentionQueue,
+            next30Days: renderNext30Days
+        }, renderSectionHeading)(activeSection);
     }
 
     function renderLedgerSection() {
-        const transactions = safeArray(currentData && currentData.transactions)
+        const allTransactions = safeArray(currentData && currentData.transactions)
             .slice()
-            .sort((a, b) => Date.parse(String(b && b.timestamp || '')) - Date.parse(String(a && a.timestamp || '')))
-            .slice(0, 12);
+            .sort((a, b) => Date.parse(String(b && b.timestamp || '')) - Date.parse(String(a && a.timestamp || '')));
+        const filters = getLedgerFilters();
+        const search = String(filters.search || '').trim().toLowerCase();
+        const transactions = allTransactions.filter((entry) => {
+            const date = window.FinanceDates?.toDateOnly?.(entry && entry.timestamp) || String(entry && entry.timestamp || '').slice(0, 10);
+            const accountMatch = filters.accountId === 'all'
+                || String(entry && entry.accountId || '') === String(filters.accountId)
+                || String(entry && entry.fromAccountId || '') === String(filters.accountId)
+                || String(entry && entry.toAccountId || '') === String(filters.accountId);
+            const scopeMatch = filters.scope === 'all' || String(entry && entry.scope || 'shared') === String(filters.scope);
+            const typeMatch = filters.type === 'all' || String(entry && entry.ledgerType || '').toLowerCase() === String(filters.type).toLowerCase();
+            const reviewMatch = filters.reviewStatus === 'all' || String(entry && entry.reviewStatus || 'clear') === String(filters.reviewStatus);
+            const categoryMatch = !String(filters.categoryId || '').trim()
+                || String(entry && entry.categoryId || '').toLowerCase().includes(String(filters.categoryId).trim().toLowerCase());
+            const dateMatch = (!filters.dateFrom || date >= filters.dateFrom) && (!filters.dateTo || date <= filters.dateTo);
+            const searchMatch = !search || [
+                entry && entry.description,
+                entry && entry.accountName,
+                entry && entry.fromAccountName,
+                entry && entry.toAccountName,
+                entry && entry.categoryId,
+                entry && entry.source,
+                entry && entry.id,
+                entry && entry.transactionEntityId
+            ].some((part) => String(part || '').toLowerCase().includes(search));
+            return accountMatch && scopeMatch && typeMatch && reviewMatch && categoryMatch && dateMatch && searchMatch;
+        });
         const view = getLedgerView();
-        const uncategorized = transactions.filter((entry) => String(entry && entry.categoryId || '').toLowerCase() === 'uncategorized'
+        const uncategorized = allTransactions.filter((entry) => String(entry && entry.categoryId || '').toLowerCase() === 'uncategorized'
             || String(entry && entry.reviewStatus || '').toLowerCase() === 'needs_review');
-        const missingReceipts = transactions.filter((entry) => String(entry && entry.type) === 'expense.recorded'
+        const unmatchedPayments = allTransactions.filter((entry) => String(entry && entry.type) === 'expense.recorded'
+            && !String(entry && entry.obligationId || '').trim()
+            && String(entry && entry.categoryId || '').toLowerCase() === 'obligation');
+        const missingReceipts = allTransactions.filter((entry) => String(entry && entry.type) === 'expense.recorded'
             && !String(entry && entry.receiptUrl || '').trim()
             && String(entry && entry.categoryId || '').toLowerCase() !== 'transfer');
+        const netMovement = transactions.reduce((sum, entry) => {
+            const amount = Number(entry && entry.signedAmount);
+            return sum + (Number.isFinite(amount) ? amount : Number(entry && entry.amount) || 0);
+        }, 0);
+        const ledgerActions = (entry) => {
+            const id = escapeActionArg(entry && (entry.id || entry.transactionEntityId) || '');
+            const isExpense = String(entry && entry.type) === 'expense.recorded';
+            const matched = Boolean(String(entry && entry.obligationId || '').trim());
+            return `
+                <div class="fin-ledger-actions">
+                    <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${id}'">Categorize</button>
+                    ${isExpense && !matched ? `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'paymentMatch', '${id}'">Match</button>` : ''}
+                    <button class="fin-mini-btn" type="button" data-fin-action="reverse-ledger-transaction" data-fin-transaction-id="${id}">Reverse</button>
+                </div>
+            `;
+        };
         const cleanRows = transactions.map((entry) => {
             const amount = Number(entry && entry.signedAmount);
             const signed = Number.isFinite(amount) ? amount : Number(entry && entry.amount) || 0;
@@ -537,11 +690,40 @@ window.FinancialMode = (function () {
                 </div>
             `;
         }).join('');
+        const filtersHtml = `
+            <div class="fin-ledger-toolbar" aria-label="Ledger filters">
+                <div class="fin-ledger-filter-grid">
+                    <input id="fin-ledger-search" aria-label="Search ledger" value="${escapeHtml(filters.search)}" placeholder="Search note, account, category, source" />
+                    <select id="fin-ledger-account" aria-label="Filter ledger by account">${ledgerAccountOptions(filters.accountId)}</select>
+                    <select id="fin-ledger-scope" aria-label="Filter ledger by scope">${scopeFilterOptions(filters.scope)}</select>
+                    <input id="fin-ledger-category" aria-label="Filter ledger by category" value="${escapeHtml(filters.categoryId)}" placeholder="Category" />
+                    <select id="fin-ledger-type" aria-label="Filter ledger by type">
+                        <option value="all"${filters.type === 'all' ? ' selected' : ''}>All types</option>
+                        <option value="income"${filters.type === 'income' ? ' selected' : ''}>Income</option>
+                        <option value="expense"${filters.type === 'expense' ? ' selected' : ''}>Expense</option>
+                        <option value="transfer"${filters.type === 'transfer' ? ' selected' : ''}>Transfer</option>
+                        <option value="adjustment"${filters.type === 'adjustment' ? ' selected' : ''}>Adjustment</option>
+                    </select>
+                    <select id="fin-ledger-review" aria-label="Filter ledger by review status">
+                        <option value="all"${filters.reviewStatus === 'all' ? ' selected' : ''}>All review states</option>
+                        <option value="clear"${filters.reviewStatus === 'clear' ? ' selected' : ''}>Clear</option>
+                        <option value="needs_review"${filters.reviewStatus === 'needs_review' ? ' selected' : ''}>Needs review</option>
+                        <option value="reviewed"${filters.reviewStatus === 'reviewed' ? ' selected' : ''}>Reviewed</option>
+                    </select>
+                    <input id="fin-ledger-date-from" aria-label="Ledger date from" type="date" value="${escapeHtml(filters.dateFrom)}" />
+                    <input id="fin-ledger-date-to" aria-label="Ledger date to" type="date" value="${escapeHtml(filters.dateTo)}" />
+                </div>
+                <div class="fin-action-row fin-action-row--inline">
+                    <button class="fin-action-btn" type="button" data-fin-action="apply-ledger-filters">Apply filters</button>
+                    <button class="fin-action-btn" type="button" data-fin-action="clear-ledger-filters">Clear filters</button>
+                </div>
+            </div>
+        `;
         let panelHtml = '';
         if (view === 'audit') {
             panelHtml = transactions.length ? `
                 <table class="fin-table fin-table--compact">
-                    <thead><tr><th>Date</th><th>Type</th><th>ID / source</th><th>Account</th><th style="text-align:right">Amount</th></tr></thead>
+                    <thead><tr><th>Date</th><th>Type</th><th>ID / source</th><th>Account</th><th style="text-align:right">Amount</th><th style="text-align:right">Actions</th></tr></thead>
                     <tbody>
                         ${transactions.map((entry) => {
                             const amount = Number(entry && entry.signedAmount);
@@ -553,42 +735,44 @@ window.FinancialMode = (function () {
                                     <td>${escapeHtml(entry.id || entry.transactionEntityId || '')}<small>${escapeHtml(entry.source || entry.reviewStatus || 'local ledger')}</small></td>
                                     <td>${escapeHtml(entry.accountName || entry.fromAccountName || entry.toAccountName || 'Account')}</td>
                                     <td style="text-align:right" class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</td>
+                                    <td style="text-align:right">${ledgerActions(entry)}</td>
                                 </tr>
                             `;
                         }).join('')}
                     </tbody>
                 </table>
-            ` : renderCompactEmpty('No audit records yet.');
+            ` : renderCompactEmpty('Audit log is clean.');
         } else if (view === 'work') {
             panelHtml = `
                 <div class="fin-status-grid">
                     <div class="fin-status-card"><span>Needs category</span><strong>${uncategorized.length}</strong><span>Transactions to classify</span></div>
+                    <div class="fin-status-card"><span>Unmatched payments</span><strong>${unmatchedPayments.length}</strong><span>Obligation payments to connect</span></div>
                     <div class="fin-status-card"><span>Missing receipt check</span><strong>${missingReceipts.length}</strong><span>Expense records to review</span></div>
-                    <div class="fin-status-card"><span>Visible records</span><strong>${transactions.length}</strong><span>Latest ledger movements</span></div>
-                </div>
-                <div class="fin-action-row">
-                    <button class="fin-action-btn" type="button" data-action="openEditModal" data-action-args="'financeOverview'">Open full work ledger</button>
-                    <button class="fin-action-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Open review queue</button>
+                    <div class="fin-status-card"><span>Filtered records</span><strong>${transactions.length}</strong><span>${allTransactions.length} total movements</span></div>
                 </div>
                 ${transactions.length ? `
                     <table class="fin-table fin-table--compact">
-                        <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Review</th><th style="text-align:right">Actions</th></tr></thead>
+                        <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Review</th><th style="text-align:right">Amount</th><th style="text-align:right">Actions</th></tr></thead>
                         <tbody>
-                            ${transactions.map((entry) => `
+                            ${transactions.map((entry) => {
+                                const amount = Number(entry && entry.signedAmount);
+                                const signed = Number.isFinite(amount) ? amount : Number(entry && entry.amount) || 0;
+                                return `
                                 <tr>
                                     <td>${formatShortDate(entry.timestamp)}</td>
                                     <td>${escapeHtml(entry.description || 'Transaction')}</td>
                                     <td>${escapeHtml(entry.categoryId || 'uncategorized')}</td>
                                     <td>${escapeHtml(entry.reviewStatus || 'clear')}</td>
-                                    <td style="text-align:right"><button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${escapeActionArg(entry.id || entry.transactionEntityId || '')}'">Categorize</button></td>
+                                    <td style="text-align:right" class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</td>
+                                    <td style="text-align:right">${ledgerActions(entry)}</td>
                                 </tr>
-                            `).join('')}
+                            `; }).join('')}
                         </tbody>
                     </table>
-                ` : renderCompactEmpty('No transactions yet.')}
+                ` : renderCompactEmpty('Begin tracking. Add your first payment.')}
             `;
         } else {
-            panelHtml = transactions.length ? cleanRows : renderCompactEmpty('No transactions yet. Start by adding income, an expense, or importing a CSV.');
+            panelHtml = transactions.length ? cleanRows : renderCompactEmpty('Begin tracking. Add your first payment or sync a CSV.');
         }
         return `
             <section class="fin-section">
@@ -596,14 +780,21 @@ window.FinancialMode = (function () {
                     <div class="fin-section-heading-row">
                         <div>
                             <div class="widget-title ui-title">Transactions</div>
-                            <div class="fin-helper-text">Clean for scanning, Work for categorization, Audit for raw local evidence.</div>
+                            <div class="fin-helper-text">A full page ledger workspace: scan daily movement, classify work items, and inspect raw local evidence without opening a mega-modal.</div>
                         </div>
                         <div class="fin-action-row">
                             <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transaction', 'expense'">Add transaction</button>
-                            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'financeOverview'">Open ledger</button>
+                            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'csvImport'">Import CSV</button>
                             <button class="fin-mini-btn" type="button" data-action="exportTransactionsCsv">Export CSV</button>
                         </div>
                     </div>
+                    <div class="fin-status-grid">
+                        <div class="fin-status-card"><span>Total records</span><strong>${allTransactions.length}</strong><span>Active local ledger entries</span></div>
+                        <div class="fin-status-card"><span>Filtered movement</span><strong class="${netMovement >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${netMovement >= 0 ? '+' : '-'}${formatCurrency(Math.abs(netMovement))}</strong><span>Current filter result</span></div>
+                        <div class="fin-status-card"><span>Needs review</span><strong>${uncategorized.length}</strong><span>Category or review work</span></div>
+                        <div class="fin-status-card"><span>Matched payments</span><strong>${allTransactions.filter((entry) => String(entry && entry.obligationId || '').trim()).length}</strong><span>Linked to obligations</span></div>
+                    </div>
+                    ${filtersHtml}
                     <div class="fin-tabs" role="tablist" aria-label="Transaction view modes">
                         <button class="fin-tab-btn ${view === 'clean' ? 'active' : ''}" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="clean">Clean View</button>
                         <button class="fin-tab-btn ${view === 'work' ? 'active' : ''}" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="work">Work View</button>
@@ -623,7 +814,7 @@ window.FinancialMode = (function () {
             <section class="fin-section">
                 <div class="widget ui-card glass fin-card fin-review-prompt">
                     <div>
-                        <div class="widget-title ui-title">${reviewDue ? 'Weekly review due' : 'Weekly review current'}</div>
+                        <div class="widget-title ui-title">${reviewDue ? 'Monthly review due' : 'Monthly review current'}</div>
                         <div class="fin-helper-text">Reconcile cash accounts, inspect pipeline and recurring costs, then leave one operating note.</div>
                         <div class="fin-operating-meta">Last reviewed ${formatShortDate(currentReview && currentReview.lastReviewedAt)}</div>
                     </div>
@@ -651,7 +842,7 @@ window.FinancialMode = (function () {
                                 <span><strong>Latest CSV batch</strong><br><small>${escapeHtml(latestImport.sourceFile)} · ${latestImport.fingerprints.length} rows · ${formatShortDate(latestImport.importedAt)}</small></span>
                                 <button class="fin-mini-btn" type="button" data-action="undoImportBatch" data-action-args="'${escapeActionArg(latestImport.id)}'">Undo</button>
                             </div>
-                        ` : renderCompactEmpty('No CSV import batches yet.')}
+                        ` : renderCompactEmpty('No local imports found. Bring in your bank statements (CSV).')}
                         <div class="fin-action-row">
                             <button class="fin-action-btn" type="button" data-action="openEditModal" data-action-args="'csvImport'">Import CSV</button>
                             <button class="fin-action-btn" type="button" data-action="exportTransactionsCsv">Export transactions CSV</button>
@@ -687,24 +878,301 @@ window.FinancialMode = (function () {
         `;
     }
 
+    function renderReservesSection() {
+        const fiatAccounts = safeArray(currentData?.fiatAccounts).filter(acc => !acc.bucket || acc.bucket === 'available');
+        const buckets = safeArray(currentData?.reserveBuckets);
+        const trulyAvailable = treasuryNumber('trulyAvailableCash', treasuryNumber('totalCash', Number(currentSnapshot?.realBalance) || 0) - treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0));
+        
+        return `
+            <section class="fin-section">
+                <div class="fin-section-heading-row">
+                    <div>
+                        <div class="widget-title ui-title">Operating Cash</div>
+                        <div class="fin-helper-text">Liquid funds spread across your real-world accounts.</div>
+                    </div>
+                    <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'fiatAccount'">Add cash account</button>
+                </div>
+                ${fiatAccounts.length ? fiatAccounts.map(acc => `
+                    <div class="widget ui-card glass fin-card fin-list-item">
+                        <div class="fin-list-item-main">
+                            <strong>${escapeHtml(acc.name)}</strong>
+                            <div class="fin-list-item-sub">${escapeHtml(acc.scope || 'shared')}</div>
+                        </div>
+                        <div class="fin-list-item-actions">
+                            <div class="fin-list-item-val">${formatCurrency(acc.balance)}</div>
+                            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'fiatAccount', '${escapeHtml(acc.id)}'">Edit</button>
+                        </div>
+                    </div>
+                `).join('') : renderCompactEmpty('Establish your treasury. Add your primary operating account.')}
+                
+                <div class="widget ui-card glass fin-card" style="margin-top: 1rem; padding: 1.5rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <div style="font-size: 0.8rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary);">Truly Available Cash</div>
+                            <div style="font-size: 2rem; font-family:var(--font-mono); font-weight:600; margin-top:0.25rem;">${formatCurrency(trulyAvailable)}</div>
+                        </div>
+                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'allocateReserves'">Allocate cash</button>
+                    </div>
+                </div>
+
+                <div class="fin-section-heading-row" style="margin-top: 2rem;">
+                    <div>
+                        <div class="widget-title ui-title">Reserve Buckets</div>
+                        <div class="fin-helper-text">Money assigned a job: taxes, VAT, health insurance, and buffer.</div>
+                    </div>
+                    <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'reserveBucket'">Add reserve bucket</button>
+                </div>
+                ${buckets.length ? buckets.map(bucket => {
+                    const pct = bucket.targetAmount > 0 ? Math.min(100, Math.round((bucket.currentAmount / bucket.targetAmount) * 100)) : 100;
+                    return `
+                    <div class="widget ui-card glass fin-card fin-list-item" style="flex-direction:column; align-items:stretch; gap:1rem;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div class="fin-list-item-main">
+                                <strong>${escapeHtml(bucket.name)}</strong>
+                                <div class="fin-list-item-sub">${escapeHtml(bucket.purpose || 'Reserve').replace('_', ' ')}</div>
+                            </div>
+                            <div class="fin-list-item-actions">
+                                <div class="fin-list-item-val">${formatCurrency(bucket.currentAmount)} <span style="font-size:0.8rem; color:var(--text-secondary); font-weight:normal;">of ${formatCurrency(bucket.targetAmount)}</span></div>
+                                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'reserveBucket', '${escapeHtml(bucket.id)}'">Edit</button>
+                            </div>
+                        </div>
+                        <div class="fin-stacked-bar" style="height: 8px;">
+                            <div class="fin-bar-segment fin-bar-protected" style="width: ${pct}%; background:var(--interactive-primary);"></div>
+                        </div>
+                    </div>
+                `;
+                }).join('') : renderCompactEmpty('Protect your runway. Create your first reserve bucket (e.g., Taxes).')}
+            </section>
+        `;
+    }
+
+    function renderFixedCostsSection() {
+        const expenses = safeArray(currentData?.recurringExpenses);
+        const debts = safeArray(currentData?.debtAccounts);
+        
+        const orderMap = {};
+        try {
+            const raw = localStorage.getItem('finance-master.ui.expenseOrder');
+            if (raw) {
+                const arr = JSON.parse(raw);
+                arr.forEach((id, idx) => orderMap[id] = idx);
+            }
+        } catch (e) {}
+        
+        expenses.sort((a, b) => {
+            const posA = orderMap.hasOwnProperty(a.id) ? orderMap[a.id] : 99999;
+            const posB = orderMap.hasOwnProperty(b.id) ? orderMap[b.id] : 99999;
+            return posA - posB;
+        });
+
+        const totalBurn = expenses.reduce((sum, e) => sum + (Number(e.monthlyAmount) || 0), 0);
+        const essentialCosts = expenses.filter(e => e.essential);
+        const flexCosts = expenses.filter(e => !e.essential);
+        const essentialTotal = essentialCosts.reduce((sum, e) => sum + (Number(e.monthlyAmount) || 0), 0);
+        const flexTotal = flexCosts.reduce((sum, e) => sum + (Number(e.monthlyAmount) || 0), 0);
+        const totalDebt = debts.reduce((sum, d) => sum + (Number(d.outstanding) || 0), 0);
+        const totalMinPayments = debts.reduce((sum, d) => sum + (Number(d.minimumPayment) || 0), 0);
+        
+        return `
+            <section class="fin-section">
+                <!-- Summary KPIs -->
+                <div class="fin-snapshot-grid fin-snapshot-grid--cockpit">
+                    <div class="widget ui-card glass fin-tile">
+                        <div class="fin-tile-label">Monthly burn</div>
+                        <div class="fin-tile-value">${formatCurrency(totalBurn)}</div>
+                        <div class="fin-tile-subline">${pluralize(expenses.length, 'recurring cost')}</div>
+                    </div>
+                    <div class="widget ui-card glass fin-tile">
+                        <div class="fin-tile-label">Essential</div>
+                        <div class="fin-tile-value">${formatCurrency(essentialTotal)}</div>
+                        <div class="fin-tile-subline">${pluralize(essentialCosts.length, 'item')} · cannot cut</div>
+                    </div>
+                    <div class="widget ui-card glass fin-tile">
+                        <div class="fin-tile-label">Flexible</div>
+                        <div class="fin-tile-value">${formatCurrency(flexTotal)}</div>
+                        <div class="fin-tile-subline">${pluralize(flexCosts.length, 'item')} · can reduce</div>
+                    </div>
+                    <div class="widget ui-card glass fin-tile">
+                        <div class="fin-tile-label">Total debt</div>
+                        <div class="fin-tile-value fin-text-med">${formatCurrency(totalDebt)}</div>
+                        <div class="fin-tile-subline">${pluralize(debts.length, 'liability', 'liabilities')}</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Essential Costs -->
+            <section class="fin-section">
+                <div class="fin-section-heading-row">
+                    <div>
+                        <div class="widget-title ui-title">Essential Costs</div>
+                        <div class="fin-helper-text">Non-negotiable monthly obligations. These define your survival burn rate.</div>
+                    </div>
+                    <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense'">Add recurring cost</button>
+                </div>
+                ${essentialCosts.length ? essentialCosts.map((expense, i) => `
+                    <div class="widget ui-card glass fin-card fin-list-item">
+                        <div class="fin-list-item-main">
+                            <strong>${escapeHtml(expense.category)}</strong>
+                            <div class="fin-list-item-sub">Due day ${escapeHtml(String(expense.dueDay))} · ${escapeHtml(expense.scope || 'shared')} · Essential</div>
+                        </div>
+                        <div class="fin-list-item-actions">
+                            <div class="fin-list-item-val">${formatCurrency(expense.monthlyAmount)} / mo</div>
+                            <div style="display:flex; gap:0.25rem;">
+                                <button class="fin-mini-btn" type="button" data-action="FinancialMode.moveExpense" data-action-args="'${escapeActionArg(expense.id)}', '-1'" ${i === 0 ? 'disabled style="opacity:0.3"' : ''}>▲</button>
+                                <button class="fin-mini-btn" type="button" data-action="FinancialMode.moveExpense" data-action-args="'${escapeActionArg(expense.id)}', '1'" ${i === essentialCosts.length - 1 ? 'disabled style="opacity:0.3"' : ''}>▼</button>
+                                <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense', '${escapeActionArg(expense.id)}'">Edit</button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('') : renderCompactEmpty('Define your survival burn. What fixed costs keep the business alive?')}
+            </section>
+
+            <!-- Flexible Costs -->
+            <section class="fin-section">
+                <div class="fin-section-heading-row">
+                    <div>
+                        <div class="widget-title ui-title">Flexible Costs</div>
+                        <div class="fin-helper-text">Subscriptions and discretionary spend. These are your first candidates for cutting.</div>
+                    </div>
+                </div>
+                ${flexCosts.length ? flexCosts.map((expense, i) => `
+                    <div class="widget ui-card glass fin-card fin-list-item">
+                        <div class="fin-list-item-main">
+                            <strong>${escapeHtml(expense.category)}</strong>
+                            <div class="fin-list-item-sub">Due day ${escapeHtml(String(expense.dueDay))} · ${escapeHtml(expense.scope || 'shared')} · Flex</div>
+                        </div>
+                        <div class="fin-list-item-actions">
+                            <div class="fin-list-item-val">${formatCurrency(expense.monthlyAmount)} / mo</div>
+                            <div style="display:flex; gap:0.25rem;">
+                                <button class="fin-mini-btn" type="button" data-action="FinancialMode.moveExpense" data-action-args="'${escapeActionArg(expense.id)}', '-1'" ${i === 0 ? 'disabled style="opacity:0.3"' : ''}>▲</button>
+                                <button class="fin-mini-btn" type="button" data-action="FinancialMode.moveExpense" data-action-args="'${escapeActionArg(expense.id)}', '1'" ${i === flexCosts.length - 1 ? 'disabled style="opacity:0.3"' : ''}>▼</button>
+                                <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense', '${escapeActionArg(expense.id)}'">Edit</button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('') : renderCompactEmpty('Define your comfort burn. What costs are nice-to-have?')}
+            </section>
+
+            <!-- Debt Items -->
+            <section class="fin-section">
+                <div class="fin-section-heading-row">
+                    <div>
+                        <div class="widget-title ui-title">Debt & Liabilities</div>
+                        <div class="fin-helper-text">Credit lines, loans, and other negative balances.${totalMinPayments > 0 ? ` Combined minimum payments: ${formatCurrency(totalMinPayments)} / mo.` : ''}</div>
+                    </div>
+                    <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'debtAdd'">Add debt item</button>
+                </div>
+                ${debts.length ? debts.map(debt => {
+                    const hasPlan = (debt.planType === 'custom' && debt.installments?.length > 0) || (Number(debt.minimumPayment) || 0) > 0 || String(debt.paymentPlanNote || '').trim();
+                    const progressPct = debt.totalAdded > 0 ? Math.min(100, Math.round(((debt.totalPaid || 0) / debt.totalAdded) * 100)) : 0;
+                    return `
+                    <div class="widget ui-card glass fin-card fin-debt-card">
+                        <div class="fin-debt-header">
+                            <div class="fin-list-item-main">
+                                <strong>${escapeHtml(debt.name)}</strong>
+                                <div class="fin-list-item-sub">${escapeHtml(debt.scope || 'shared')}${debt.dueDate ? ` · Due ${formatShortDate(debt.dueDate)}` : ''}</div>
+                            </div>
+                            <div class="fin-list-item-actions" style="flex-direction: column; align-items: flex-end; gap: 0.25rem;">
+                                <div style="display:flex; gap:0.25rem; justify-content: flex-end;">
+                                    <button class="fin-mini-btn" style="padding: 0 4px; height: 20px; min-width: 20px;" type="button" data-action="FinancialMode.openAddModal" data-action-args="'debtPayment', '${escapeActionArg(debt.id)}'" title="Record payment">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                    </button>
+                                    <button class="fin-mini-btn" style="padding: 0 4px; height: 20px; min-width: 20px;" type="button" data-action="FinancialMode.openAddModal" data-action-args="'debtPlan', '${escapeActionArg(debt.id)}'" title="Update plan">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                    </button>
+                                    <button class="fin-mini-btn" style="padding: 0 4px; height: 20px; min-width: 20px;" type="button" data-action="FinancialMode.openAddModal" data-action-args="'debtAdd', '${escapeActionArg(debt.id)}'" title="Edit account">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                                    </button>
+                                </div>
+                                <div class="fin-list-item-val fin-text-med">${formatCurrency(debt.outstanding)}</div>
+                            </div>
+                        </div>
+                        ${debt.totalAdded > 0 ? `
+                        <div class="fin-debt-progress">
+                            <div class="fin-debt-bar-track">
+                                <div class="fin-debt-bar-fill" style="width: ${progressPct}%"></div>
+                            </div>
+                            <div class="fin-debt-bar-label">${formatCurrency(debt.totalPaid || 0)} paid of ${formatCurrency(debt.totalAdded)} · ${progressPct}%</div>
+                        </div>
+                        ` : ''}
+                        <div class="fin-debt-details">
+                            ${debt.planType === 'custom' 
+                                ? `<span>Custom Plan: ${debt.installments?.length || 0} installments</span>` 
+                                : ((Number(debt.minimumPayment) || 0) > 0 
+                                    ? `<span>${(debt.frequency || 'monthly').charAt(0).toUpperCase() + (debt.frequency || 'monthly').slice(1)} payment: ${formatCurrency(debt.minimumPayment)}</span>` 
+                                    : '')
+                            }
+                            ${String(debt.paymentPlanNote || '').trim() ? `<span>Plan note: ${escapeHtml(debt.paymentPlanNote)}</span>` : ''}
+                            ${!hasPlan ? `<span style="color: var(--negative, #ff4b4b); font-weight: 500; display: inline-flex; align-items: center; gap: 0.25rem;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> Missing payment plan</span>` : ''}
+                        </div>
+                    </div>
+                `}).join('') : renderCompactEmpty('Debt-free operations.')}
+            </section>
+        `;
+    }
+
     function renderSettingsSection() {
         const financeSettings = window.Store.getFinanceSettings();
         const uiSettings = window.Store.getUiSettings();
         return `
             <section class="fin-section">
-                <div class="fin-operational-row">
-                    <div class="widget ui-card glass fin-card">
-                        <div class="widget-title ui-title">Operating Preferences</div>
-                        <div class="modal-list-row"><span>Base currency</span><strong>${escapeHtml(financeSettings.baseCurrency || 'EUR')}</strong></div>
-                        <div class="modal-list-row"><span>Forecast horizon</span><strong>${escapeHtml(financeSettings.forecastDays || 90)} days</strong></div>
-                        <div class="modal-list-row"><span>Scope filter</span><strong>${escapeHtml(uiSettings.scopeFilter || 'all')}</strong></div>
-                        <div class="modal-list-row"><span>Appearance</span><strong>${escapeHtml(uiSettings.appearance || 'aurora')}</strong></div>
-                        <div class="modal-list-row"><span>Reduced motion</span><strong>${uiSettings.reducedMotion ? 'On' : 'Off'}</strong></div>
-                        <button class="fin-action-btn" type="button" data-action="openEditModal" data-action-args="'settings'">Open settings</button>
+                <!-- System Preferences -->
+                <div class="widget ui-card glass fin-card fin-settings-card">
+                    <div class="widget-title ui-title">System Preferences</div>
+                    <div class="fin-settings-form">
+                        <div class="form-group">
+                            <label for="page-settings-currency">Base currency</label>
+                            <input id="page-settings-currency" value="${escapeHtml(financeSettings.baseCurrency || 'EUR')}" />
+                        </div>
+                        <div class="form-group">
+                            <label for="page-settings-forecast">Forecast horizon (days)</label>
+                            <input id="page-settings-forecast" type="number" value="${escapeHtml(financeSettings.forecastDays || 90)}" />
+                        </div>
+                        <div class="form-group">
+                            <label for="page-settings-scope">Default scope filter</label>
+                            <select id="page-settings-scope">
+                                <option value="all"${uiSettings.scopeFilter === 'all' ? ' selected' : ''}>All scopes</option>
+                                <option value="business"${uiSettings.scopeFilter === 'business' ? ' selected' : ''}>Business only</option>
+                                <option value="personal"${uiSettings.scopeFilter === 'personal' ? ' selected' : ''}>Personal only</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="page-settings-appearance">Appearance</label>
+                            <select id="page-settings-appearance">
+                                <option value="bright"${uiSettings.appearance === 'bright' ? ' selected' : ''}>Bright (Default)</option>
+                                <option value="aurora"${uiSettings.appearance === 'aurora' ? ' selected' : ''}>Aurora (Dark)</option>
+                                <option value="midnight"${uiSettings.appearance === 'midnight' ? ' selected' : ''}>Midnight (OLED)</option>
+                                <option value="twilight"${uiSettings.appearance === 'twilight' ? ' selected' : ''}>Twilight (Deep Blue)</option>
+                                <option value="system"${uiSettings.appearance === 'system' ? ' selected' : ''}>Follow System</option>
+                            </select>
+                        </div>
+                        <label class="settings-check">
+                            <input id="page-settings-reduced-motion" type="checkbox"${uiSettings.reducedMotion ? ' checked' : ''} />
+                            <span>Reduced motion</span>
+                        </label>
+                        <div class="fin-settings-actions">
+                            <button class="ui-btn ui-btn--primary" type="button" data-action="FinancialMode.saveSettingsPage">Apply preferences</button>
+                        </div>
                     </div>
-                    <div class="widget ui-card glass fin-card">
-                        <div class="widget-title ui-title">Postponed Integrations</div>
-                        <div class="fin-helper-text">Market portfolio, Web3, DeFi, and live quote refresh remain compatibility-only. They are kept out of the production flow until they serve treasury decisions clearly.</div>
+                </div>
+
+                <div class="widget ui-card glass fin-card fin-settings-card">
+                    <div class="widget-title ui-title">System boundaries</div>
+                    <div class="fin-helper-text">
+                        Finance Master stays local-first. Backup, restore, CSV import, sample data, and reset controls live in Import & Backup.
+                    </div>
+                    <div class="fin-settings-actions">
+                        <button class="ui-btn ui-btn--secondary" type="button" data-action="FinancialMode.setSection" data-action-args="'data'">Open Import & Backup</button>
+                    </div>
+                    <div class="fin-integrations-grid">
+                        <div class="fin-integration-item">
+                            <strong>Market Portfolio</strong>
+                            <span>Postponed. Live quotes do not serve daily cashflow.</span>
+                        </div>
+                        <div class="fin-integration-item">
+                            <strong>Web3 / DeFi</strong>
+                            <span>Postponed. Outside the core operating loop.</span>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -720,16 +1188,6 @@ window.FinancialMode = (function () {
         return Number.isFinite(value) ? value : fallback;
     }
 
-    function statusLabel(value) {
-        const raw = String(value || '').replace(/_/g, ' ');
-        return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Review';
-    }
-
-    function renderStatusPill(status) {
-        const safe = String(status || 'needs_review').toLowerCase();
-        return `<span class="fin-status-pill fin-status-pill--${escapeHtml(safe)}">${escapeHtml(statusLabel(safe))}</span>`;
-    }
-
     function invoiceStatusFromDeal(deal) {
         const status = String(deal && (deal.status || deal.stage) || '').toLowerCase();
         const probability = Number(deal && deal.probability);
@@ -743,6 +1201,7 @@ window.FinancialMode = (function () {
     }
 
     function renderInvoicesSection() {
+        const view = getInvoicesView();
         const active = getActivePipelineDeals()
             .map((deal) => ({
                 id: String(deal && deal.id || ''),
@@ -765,15 +1224,21 @@ window.FinancialMode = (function () {
                 settlementAccount: String(entry && entry.destinationAccountName || ''),
                 status: 'paid'
             }));
-        const rows = active.concat(paid).sort((a, b) => {
-            const tsA = Date.parse(String(a.expectedDateISO || '')) || Number.MAX_SAFE_INTEGER;
-            const tsB = Date.parse(String(b.expectedDateISO || '')) || Number.MAX_SAFE_INTEGER;
-            return tsA - tsB;
-        });
-        const totals = rows.reduce((acc, row) => {
+        
+        let displayRows = [];
+        if (view === 'open') {
+            displayRows = active.sort((a, b) => (Date.parse(a.expectedDateISO || '') || Number.MAX_SAFE_INTEGER) - (Date.parse(b.expectedDateISO || '') || Number.MAX_SAFE_INTEGER));
+        } else if (view === 'settled') {
+            displayRows = paid.sort((a, b) => (Date.parse(b.expectedDateISO || '') || 0) - (Date.parse(a.expectedDateISO || '') || 0));
+        } else {
+            displayRows = active.concat(paid).sort((a, b) => (Date.parse(b.expectedDateISO || '') || 0) - (Date.parse(a.expectedDateISO || '') || 0));
+        }
+
+        const totals = active.reduce((acc, row) => {
             acc[row.status] = (acc[row.status] || 0) + row.amount;
             return acc;
         }, {});
+        
         return `
             <section class="fin-section">
                 <div class="widget ui-card glass fin-card">
@@ -790,12 +1255,19 @@ window.FinancialMode = (function () {
                         <div class="fin-status-card">${renderStatusPill('uncertain')}<strong>${formatCurrency(totals.uncertain || 0)}</strong><span>Lower-confidence assumptions</span></div>
                         <div class="fin-status-card">${renderStatusPill('overdue')}<strong>${formatCurrency(totals.overdue || 0)}</strong><span>Follow-up candidates</span></div>
                     </div>
-                    <div class="fin-table-wrap">
-                        ${rows.length ? `
+                    
+                    <div class="fin-tabs" role="tablist" aria-label="Invoice view modes">
+                        <button class="fin-tab-btn ${view === 'open' ? 'active' : ''}" type="button" data-fin-action="set-invoices-view" data-fin-invoices-view="open">Open Income</button>
+                        <button class="fin-tab-btn ${view === 'settled' ? 'active' : ''}" type="button" data-fin-action="set-invoices-view" data-fin-invoices-view="settled">Settled</button>
+                        <button class="fin-tab-btn ${view === 'all' ? 'active' : ''}" type="button" data-fin-action="set-invoices-view" data-fin-invoices-view="all">All</button>
+                    </div>
+
+                    <div class="fin-table-wrap" style="margin-top: 1rem;">
+                        ${displayRows.length ? `
                             <table class="fin-table fin-table--compact">
                                 <thead><tr><th>Source</th><th>Status</th><th>Expected / paid</th><th>Confidence</th><th style="text-align:right">Amount</th><th style="text-align:right">Actions</th></tr></thead>
                                 <tbody>
-                                    ${rows.map((row) => `
+                                    ${displayRows.map((row) => `
                                         <tr>
                                             <td>${escapeHtml(row.title)}${row.settlementAccount ? `<small>${escapeHtml(row.settlementAccount)}</small>` : ''}</td>
                                             <td>${renderStatusPill(row.status)}</td>
@@ -812,7 +1284,7 @@ window.FinancialMode = (function () {
                                     `).join('')}
                                 </tbody>
                             </table>
-                        ` : renderCompactEmpty('No invoices or expected income yet. Add one expected payment to make cashflow planning useful.')}
+                        ` : renderCompactEmpty('Forecast future income. What is the next expected payment?')}
                     </div>
                 </div>
             </section>
@@ -826,6 +1298,47 @@ window.FinancialMode = (function () {
         const availableCash = treasuryNumber('trulyAvailableCash', totalCash - reservedCash);
         const reserveShare = totalCash > 0 ? Math.round((reservedCash / totalCash) * 100) : 0;
         const health = resolveFinancialHeroSignal();
+        
+        // Client Concentration Pattern
+        const incomeSources = {};
+        let totalIncome = 0;
+        safeArray(currentData?.invoices).concat(safeArray(currentData?.pipelineDeals)).forEach(item => {
+            const client = String(item.client || item.title || 'Unknown').trim();
+            const amount = Number(item.amount || item.value) || 0;
+            if (amount > 0) {
+                incomeSources[client] = (incomeSources[client] || 0) + amount;
+                totalIncome += amount;
+            }
+        });
+        const concentration = Object.entries(incomeSources)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 4)
+            .map(([client, amount]) => {
+                const pct = totalIncome > 0 ? Math.round((amount / totalIncome) * 100) : 0;
+                return { client, amount, pct };
+            });
+
+        // Expense Patterns
+        const expenseCategories = {};
+        let totalExpense = 0;
+        safeArray(currentData?.transactions).forEach(tx => {
+            if (String(tx.type) === 'expense.recorded' || Number(tx.signedAmount || tx.amount) < 0) {
+                const cat = String(tx.categoryId || 'Uncategorized').trim();
+                const amt = Math.abs(Number(tx.signedAmount || tx.amount) || 0);
+                if (amt > 0) {
+                    expenseCategories[cat] = (expenseCategories[cat] || 0) + amt;
+                    totalExpense += amt;
+                }
+            }
+        });
+        const topExpenses = Object.entries(expenseCategories)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 4)
+            .map(([cat, amount]) => {
+                const pct = totalExpense > 0 ? Math.round((amount / totalExpense) * 100) : 0;
+                return { cat, amount, pct };
+            });
+
         return `
             <section class="fin-section">
                 <div class="fin-operational-row">
@@ -850,160 +1363,241 @@ window.FinancialMode = (function () {
                     </div>
                 </div>
             </section>
-            ${renderScenarioOutcomes()}
+            
+            <section class="fin-section">
+                <div class="fin-operational-row">
+                    <div class="widget ui-card glass fin-card">
+                        <div class="widget-title ui-title">Client Concentration</div>
+                        <div class="fin-helper-text">Reliance on top income sources. High concentration is a vulnerability.</div>
+                        <div class="fin-table-wrap" style="margin-top: 1rem;">
+                            ${concentration.length ? `
+                                <table class="fin-table fin-table--compact">
+                                    <tbody>
+                                        ${concentration.map(c => `
+                                            <tr>
+                                                <td style="width: 40%;"><strong>${escapeHtml(c.client)}</strong></td>
+                                                <td>
+                                                    <div class="fin-stacked-bar" style="height: 6px; background: rgba(255,255,255,0.05);">
+                                                        <div class="fin-bar-segment" style="width: ${c.pct}%; background: var(--interactive-primary);"></div>
+                                                    </div>
+                                                </td>
+                                                <td style="text-align:right; width: 30%;">${formatCurrency(c.amount)} <small>(${c.pct}%)</small></td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            ` : renderCompactEmpty('No income data available yet.')}
+                        </div>
+                    </div>
+                    <div class="widget ui-card glass fin-card">
+                        <div class="widget-title ui-title">Top Expense Categories</div>
+                        <div class="fin-helper-text">Where the money flows over time.</div>
+                        <div class="fin-table-wrap" style="margin-top: 1rem;">
+                            ${topExpenses.length ? `
+                                <table class="fin-table fin-table--compact">
+                                    <tbody>
+                                        ${topExpenses.map(e => `
+                                            <tr>
+                                                <td style="width: 40%;"><strong>${escapeHtml(e.cat)}</strong></td>
+                                                <td>
+                                                    <div class="fin-stacked-bar" style="height: 6px; background: rgba(255,255,255,0.05);">
+                                                        <div class="fin-bar-segment" style="width: ${e.pct}%; background: var(--negative, #ff4b4b);"></div>
+                                                    </div>
+                                                </td>
+                                                <td style="text-align:right; width: 30%;">${formatCurrency(e.amount)} <small>(${e.pct}%)</small></td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            ` : renderCompactEmpty('No expense data available yet.')}
+                        </div>
+                    </div>
+                </div>
+            </section>
         `;
     }
 
     function renderObservatoryHeader() {
         const reviewCount = treasuryArray('reviewQueue').length;
+        const reviewDue = isWeeklyReviewDue();
+            
         return `
-            <section class="fin-section">
+            <section class="fin-section fin-section--toolbar">
                 <div class="fin-ui-toolbar">
-                    <div>
-                        <div class="fin-ui-toolbar-copy">Local-first finance cockpit. Start with what is true now, what needs attention, and what to do next.</div>
-                        <div class="fin-operating-meta">Last updated ${formatShortDate(currentDiagnostics.latestEventTimestamp)} · Last reviewed ${formatShortDate(currentReview && currentReview.lastReviewedAt)} · ${reviewCount} unresolved review item${reviewCount === 1 ? '' : 's'}</div>
+                    <div class="fin-operating-meta">
+                        <span>Last updated: ${formatShortDate(currentDiagnostics.latestEventTimestamp) || 'Never'}</span>
+                        <span>Unreviewed: ${reviewCount}</span>
+                        ${reviewDue ? '<span class="fin-text-high">Review due today</span>' : ''}
+                        <span>Data: Local only</span>
                     </div>
                     <div class="fin-toolbar-actions">
                         <select id="fin-scope-filter" class="fin-scope-filter" aria-label="Treasury scope">${scopeFilterOptions(window.Store.getUiSettings().scopeFilter || 'all')}</select>
-                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'quickAdd'">Add entry</button>
-                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">Monthly review</button>
                     </div>
                 </div>
             </section>
         `;
     }
 
-    function renderTreasurySnapshot() {
-        const totalCash = treasuryNumber('totalCash', Number(currentSnapshot && currentSnapshot.realBalance) || 0);
-        const reservedCash = treasuryNumber('reservedCash', Number(currentSnapshot && currentSnapshot.reservedCash) || 0);
+    function renderDashboardCockpit() {
+        const totalCash = treasuryNumber('totalCash', Number(currentSnapshot?.realBalance) || 0);
+        const reservedCash = treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0);
         const availableCash = treasuryNumber('trulyAvailableCash', totalCash - reservedCash);
-        const monthlyBurn = treasuryNumber('totalMonthlyBurn', Number(currentSnapshot && currentSnapshot.monthlyBurn) || 0);
-        const scenarios = currentTreasury && currentTreasury.incomeScenarios || {};
+        const monthlyBurn = treasuryNumber('totalMonthlyBurn', Number(currentSnapshot?.monthlyBurn) || 0);
+        const scenarios = currentTreasury?.incomeScenarios || {};
         const expectedMonthEnd = Number.isFinite(Number(scenarios.expected))
             ? Number(scenarios.expected)
-            : Number(currentSnapshot && currentSnapshot.projectedBalance) || availableCash;
-        const runway = currentTreasury && currentTreasury.runwayMonths != null
-            ? currentTreasury.runwayMonths
-            : currentSnapshot.runwayMonths;
-        const runwayLabel = runway == null ? 'Unknown' : `${Number(runway).toFixed(1)} mo`;
-        const runwayClass = runway == null || Number(runway) < 3 ? 'stress-high' : (Number(runway) < 6 ? 'stress-medium' : 'stress-low');
-        const runwayCopy = monthlyBurn > 0
-            ? `Runway = actually available / monthly burn = ${formatCurrency(availableCash)} / ${formatCurrency(monthlyBurn)}`
-            : 'Runway unknown until recurring costs are added.';
-        return `
-            <section class="fin-section">
-                <div class="fin-snapshot-grid fin-snapshot-grid--treasury">
-                    <div class="widget ui-card glass fin-tile fin-tile-primary">
-                        <div class="fin-tile-label">Actually available</div>
-                        <div class="fin-tile-value">${currentHasFinanceData ? formatCurrency(availableCash) : '—'}</div>
-                        <div class="fin-tile-subline">Total cash minus reserved buckets</div>
-                    </div>
-                    <div class="widget ui-card glass fin-tile">
-                        <div class="fin-tile-label">Total cash</div>
-                        <div class="fin-tile-value">${currentHasFinanceData ? formatCurrency(totalCash) : '—'}</div>
-                        <div class="fin-tile-subline">All active cash accounts</div>
-                    </div>
-                    <div class="widget ui-card glass fin-tile">
-                        <div class="fin-tile-label">Reserved</div>
-                        <div class="fin-tile-value">${currentHasFinanceData ? formatCurrency(reservedCash) : '—'}</div>
-                        <div class="fin-tile-subline">Actually available = total cash - reserved</div>
-                    </div>
-                    <div class="widget ui-card glass fin-tile">
-                        <div class="fin-tile-label">Expected month-end</div>
-                        <div class="fin-tile-value">${currentHasFinanceData ? formatCurrency(expectedMonthEnd) : '—'}</div>
-                        <div class="fin-tile-subline">Confirmed + likely income minus scheduled obligations</div>
-                    </div>
-                    <div class="widget ui-card glass fin-tile fin-tile-runway">
-                        <div class="fin-tile-label">Runway</div>
-                        <div class="fin-tile-value ${runwayClass}">${runwayLabel}</div>
-                        <div class="fin-tile-subline">${escapeHtml(runwayCopy)}</div>
-                    </div>
-                </div>
-            </section>
-        `;
-    }
+            : Number(currentSnapshot?.projectedBalance) || availableCash;
 
-    function renderCashReserveBurnRow() {
+        const runway = currentTreasury?.runwayMonths != null ? currentTreasury.runwayMonths : currentSnapshot?.runwayMonths;
+        const runwayLabel = runway == null ? '—' : `${Number(runway).toFixed(1)}`;
+        const runwayClass = runway == null || Number(runway) < 3 ? 'stress-high' : (Number(runway) < 6 ? 'stress-medium' : 'stress-low');
+        const runwayStatus = runway == null ? 'No data' : (Number(runway) < 3 ? 'Vulnerable' : (Number(runway) < 6 ? 'Stable' : 'Safe to operate'));
+
         const buckets = treasuryArray('reserveBuckets')
-            .filter((bucket) => ['tax_reserve', 'vat_reserve', 'health_insurance', 'debt_repayment', 'buffer'].includes(String(bucket.bucket)));
-        const visibleBuckets = buckets.filter((bucket) => Number(bucket.amount) > 0);
-        const totalCash = treasuryNumber('totalCash', Number(currentSnapshot && currentSnapshot.realBalance) || 0);
-        const reservedCash = treasuryNumber('reservedCash', Number(currentSnapshot && currentSnapshot.reservedCash) || 0);
-        const availableCash = treasuryNumber('trulyAvailableCash', totalCash - reservedCash);
-        const monthlyBurn = treasuryNumber('totalMonthlyBurn', Number(currentSnapshot && currentSnapshot.monthlyBurn) || 0);
-        const runway = currentTreasury && currentTreasury.runwayMonths != null
-            ? currentTreasury.runwayMonths
-            : currentSnapshot.runwayMonths;
+            .filter((bucket) => ['tax_reserve', 'vat_reserve', 'health_insurance', 'debt_repayment', 'buffer'].includes(String(bucket.bucket)))
+            .filter((bucket) => Number(bucket.amount) > 0);
+
+        const next30 = currentTreasury?.dashboardSummary?.next30Days || {};
+        const incoming = Number(next30.confirmedIncoming) || 0;
+        const obligations = Number(next30.obligationsDue) || 0;
+        const netFlow = incoming - obligations - monthlyBurn;
+
+        // Cash breakdown bar percentages
+        const cashTotal = totalCash || 1; // avoid division by zero
+        const availPct = Math.max(0, Math.min(100, Math.round((availableCash / cashTotal) * 100)));
+        const protectedPct = 100 - availPct;
+
+        // Month-end copy
+        let monthEndCopy = '';
+        if (expectedMonthEnd < 0) {
+            monthEndCopy = `Projected to close ${formatCurrency(expectedMonthEnd)}. Action needed.`;
+        } else {
+            monthEndCopy = `On track to close with ${formatCurrency(expectedMonthEnd)} surplus.`;
+        }
+
         return `
             <section class="fin-section">
-                <div class="fin-operational-row">
-                    <div class="widget ui-card glass fin-card">
-                        <div class="widget-title ui-title">Cash & Reserves</div>
-                        <div class="fin-helper-text">Actually available = total active cash minus reserved buckets.</div>
-                        <div class="fin-status-grid">
-                            <div class="fin-status-card"><span>Total cash</span><strong>${formatCurrency(totalCash)}</strong><span>All active cash accounts</span></div>
-                            <div class="fin-status-card"><span>Reserved</span><strong>${formatCurrency(reservedCash)}</strong><span>Taxes, VAT, health, debt, buffer</span></div>
-                            <div class="fin-status-card"><span>Actually available</span><strong>${formatCurrency(availableCash)}</strong><span>Usable after reserves</span></div>
+                <div class="widget ui-card glass fin-card fin-cockpit-overview">
+
+                    <!-- Hero: Runway + Burn -->
+                    <div class="fin-cockpit-hero">
+                        <div class="fin-runway-gauge">
+                            <div class="fin-runway-label">Runway</div>
+                            <div class="fin-runway-value ${runwayClass}">${runwayLabel}<span style="font-size: 1.2rem; opacity: 0.6; margin-left: 0.25rem;">${runway != null ? 'months' : ''}</span></div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;">${runwayStatus}</div>
                         </div>
-                        ${visibleBuckets.length ? `
-                            <div class="fin-reserve-grid">
-                                ${visibleBuckets.map((bucket) => `
-                                    <div class="fin-reserve-item">
+                        <div class="fin-cockpit-burn">
+                            <div class="fin-burn-label">Monthly burn</div>
+                            <div class="fin-burn-value">${currentHasFinanceData ? formatCurrency(monthlyBurn) : '—'}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.15rem;">Recurring costs</div>
+                        </div>
+                    </div>
+
+                    <hr class="fin-divider">
+
+                    <!-- Cash Breakdown -->
+                    <div class="fin-cockpit-cash">
+                        <div class="fin-cash-header"><span>Total Cash</span><strong>${currentHasFinanceData ? formatCurrency(totalCash) : '—'}</strong></div>
+                        <div class="fin-stacked-bar">
+                            <div class="fin-bar-segment fin-bar-available" style="width: ${availPct}%; transition: width 0.6s ease;"></div>
+                            <div class="fin-bar-segment fin-bar-protected" style="width: ${protectedPct}%; transition: width 0.6s ease;"></div>
+                        </div>
+                        <div class="fin-cash-legend">
+                            <div class="fin-legend-item">
+                                <span class="fin-dot fin-dot-available"></span>
+                                <span class="fin-legend-val">${formatCurrency(availableCash)}</span>
+                                <span class="fin-legend-lbl">Available</span>
+                            </div>
+                            <div class="fin-legend-item">
+                                <span class="fin-dot fin-dot-protected"></span>
+                                <span class="fin-legend-val">${formatCurrency(reservedCash)}</span>
+                                <span class="fin-legend-lbl">Protected</span>
+                            </div>
+                        </div>
+                        ${buckets.length ? `
+                            <div class="fin-reserve-mini-grid">
+                                ${buckets.map((bucket) => `
+                                    <div style="display:flex; justify-content:space-between; gap: 0.5rem;">
                                         <span>${escapeHtml(bucket.label)}</span>
-                                        <strong>${formatCurrency(bucket.amount)}</strong>
+                                        <strong style="font-family: var(--font-mono);">${formatCurrency(bucket.amount)}</strong>
                                     </div>
                                 `).join('')}
                             </div>
-                        ` : renderCompactEmpty('No reserve buckets configured yet. Add a reserve account when money is already spoken for.')}
-                        <button class="fin-action-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'fiatAccount'">Add or adjust reserve account</button>
+                        ` : ''}
                     </div>
-                    <div class="widget ui-card glass fin-card">
-                        <div class="widget-title ui-title">Monthly Burn & Runway</div>
-                        <div class="fin-helper-text">${monthlyBurn > 0 ? 'Runway = actually available / monthly burn.' : 'Runway unknown until recurring costs are added.'}</div>
-                        <div class="fin-status-grid">
-                            <div class="fin-status-card"><span>Personal burn</span><strong>${formatCurrency(treasuryNumber('monthlyPersonalBurn'))}</strong><span>Monthly recurring personal costs</span></div>
-                            <div class="fin-status-card"><span>Business burn</span><strong>${formatCurrency(treasuryNumber('monthlyBusinessBurn'))}</strong><span>Monthly recurring business costs</span></div>
-                            <div class="fin-status-card"><span>Runway</span><strong>${runway == null ? 'Unknown' : `${Number(runway).toFixed(1)} mo`}</strong><span>${monthlyBurn > 0 ? `${formatCurrency(availableCash)} / ${formatCurrency(monthlyBurn)}` : 'Add recurring costs to calculate'}</span></div>
+
+                    <hr class="fin-divider">
+
+                    <!-- Cashflow Outlook -->
+                    <div class="fin-cockpit-cashflow">
+                        <div class="fin-cashflow-header">30-Day Outlook</div>
+                        <div class="fin-cashflow-grid">
+                            <div>
+                                <span>Incoming</span>
+                                <strong style="color: rgba(168, 230, 207, 0.95);">${formatCurrency(incoming)}</strong>
+                            </div>
+                            <div>
+                                <span>Obligations</span>
+                                <strong style="color: rgba(241, 185, 167, 0.95);">${formatCurrency(obligations)}</strong>
+                            </div>
+                            <div>
+                                <span>Month-end</span>
+                                <strong class="${expectedMonthEnd < 0 ? 'fin-val-neg' : ''}">${currentHasFinanceData ? formatCurrency(expectedMonthEnd) : '—'}</strong>
+                            </div>
                         </div>
-                        <button class="fin-action-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense'">Add or review recurring costs</button>
+                        <div class="fin-cashflow-copy">${monthEndCopy}</div>
                     </div>
                 </div>
             </section>
         `;
     }
 
-    function renderActionThisWeek() {
-        const summary = currentTreasury && currentTreasury.dashboardSummary && currentTreasury.dashboardSummary.actionThisWeek || {};
-        const items = safeArray(summary.items);
+
+    function renderAttentionQueue() {
+        const items = safeArray(currentSnapshot?.attentionQueue);
         const reviewDue = isWeeklyReviewDue();
+        
+        const scenarios = currentTreasury?.incomeScenarios || {};
+        const expectedMonthEnd = Number.isFinite(Number(scenarios.expected)) ? Number(scenarios.expected) : (Number(currentSnapshot?.projectedBalance) || 0);
+        
         const rows = [
-            ...items,
             ...(reviewDue ? [{
-                kind: 'weekly_review',
-                id: 'weekly-review',
-                title: 'Weekly review',
-                reason: 'Reconcile cash accounts and close the operating loop',
-                actionLabel: 'Start review',
-                tone: 'review'
-            }] : [])
-        ].slice(0, 7);
+                type: 'Monthly review',
+                title: 'Review not started',
+                action: 'Close month',
+                id: 'monthly-review',
+            }] : []),
+            ...(expectedMonthEnd < 0 ? [{
+                type: 'Due soon',
+                title: `Month-end gap: ${formatCurrency(Math.abs(expectedMonthEnd))}`,
+                action: 'Adjust reserves',
+                id: 'month-end-gap',
+            }] : []),
+            ...items
+        ].slice(0, 10);
+        
         return `
             <section class="fin-section">
                 <div class="widget ui-card glass fin-card">
                     <div class="fin-section-heading-row">
                         <div>
-                            <div class="widget-title ui-title">Attention Needed</div>
-                            <div class="fin-helper-text">${rows.length ? `${rows.length} next best action${rows.length === 1 ? '' : 's'} need a decision, classification, or check.` : 'No action required this week. Keep the next review rhythm.'}</div>
+                            <div class="widget-title ui-title">Attention Queue</div>
+                            <div class="fin-helper-text">Unresolved items, overdue payments, and missing plans.</div>
                         </div>
-                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Open Monthly Review</button>
                     </div>
-                    ${rows.length ? rows.map((item) => `
-                        <div class="modal-list-row">
-                            <span><strong>${escapeHtml(item.title)}</strong><br><small>${escapeHtml(item.reason)} · ${escapeHtml(item.kind || 'review')}</small></span>
-                            <span>${renderStatusPill(item.tone === 'urgent' ? 'overdue' : 'needs_review')}</span>
-                            <span class="goal-modal-actions">${renderDashboardAction(item)}</span>
-                        </div>
-                    `).join('') : renderCompactEmpty('No action required this week.')}
+                    ${rows.length ? `<ul class="fin-decision-list" style="gap:0.75rem;">` + rows.map((item) => `
+                        <li>
+                            <div class="fin-decision-header">
+                                <div>
+                                    <strong>${escapeHtml(item.title)} ${item.amount != null ? formatCurrency(item.amount) : ''}</strong>
+                                    <div class="fin-decision-reason" style="text-transform:uppercase; font-size:0.7rem; font-family:var(--font-mono);">${escapeHtml(item.type)}</div>
+                                </div>
+                            </div>
+                            <div class="fin-decision-actions">
+                                <button class="fin-mini-btn" type="button" data-action="${item.id === 'monthly-review' ? 'openEditModal' : 'FinancialMode.setSection'}" data-action-args="${item.id === 'monthly-review' ? "'weeklyReview'" : "'review'"}">${escapeHtml(item.action || 'Resolve item')}</button>
+                            </div>
+                        </li>
+                    `).join('') + `</ul>` : renderCompactEmpty('Attention queue is clear. Smooth sailing.')}
                 </div>
             </section>
         `;
@@ -1011,30 +1605,47 @@ window.FinancialMode = (function () {
 
     function renderDashboardAction(item) {
         if (String(item && item.kind) === 'weekly_review') {
-            return `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">Start review</button>`;
+            return `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">Close monthly review</button>`;
         }
         return renderReviewQueueActions(item);
     }
 
     function renderNext30Days() {
-        const next30 = currentTreasury && currentTreasury.dashboardSummary && currentTreasury.dashboardSummary.next30Days || {};
-        const net = Number(next30.projectedNetMovement) || 0;
-        const netClass = net < 0 ? 'fin-val-neg' : 'fin-val-pos';
+        const next30 = currentTreasury?.dashboardSummary?.next30Days || {};
+        const pipelineDeals = getActivePipelineDeals();
+        const confirmed = pipelineDeals.filter(d => (d.probability || 0) >= 0.8).reduce((acc, d) => acc + (Number(d.value) || 0), 0);
+        const likely = pipelineDeals.filter(d => (d.probability || 0) >= 0.5 && (d.probability || 0) < 0.8).reduce((acc, d) => acc + (Number(d.value) || 0), 0);
+        const unconfirmed = pipelineDeals.filter(d => (d.probability || 0) < 0.5).reduce((acc, d) => acc + (Number(d.value) || 0), 0);
+        
         return `
             <section class="fin-section">
                 <div class="widget ui-card glass fin-card">
                     <div class="fin-section-heading-row">
                         <div>
-                            <div class="widget-title ui-title">Next 30 Days</div>
-                            <div class="fin-helper-text">Confirmed incoming + weighted expected income - obligations due in the next 30 days.</div>
+                            <div class="widget-title ui-title">Forecast Confidence</div>
                         </div>
-                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'planning'">Open Planning</button>
                     </div>
-                    <div class="fin-status-grid">
-                        <div class="fin-status-card"><span>Confirmed incoming</span><strong>${formatCurrency(next30.confirmedIncoming)}</strong><span>Confirmed pipeline due soon</span></div>
-                        <div class="fin-status-card"><span>Expected weighted</span><strong>${formatCurrency(next30.expectedWeightedIncoming)}</strong><span>Expected income × probability</span></div>
-                        <div class="fin-status-card"><span>Obligations due</span><strong>${formatCurrency(next30.obligationsDue)}</strong><span>${Number(next30.obligationCount || 0)} upcoming item${Number(next30.obligationCount || 0) === 1 ? '' : 's'}</span></div>
-                        <div class="fin-status-card"><span>Projected net movement</span><strong class="${netClass}">${formatCurrency(net)}</strong><span>Before risky income</span></div>
+                    <div class="fin-confidence-list">
+                        <div class="fin-confidence-row">
+                            <span class="fin-muted">Expected weighted</span>
+                            <strong class="fin-text-primary">${formatCurrency(next30.expectedWeightedIncoming)}</strong>
+                        </div>
+                        <div class="fin-divider-line"></div>
+                        <div class="fin-confidence-row">
+                            <span class="fin-muted">Confirmed</span>
+                            <strong class="fin-text-safe">${formatCurrency(confirmed)}</strong>
+                        </div>
+                        <div class="fin-confidence-row">
+                            <span class="fin-muted">Likely</span>
+                            <strong class="fin-text-med">${formatCurrency(likely)}</strong>
+                        </div>
+                        <div class="fin-confidence-row">
+                            <span class="fin-muted">Unconfirmed</span>
+                            <strong class="fin-text-high">${formatCurrency(unconfirmed)}</strong>
+                        </div>
+                    </div>
+                    <div class="fin-action-row">
+                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'income'">Confirm income</button>
                     </div>
                 </div>
             </section>
@@ -1088,7 +1699,7 @@ window.FinancialMode = (function () {
                                     `).join('')}
                                 </tbody>
                             </table>
-                        ` : renderCompactEmpty('No future income has been added yet.')}
+                        ` : renderCompactEmpty('Forecast future income. Add upcoming invoices to project runway.')}
                     </div>
                 </div>
             </section>
@@ -1122,7 +1733,7 @@ window.FinancialMode = (function () {
                             <span><strong>${escapeHtml(entry.title)}</strong><br><small>${entry.dueDate ? formatShortDate(entry.dueDate) : 'No due date'} · ${escapeHtml(entry.scope || 'shared')}</small></span>
                             <span>${renderStatusPill(entry.status)} ${formatCurrency(entry.amount)}</span>
                         </div>
-                    `).join('') : renderCompactEmpty('Add recurring costs or debt items to see upcoming obligations.')}
+                    `).join('') : renderCompactEmpty('Map out your obligations. Add fixed costs to see what is due next.')}
                     ${overdue.length + dueSoon.length + upcoming.length > obligations.length ? '<div class="fin-helper-text">Open Review to resolve the full obligation queue.</div>' : ''}
                 </div>
             </section>
@@ -1149,7 +1760,7 @@ window.FinancialMode = (function () {
                             <span>${renderStatusPill(item.tone === 'urgent' ? 'overdue' : 'needs_review')}</span>
                             <span class="goal-modal-actions">${renderReviewQueueActions(item)}</span>
                         </div>
-                    `).join('') : renderCompactEmpty('Nothing needs review right now.')}
+                    `).join('') : renderCompactEmpty('All items reviewed and reconciled.')}
                 </div>
             </section>
         `;
@@ -1217,7 +1828,7 @@ window.FinancialMode = (function () {
                                 <button class="fin-mini-btn" type="button" data-action="markObligationNeedsReview" data-action-args="'${escapeActionArg(entry.id)}'">Review</button>
                             </span>
                         </div>
-                    `).join('') : renderCompactEmpty('No overdue or due-soon obligations need action.')}
+                    `).join('') : renderCompactEmpty('No pressing obligations. You are in the clear.')}
                 </div>
             </section>
         `;
@@ -1249,7 +1860,7 @@ window.FinancialMode = (function () {
                             </span>
                         </div>
                     `;
-            }).join('') : renderCompactEmpty('No actual payments have been booked yet.')}
+            }).join('') : renderCompactEmpty('Awaiting payments. Book transactions to match them against expectations.')}
                 </div>
             </section>
         `;
@@ -1295,7 +1906,7 @@ window.FinancialMode = (function () {
                                 <span><strong>${escapeHtml(account.name)}</strong><br><small>${escapeHtml(account.bucket || 'available')} · ${escapeHtml(account.scope || 'shared')}</small></span>
                                 <span>${formatCurrency(account.balance)}</span>
                             </div>
-                        `).join('') : renderCompactEmpty('No cash accounts yet.')}
+                        `).join('') : renderCompactEmpty('Add operating cash.')}
                         <button class="fin-action-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'fiatAccount'">Add cash account</button>
                     </div>
                     <div class="widget ui-card glass fin-card">
@@ -1305,7 +1916,7 @@ window.FinancialMode = (function () {
                                 <span><strong>${escapeHtml(expense.category)}</strong><br><small>Due day ${escapeHtml(expense.dueDay)} · ${escapeHtml(expense.scope || 'shared')}</small></span>
                                 <span>${formatCurrency(expense.monthlyAmount)}</span>
                             </div>
-                        `).join('') || renderCompactEmpty('No recurring costs yet.')}
+                        `).join('') || renderCompactEmpty('Add recurring costs.')}
                         ${treasuryNumber('debtRemaining') > 0 ? `<div class="fin-subdivider"></div><div class="modal-list-row"><span><strong>Debt remaining</strong><br><small>Tracked debt items</small></span><span>${formatCurrency(treasuryNumber('debtRemaining'))}</span></div>` : ''}
                         <div class="fin-action-row">
                             <button class="fin-action-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense'">Add cost</button>
@@ -1388,7 +1999,7 @@ window.FinancialMode = (function () {
                 ${reviewDue ? `
                     <div class="widget ui-card glass fin-card fin-review-prompt">
                         <div>
-                            <div class="widget-title ui-title">Weekly review due</div>
+                            <div class="widget-title ui-title">Monthly review due</div>
                             <div class="fin-helper-text">Reconcile cash accounts, scan costs and pipeline, then leave one note for the week ahead.</div>
                         </div>
                         <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">Start review</button>
@@ -1403,35 +2014,7 @@ window.FinancialMode = (function () {
         return !Number.isFinite(reviewed) || Date.now() - reviewed >= 7 * 24 * 60 * 60 * 1000;
     }
 
-    function renderSetupChecklist() {
-        const steps = [
-            { label: 'Choose currency', done: Boolean(window.Store.getFinanceSettings().baseCurrency), type: 'settings' },
-            { label: 'Add current balance', done: safeArray(currentData && currentData.fiatAccounts).length > 0, type: 'fiatAccount' },
-            { label: 'Separate reserve money', done: treasuryNumber('reservedCash') > 0, type: 'fiatAccount' },
-            { label: 'Note fixed monthly costs', done: safeArray(currentData && currentData.recurringExpenses).length > 0, type: 'expense' },
-            { label: 'Add expected income', done: getActivePipelineDeals().length > 0, type: 'income' },
-            { label: 'Run first review', done: Boolean(currentReview && currentReview.lastReviewedAt), type: 'weeklyReview' }
-        ];
-        const complete = steps.every((step) => step.done);
-        if (complete) return '';
-        return `
-            <section class="fin-section">
-                <div class="widget ui-card glass fin-card fin-setup-card">
-                    <div class="widget-title ui-title">Start with a clear baseline</div>
-                    <div class="fin-helper-text">Set the essentials once: currency, current cash, money already reserved, fixed costs, expected income, and first review. Your data stays on this device.</div>
-                    <div class="fin-setup-grid">
-                        ${steps.map((step) => `
-                            <button class="fin-setup-step ${step.done ? 'is-complete' : ''}" type="button" data-action="openEditModal" data-action-args="'${step.type}'"${step.done ? ' disabled' : ''}>
-                                <span>${step.done ? '✓' : '○'}</span><span>${step.label}</span>
-                            </button>
-                        `).join('')}
-                        <button class="fin-setup-step" type="button" data-action="openEditModal" data-action-args="'csvImport'"><span>↥</span><span>Import a CSV statement</span></button>
-                        <button class="fin-setup-step" type="button" data-action="exportFinanceBackup"><span>↧</span><span>Export first backup</span></button>
-                    </div>
-                </div>
-            </section>
-        `;
-    }
+
 
     function buildCashCalendar(days = 90) {
         const start = new Date();
@@ -1485,7 +2068,7 @@ window.FinancialMode = (function () {
                                 <span><strong>${entry.label}</strong><small>${entry.kind} · ${formatShortDate(entry.date)}</small></span>
                                 <span class="${entry.amount >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${entry.amount >= 0 ? '+' : '-'}${formatCurrency(Math.abs(entry.amount))}</span>
                             </div>
-                        `).join('') : renderCompactEmpty('Add recurring costs or pipeline income to shape your cash calendar.')}
+                        `).join('') : renderCompactEmpty('Map out upcoming events to shape your cash calendar.')}
                     </div>
                 </div>
             </section>
@@ -1520,7 +2103,7 @@ window.FinancialMode = (function () {
                                 </div>
                             `).join('')}
                         </div>
-                    ` : renderCompactEmpty('Add a safety buffer or savings target when you are ready.')}
+                    ` : renderCompactEmpty('Set a safety buffer to build peace of mind.')}
                 </div>
             </section>
         `;
@@ -1585,124 +2168,7 @@ window.FinancialMode = (function () {
         `;
     }
 
-    function renderOperationalLedgerCard() {
-        const fiatAccounts = safeArray(currentData && currentData.fiatAccounts);
-        const fiatTotal = fiatAccounts.reduce((sum, account) => sum + (Number(account && account.balance) || 0), 0);
 
-        const fiatBody = fiatAccounts.length
-            ? `
-                <table class="fin-table fin-table--compact">
-                    <thead><tr><th>Name</th><th>Balance</th><th style="text-align:right">Actions</th></tr></thead>
-                    <tbody>
-                        ${fiatAccounts.map((account) => `
-                            <tr>
-                                <td>${account.name}</td>
-                                <td>${formatCurrency(account.balance, account.currency)}</td>
-                                <td style="text-align:right">
-                                    <button class="fin-mini-btn" data-action="FinancialMode.openAddModal" data-action-args="'fiatAccount', '${escapeActionArg(account.id)}'" title="Edit">${renderSAGGlyph('edit', { size: 'xs', tone: 'muted' })}</button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `
-            : renderCompactEmpty('No accounts yet.');
-
-        return `
-                <div class="widget ui-card glass fin-card">
-                    <div class="drag-handle">⋮⋮</div>
-                    <div class="widget-title ui-title">Cash Accounts</div>
-                    ${renderCollapsible(
-                'fiat-accounts',
-                'Accounts',
-                `${pluralize(fiatAccounts.length, 'account')} · ${formatCurrency(fiatTotal)} total`,
-                `${fiatBody}
-                <button class="fin-action-btn" data-action="FinancialMode.openAddModal" data-action-args="'fiatAccount'">+ Add Account</button>`
-            )}
-                </div>
-        `;
-    }
-
-    function renderInvestmentsStrategiesCard() {
-        const recurringExpenses = safeArray(currentData && currentData.recurringExpenses);
-        const debtAccounts = safeArray(currentData && currentData.debtAccounts);
-        const recurringTotal = recurringExpenses.reduce((sum, expense) => sum + (Number(expense && expense.monthlyAmount) || 0), 0);
-        const debtTotal = debtAccounts.reduce((sum, debt) => sum + (Number(debt && debt.outstanding) || 0), 0);
-
-        const recurringBody = recurringExpenses.length
-            ? `
-                <table class="fin-table fin-table--compact">
-                    <thead><tr><th>Category</th><th>Amount</th><th>Type</th><th style="text-align:right">Actions</th></tr></thead>
-                    <tbody>
-                        ${recurringExpenses.map((expense) => `
-                            <tr>
-                                <td>${expense.category}</td>
-                                <td>${formatCurrency(expense.monthlyAmount)}</td>
-                                <td>${expense.essential ? 'Essential' : 'Flex'}</td>
-                                <td style="text-align:right">
-                                    <button class="fin-mini-btn" data-action="FinancialMode.openAddModal" data-action-args="'expense', '${escapeActionArg(expense.id)}'" title="Edit">${renderSAGGlyph('edit', { size: 'xs', tone: 'muted' })}</button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `
-            : renderCompactEmpty('No recurring expenses yet.');
-
-        const debtBody = debtAccounts.length
-            ? `
-                <table class="fin-table fin-table--compact">
-                    <thead><tr><th>Name</th><th>Outstanding</th><th style="text-align:right">Actions</th></tr></thead>
-                    <tbody>
-                        ${debtAccounts.map((debt) => `
-                            <tr>
-                                <td>${debt.name || 'Debt'}</td>
-                                <td>${formatCurrency(debt.outstanding)}</td>
-                                <td style="text-align:right">
-                                    <button class="fin-mini-btn" data-action="FinancialMode.openAddModal" data-action-args="'debtAdd', '${escapeActionArg(debt.id)}'" title="Edit">${renderSAGGlyph('edit', { size: 'xs', tone: 'muted' })}</button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `
-            : renderCompactEmpty('No debts tracked yet.');
-
-        return `
-                <div class="widget ui-card glass fin-card">
-                    <div class="drag-handle">⋮⋮</div>
-                    <div class="widget-title ui-title">Liabilities</div>
-                    ${renderCollapsible(
-            'recurring-expenses',
-            'Recurring Expenses',
-            `${pluralize(recurringExpenses.length, 'entry', 'entries')} · ${formatCurrency(recurringTotal)} / month`,
-            `${recurringBody}
-            <button class="fin-action-btn" data-action="FinancialMode.openAddModal" data-action-args="'expense'">+ Add Expense</button>`
-        )}
-                    ${renderCollapsible(
-            'debt-liabilities',
-            'Debt / Liabilities',
-            `${pluralize(debtAccounts.length, 'liability', 'liabilities')} · ${formatCurrency(debtTotal)} outstanding`,
-            `${debtBody}
-            <div class="fin-action-row">
-                <button class="fin-action-btn" data-action="FinancialMode.openAddModal" data-action-args="'debtAdd'">+ Add Debt</button>
-                <button class="fin-action-btn" data-action="FinancialMode.openAddModal" data-action-args="'debtPayment'">Record Payment</button>
-            </div>`
-        )}
-                </div>
-        `;
-    }
-
-    function renderOperationsInvestmentsRow() {
-        return `
-            <section class="fin-section">
-                <div class="fin-operational-row">
-                    ${renderOperationalLedgerCard()}
-                    ${renderInvestmentsStrategiesCard()}
-                </div>
-            </section>
-        `;
-    }
 
     function renderPipelineTabs() {
         const deals = getActivePipelineDeals();
@@ -1740,7 +2206,7 @@ window.FinancialMode = (function () {
                         </tbody>
                     </table>
                 `
-                : renderCompactEmpty('No settlements yet.');
+                : renderCompactEmpty('No settled income yet.');
         } else if (tab === 'cashflow') {
             panelHtml = renderCashflowRhythm(rhythmData);
         } else {
@@ -1765,7 +2231,7 @@ window.FinancialMode = (function () {
                             `).join('')}
                         </tbody>
                     </table>
-                ` : renderCompactEmpty(currentHasFinanceData ? 'No pipeline items right now.' : 'No finance data yet.')}
+                ` : renderCompactEmpty(currentHasFinanceData ? 'Forecast future income. What is the next likely incoming payment?' : 'Begin tracking. Add your first entry.')}
                 ${deals.length && dependencyRows.length ? `
                     <div class="fin-tab-subsection">
                         <div class="fin-muted fin-subtitle">Dependencies</div>
@@ -1871,17 +2337,19 @@ window.FinancialMode = (function () {
                 <div class="fin-lab-grid">
                     <div class="widget ui-card glass fin-card">
                         <div class="drag-handle">⋮⋮</div>
-                        <div class="widget-title ui-title">Simulators</div>
-                        <div class="fin-helper-text">Explore without consequence.</div>
-                        <div class="fin-scenario-presets">
-                            <button class="fin-tab-btn" type="button" data-fin-action="set-scenario-preset" data-fin-preset="baseline">Baseline</button>
-                            <button class="fin-tab-btn" type="button" data-fin-action="set-scenario-preset" data-fin-preset="conservative">Conservative</button>
-                            <button class="fin-tab-btn" type="button" data-fin-action="set-scenario-preset" data-fin-preset="stretch">Stretch</button>
-                        </div>
-                        <div class="fin-slider-group">
-                            ${renderSlider('Market Volatility (Majors)', 'marketMajors', labState.marketMajors, -50, 50, '%')}
-                            ${renderSlider('Monthly Burn Delta', 'burnDelta', labState.burnDelta, -30, 30, '%')}
+                        <div class="widget-title ui-title">Simulator Lab</div>
+                        <div class="fin-helper-text">Stress-test your runway with freelancer-specific scenarios.</div>
+                        
+                        <div class="fin-slider-group" style="margin-top: 1rem;">
+                            <label class="settings-check">
+                                <input type="checkbox" id="fin-lab-client" ${labState.loseClient ? 'checked' : ''} />
+                                <span>Lose biggest client</span>
+                            </label>
+                            ${renderSlider('Delay payments by', 'delay', labState.delayPayments || 0, 0, 90, ' days')}
+                            ${renderSlider('Tax rate hike', 'tax', labState.taxHike || 0, 0, 20, '%')}
+                            <hr style="border-top: 1px solid var(--border-color); margin: 1rem 0; opacity: 0.5;">
                             ${renderSlider('Income Probability Floor', 'probFloor', labState.probFloor, 0, 100, '%')}
+                            ${renderSlider('Monthly Burn Delta', 'burnDelta', labState.burnDelta, -30, 30, '%')}
                         </div>
                     </div>
                     <div class="widget ui-card glass fin-card">
@@ -2092,11 +2560,102 @@ window.FinancialMode = (function () {
         }
     }
 
+    function saveSettingsPage() {
+        if (!window.Store) return;
+        
+        const currencyEl = document.getElementById('page-settings-currency');
+        const forecastEl = document.getElementById('page-settings-forecast');
+        const scopeEl = document.getElementById('page-settings-scope');
+        const appearanceEl = document.getElementById('page-settings-appearance');
+        const reducedMotionEl = document.getElementById('page-settings-reduced-motion');
+        
+        if (currencyEl && forecastEl && scopeEl && appearanceEl && reducedMotionEl) {
+            try {
+                window.Store.saveFinanceSettings({ 
+                    baseCurrency: currencyEl.value || 'EUR', 
+                    forecastDays: Number(forecastEl.value) || 90 
+                });
+                
+                window.Store.saveUiSettings({
+                    appearance: appearanceEl.value || 'bright',
+                    reducedMotion: reducedMotionEl.checked,
+                    scopeFilter: scopeEl.value || 'all',
+                });
+                
+                if (window.applyAppearance) {
+                    window.applyAppearance(window.Store);
+                }
+                
+                // Show brief visual feedback if desired, or just refresh
+                window.FinancialMode.render();
+                
+            } catch (error) {
+                console.error('Failed to save settings:', error);
+                if (window.showModalError) {
+                    window.showModalError(error.message || 'Could not save settings.');
+                }
+            }
+        }
+    }
+
+    function moveExpense(id, direction) {
+        const expenses = safeArray(currentData?.recurringExpenses);
+        const target = expenses.find(e => String(e.id) === String(id));
+        if (!target) return;
+        
+        const isEssential = target.essential;
+        const bucket = expenses.filter(e => e.essential === isEssential);
+        
+        const orderMap = {};
+        try {
+            const raw = localStorage.getItem('finance-master.ui.expenseOrder');
+            if (raw) {
+                const arr = JSON.parse(raw);
+                arr.forEach((aid, idx) => orderMap[aid] = idx);
+            }
+        } catch (e) {}
+        
+        bucket.sort((a, b) => {
+            const posA = orderMap.hasOwnProperty(a.id) ? orderMap[a.id] : 99999;
+            const posB = orderMap.hasOwnProperty(b.id) ? orderMap[b.id] : 99999;
+            return posA - posB;
+        });
+        
+        const idx = bucket.findIndex(e => String(e.id) === String(id));
+        if (idx === -1) return;
+        const swapIdx = idx + Number(direction);
+        if (swapIdx < 0 || swapIdx >= bucket.length) return;
+        
+        const temp = bucket[idx];
+        bucket[idx] = bucket[swapIdx];
+        bucket[swapIdx] = temp;
+        
+        const otherBucket = expenses.filter(e => e.essential !== isEssential);
+        otherBucket.sort((a, b) => {
+            const posA = orderMap.hasOwnProperty(a.id) ? orderMap[a.id] : 99999;
+            const posB = orderMap.hasOwnProperty(b.id) ? orderMap[b.id] : 99999;
+            return posA - posB;
+        });
+        
+        const newOrder = [...(isEssential ? bucket : otherBucket), ...(isEssential ? otherBucket : bucket)].map(e => String(e.id));
+        try {
+            localStorage.setItem('finance-master.ui.expenseOrder', JSON.stringify(newOrder));
+        } catch (e) {}
+        
+        render();
+    }
+
     return {
         init,
         render,
         setSection: setActiveSection,
-        openAddModal
+        toggleMobileNav,
+        closeMobileNav,
+        setFocusMode,
+        setPipelineTab,
+        openAddModal,
+        saveSettingsPage,
+        moveExpense
     };
 })();
 
