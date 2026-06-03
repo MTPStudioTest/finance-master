@@ -29,7 +29,6 @@ window.FinancialMode = (function () {
     let currentExplanations = {};
     let currentForecast = null;
     let currentHasFinanceData = false;
-    let labState = { marketMajors: 0, burnDelta: 0, probFloor: 50 };
     let adviceExpanded = false;
     let ledgerMoreFiltersOpen = false;
     let monthlyReviewError = '';
@@ -476,14 +475,6 @@ window.FinancialMode = (function () {
      */
     function init() {
         console.log('[FinancialMode] Initializing...');
-        if (window.Store && typeof window.Store.getUiSettings === 'function') {
-            const scenario = window.Store.getUiSettings().scenario || {};
-            labState = {
-                marketMajors: Number(scenario.marketMajors) || 0,
-                burnDelta: Number(scenario.burnDelta) || 0,
-                probFloor: Number.isFinite(Number(scenario.probFloor)) ? Number(scenario.probFloor) : 50
-            };
-        }
         bindUiInteractions();
 
         window.addEventListener('mode-changed', (e) => {
@@ -663,21 +654,6 @@ window.FinancialMode = (function () {
                 return;
             }
 
-            if (action === 'set-scenario-preset') {
-                const preset = String(actionEl.getAttribute('data-fin-preset') || 'baseline');
-                const presets = {
-                    baseline: { marketMajors: 0, burnDelta: 0, probFloor: 50 },
-                    conservative: { marketMajors: -15, burnDelta: 10, probFloor: 35 },
-                    stretch: { marketMajors: 10, burnDelta: -5, probFloor: 70 }
-                };
-                labState = presets[preset] || presets.baseline;
-                if (window.Store && typeof window.Store.saveUiSettings === 'function') {
-                    window.Store.saveUiSettings({ scenario: labState });
-                }
-                render();
-                return;
-            }
-
             if (action === 'set-invoices-view') {
                 const view = String(actionEl.getAttribute('data-fin-invoices-view') || 'open').trim();
                 setInvoicesView(view);
@@ -735,10 +711,7 @@ window.FinancialMode = (function () {
         elements.content.classList.toggle('fin-focus-mode', activeSection === 'dashboard' && focusMode);
         elements.content.innerHTML = sections.join('');
 
-        if (activeSection === 'planning') {
-            attachCharts();
-            attachLabListeners();
-        }
+        if (activeSection === 'planning') attachCharts();
 
         // Post-render attachments
         if (window.CoreDashboardLayout && typeof window.CoreDashboardLayout.refresh === 'function') {
@@ -757,7 +730,6 @@ window.FinancialMode = (function () {
             pipelineTabs: renderPipelineTabs,
             goals: renderGoals,
             projection: renderProjection,
-            scenarioLab: renderScenarioLab,
             reviewQueue: renderReviewQueue,
             obligationReview: renderObligationReviewSection,
             paymentReview: renderPaymentReviewSection,
@@ -4159,40 +4131,6 @@ window.FinancialMode = (function () {
         return items;
     }
 
-    function renderScenarioSummary() {
-        const burnDelta = Number(labState.burnDelta || 0);
-        const market = Number(labState.marketMajors || 0);
-        const floor = Number(labState.probFloor || 50);
-        return `Scenario: burn ${burnDelta >= 0 ? '+' : ''}${burnDelta}%, market ${market >= 0 ? '+' : ''}${market}%, probability floor ${floor}%.`;
-    }
-
-    function renderScenarioLab() {
-        return `
-            <section class="fin-section">
-                <div class="fin-lab-grid">
-                    <div class="widget ui-card glass fin-card">
-                        <div class="drag-handle">⋮⋮</div>
-                        <div class="widget-title ui-title">Stress Test</div>
-                        <div class="fin-helper-text">Advanced scenario controls for testing runway pressure.</div>
-                        
-                        <div class="fin-slider-group" style="margin-top: 1rem;">
-                            <label class="settings-check">
-                                <input type="checkbox" id="fin-lab-client" ${labState.loseClient ? 'checked' : ''} />
-                                <span>Lose biggest client</span>
-                            </label>
-                            ${renderSlider('Delay payments by', 'delay', labState.delayPayments || 0, 0, 90, ' days')}
-                            ${renderSlider('Tax rate hike', 'tax', labState.taxHike || 0, 0, 20, '%')}
-                            <hr style="border-top: 1px solid var(--border-color); margin: 1rem 0; opacity: 0.5;">
-                            ${renderSlider('Income Probability Floor', 'probFloor', labState.probFloor, 0, 100, '%')}
-                            ${renderSlider('Monthly Burn Delta', 'burnDelta', labState.burnDelta, -30, 30, '%')}
-                        </div>
-                        <div id="fin-lab-scenario" class="fin-scenario-line">${renderScenarioSummary()}</div>
-                    </div>
-                </div>
-            </section>
-        `;
-    }
-
     function renderTensionSignals() {
         const tensionSignals = [];
         const goals = typeof window.Store.getGoalProgress === 'function'
@@ -4288,29 +4226,13 @@ window.FinancialMode = (function () {
         `;
     }
 
-    function renderSlider(label, id, value, min, max, unit) {
-        return `
-            <div class="fin-slider-item">
-                <div class="fin-slider-header">
-                    <label>${label}</label>
-                    <span id="val-${id}">${value}${unit}</span>
-                </div>
-                <input type="range" class="fin-range" id="slip-${id}" min="${min}" max="${max}" value="${value}">
-            </div>
-        `;
-    }
-
     function attachCharts() {
         const svg = document.getElementById('fin-projection-svg');
         if (!svg || !window.FinancialEngine || typeof window.FinancialEngine.generateProjections !== 'function') return;
         const projections = window.FinancialEngine.generateProjections({
             financeSnapshot: currentSnapshot,
             financeReadModel: currentData
-        }, {
-            burnChange: Number(labState.burnDelta || 0) / 100,
-            probFloor: Number(labState.probFloor || 50),
-            marketShift: Number(labState.marketMajors || 0) / 100
-        });
+        }, { burnChange: 0, probFloor: 0.5, marketShift: 0 });
         const safe = projections.safe || [];
         const realistic = projections.realistic || [];
         const optimistic = projections.optimistic || [];
@@ -4338,28 +4260,6 @@ window.FinancialMode = (function () {
             <path d="${linePath(realistic)}" fill="none" stroke="var(--fin-chart-realistic)" stroke-width="2.35"></path>
             <path d="${linePath(optimistic)}" fill="none" stroke="var(--fin-chart-optimistic)" stroke-width="1.9"></path>
         `;
-    }
-
-    function attachLabListeners() {
-        const sliderIds = ['marketMajors', 'burnDelta', 'probFloor'];
-        sliderIds.forEach((id) => {
-            const slider = document.getElementById('slip-' + id);
-            if (!slider || slider.dataset.bound === '1') return;
-            slider.dataset.bound = '1';
-            slider.addEventListener('input', function () {
-                labState[id] = Number(slider.value) || 0;
-                if (window.Store && typeof window.Store.saveUiSettings === 'function') {
-                    window.Store.saveUiSettings({ scenario: labState });
-                }
-                const valueEl = document.getElementById('val-' + id);
-                if (valueEl) valueEl.textContent = slider.value + '%';
-                const scenarioEl = document.getElementById('fin-lab-scenario');
-                if (scenarioEl) {
-                    scenarioEl.textContent = renderScenarioSummary();
-                }
-                attachCharts();
-            });
-        });
     }
 
     function openAddModal(type, id) {

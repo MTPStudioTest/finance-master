@@ -116,7 +116,7 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Cashflow', exact: true })).toBeVisible();
   await expect(page.getByText('Income', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Cash Calendar', { exact: true })).toBeVisible();
-  await expect(page.getByText('Stress Test', { exact: true })).toBeVisible();
+  await expect(page.getByText('Stress Test', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Savings and Buffer Goals', { exact: true })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Treasury', exact: true }).click();

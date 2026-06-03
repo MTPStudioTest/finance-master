@@ -7,8 +7,8 @@ export function createSectionRenderer(renderers, renderSectionHeading) {
         },
         planning: {
             title: 'Cashflow',
-            copy: 'Expected income, cash calendar, projections, and scenario checks for the next decisions.',
-            sections: ['invoices', 'scenarioOutcomes', 'cashCalendar', 'pipelineTabs', 'projection', 'scenarioLab']
+            copy: 'Expected income, cash calendar, and projections for the next decisions.',
+            sections: ['invoices', 'scenarioOutcomes', 'cashCalendar', 'pipelineTabs', 'projection']
         },
         review: {
             title: 'Month Close',
