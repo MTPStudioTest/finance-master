@@ -291,6 +291,78 @@ test('project treasury tags survive read-model derivation without changing globa
   assert.equal(result.treasury.totalMonthlyBurn, 420);
 });
 
+test('income status aliases, default probabilities, and due states are normalized in the read model', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-02T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'legacy-open',
+      type: 'pipeline.created',
+      amount: 1000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'legacy-open',
+      metadata: { title: 'Legacy open item', value: 1000, status: 'open', expectedDateISO: '2026-06-06', scope: 'business' },
+    },
+    {
+      id: 'signed-today',
+      type: 'pipeline.created',
+      amount: 2000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'signed-today',
+      metadata: { title: 'Signed today', value: 2000, status: 'signed', expectedDateISO: '2026-06-02', scope: 'business' },
+    },
+    {
+      id: 'old-invoice',
+      type: 'pipeline.created',
+      amount: 1500,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'old-invoice',
+      metadata: { title: 'Old invoice', value: 1500, status: 'invoice_sent', expectedDateISO: '2026-05-10', scope: 'business' },
+    },
+    {
+      id: 'retainer',
+      type: 'pipeline.created',
+      amount: 1200,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'retainer',
+      metadata: { title: 'Monthly retainer', value: 1200, status: 'expected', incomeType: 'retainer', expectedDateISO: '2026-06-10', scope: 'business' },
+    },
+    {
+      id: 'proposal-override',
+      type: 'pipeline.created',
+      amount: 900,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'proposal-override',
+      metadata: { title: 'Proposal override', value: 900, status: 'proposal', probability: 0.25, expectedDateISO: '2026-06-20', scope: 'business' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+  const byId = Object.fromEntries(result.readModel.pipelineDeals.map((item) => [item.id, item]));
+
+  assert.equal(byId['legacy-open'].status, 'expected');
+  assert.equal(byId['legacy-open'].probability, 0.6);
+  assert.equal(byId['legacy-open'].dueState, 'due_soon');
+  assert.equal(byId['signed-today'].status, 'confirmed');
+  assert.equal(byId['signed-today'].probability, 0.9);
+  assert.equal(byId['signed-today'].dueState, 'due_today');
+  assert.equal(byId['old-invoice'].status, 'invoiced');
+  assert.equal(byId['old-invoice'].probability, 0.95);
+  assert.equal(byId['old-invoice'].dueState, 'severely_overdue');
+  assert.equal(byId.retainer.probability, 0.9);
+  assert.equal(byId.retainer.incomeType, 'retainer');
+  assert.equal(byId['proposal-override'].probability, 0.25);
+});
+
 test('read model derives transaction evidence from existing metadata and links', () => {
   const finance = loadFinance();
   const nowIso = '2026-06-03T10:00:00.000Z';
@@ -550,17 +622,17 @@ test('treasury model classifies income scenarios and review items', () => {
   assert.equal(result.treasury.incomeThisMonth.confirmed, 1200);
   assert.equal(result.treasury.incomeThisMonth.expected, 800);
   assert.equal(result.treasury.incomeThisMonth.risky, 2000);
-  assert.equal(result.treasury.incomeScenarios.conservative, 3200);
-  assert.equal(result.treasury.incomeScenarios.expected, 4000);
-  assert.equal(result.treasury.incomeScenarios.optimistic, 6000);
+  assert.equal(result.treasury.incomeScenarios.conservative, 3080);
+  assert.equal(result.treasury.incomeScenarios.expected, 3600);
+  assert.equal(result.treasury.incomeScenarios.optimistic, 4300);
   assert.equal(result.treasury.overdueObligations[0].title, 'Workspace');
-  assert.equal(result.treasury.reviewQueue.some((item) => item.reason === 'Risky income assumption'), true);
+  assert.equal(result.treasury.reviewQueue.some((item) => item.reason === 'Income confidence needs review'), true);
   assert.deepEqual(Array.from(result.treasury.dashboardSummary.actionThisWeek.items.map((item) => item.kind)), ['obligation', 'payment', 'transaction', 'pipeline']);
   assert.equal(result.treasury.dashboardSummary.actionThisWeek.urgentCount, 1);
-  assert.equal(result.treasury.dashboardSummary.next30Days.confirmedIncoming, 1200);
+  assert.equal(result.treasury.dashboardSummary.next30Days.confirmedIncoming, 1080);
   assert.equal(result.treasury.dashboardSummary.next30Days.expectedWeightedIncoming, 520);
   assert.equal(result.treasury.dashboardSummary.next30Days.obligationsDue, 500);
-  assert.equal(result.treasury.dashboardSummary.next30Days.projectedNetMovement, 1220);
+  assert.equal(result.treasury.dashboardSummary.next30Days.projectedNetMovement, 1100);
   assert.equal(result.treasury.dashboardSummary.next30Days.incomeCount, 3);
   assert.equal(result.treasury.dashboardSummary.next30Days.obligationCount, 1);
 });
@@ -604,9 +676,9 @@ test('treasury scenarios only include income inside the forecast horizon', () =>
     nowIso,
   });
 
-  assert.equal(result.treasury.incomeScenarios.conservative, 1500);
-  assert.equal(result.treasury.incomeScenarios.expected, 1500);
-  assert.equal(result.treasury.incomeScenarios.optimistic, 1500);
+  assert.equal(result.treasury.incomeScenarios.conservative, 1450);
+  assert.equal(result.treasury.incomeScenarios.expected, 1450);
+  assert.equal(result.treasury.incomeScenarios.optimistic, 1450);
 });
 
 test('linked received income is not double-counted in forecast pipeline totals', () => {

@@ -411,19 +411,25 @@ test('finance forecast builds deterministic horizon scenarios from canonical inp
       pipelineDeals: [
         { id: 'confirmed', title: 'Confirmed work', value: 1000, status: 'confirmed', probability: 0.9, expectedDateISO: '2026-06-05' },
         { id: 'proposal', title: 'Proposal', value: 2000, status: 'proposal', probability: 0.4, expectedDateISO: '2026-07-01' },
+        { id: 'retainer', title: 'Monthly retainer', value: 600, status: 'expected', incomeType: 'retainer', expectedDateISO: '2026-06-10' },
         { id: 'lost', title: 'Lost', value: 9999, status: 'lost', probability: 1, expectedDateISO: '2026-06-05' },
+        { id: 'paid', title: 'Paid', value: 9999, status: 'paid', probability: 1, expectedDateISO: '2026-06-05' },
       ],
       reserveBuckets: [{ id: 'tax', targetAmount: 1000, currentAmount: 250 }],
       debtAccounts: [{ id: 'card', minimumPaymentMonthly: 150 }],
     },
     snapshot: { availableCash: 3000, monthlyBurn: 1200, confidenceScore: 0.5 },
     treasury: { availableCash: 3000, totalMonthlyBurn: 1200 },
-    horizons: [7, 30],
+    horizons: [7, 30, 60, 90, 180],
   });
   assert.equal(forecast.byHorizon['7'].conservative, 3620);
   assert.equal(forecast.byHorizon['7'].expected, 3620);
-  assert.equal(forecast.byHorizon['30'].expected, 3500);
+  assert.equal(forecast.byHorizon['30'].conservative, 2700);
+  assert.equal(forecast.byHorizon['30'].expected, 3240);
+  assert.equal(forecast.byHorizon['30'].optimistic, 4040);
   assert.equal(forecast.byHorizon['30'].components.debtPaymentPlans, 150);
   assert.equal(forecast.byHorizon['30'].components.reserveTargetGap, 750);
+  assert.equal(forecast.byHorizon['60'].components.expectedIncome, 1980);
+  assert.equal(Object.keys(forecast.byHorizon).join('|'), '7|30|60|90|180');
   assert.equal(forecast.warnings.some((warning) => warning.includes('Forecast confidence is low')), true);
 });

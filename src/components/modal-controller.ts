@@ -46,7 +46,7 @@ let csvAppliedProfileName = '';
 let pendingBackup: unknown = null;
 let backupPreview: FinanceBackupPreview | null = null;
 let modalReturnFocus: HTMLElement | null = null;
-const INCOME_STATUSES = ['lead', 'proposal', 'expected', 'confirmed', 'invoiced', 'due', 'overdue', 'risky', 'paid', 'cancelled', 'lost'];
+const INCOME_STATUSES = ['lead', 'proposal', 'expected', 'confirmed', 'invoiced', 'due', 'overdue', 'paid', 'cancelled', 'lost'];
 const INCOME_PROBABILITY_DEFAULTS: Record<string, number> = {
   paid: 1,
   invoiced: 0.95,
@@ -56,7 +56,6 @@ const INCOME_PROBABILITY_DEFAULTS: Record<string, number> = {
   retainer: 0.9,
   expected: 0.6,
   proposal: 0.4,
-  risky: 0.35,
   lead: 0.15,
   cancelled: 0,
   lost: 0,

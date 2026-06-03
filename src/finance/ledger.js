@@ -42,6 +42,67 @@
         return Events.roundMoney(value);
     }
 
+    var INCOME_PROBABILITY_DEFAULTS = {
+        lead: 0.15,
+        proposal: 0.4,
+        expected: 0.6,
+        confirmed: 0.9,
+        invoiced: 0.95,
+        due: 0.95,
+        overdue: 0.85,
+        risky: 0.35,
+        retainer: 0.9,
+        recurring: 0.9,
+        paid: 1,
+        cancelled: 0,
+        lost: 0
+    };
+
+    function normalizeIncomeStatus(value) {
+        var raw = String(value || 'expected').trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+        if (raw === 'open' || raw === 'manual_expected_income') return 'expected';
+        if (raw === 'signed' || raw === 'verbal_commitment') return 'confirmed';
+        if (raw === 'invoice_sent' || raw === 'sent') return 'invoiced';
+        if (raw === 'received' || raw === 'settled' || raw === 'closed') return 'paid';
+        if (raw === 'deleted') return 'cancelled';
+        if (raw === 'opportunity') return 'lead';
+        return ['lead', 'proposal', 'expected', 'confirmed', 'invoiced', 'due', 'overdue', 'paid', 'cancelled', 'lost', 'risky'].indexOf(raw) !== -1 ? raw : 'expected';
+    }
+
+    function defaultIncomeProbability(status, incomeType) {
+        var type = String(incomeType || '').toLowerCase();
+        if (type === 'retainer' || type === 'recurring') return INCOME_PROBABILITY_DEFAULTS[type];
+        var normalized = normalizeIncomeStatus(status);
+        return INCOME_PROBABILITY_DEFAULTS[normalized] != null ? INCOME_PROBABILITY_DEFAULTS[normalized] : 0.6;
+    }
+
+    function incomeProbability(metadata, status, incomeType) {
+        if (metadata && Object.prototype.hasOwnProperty.call(metadata, 'probability') && Number.isFinite(Number(metadata.probability))) {
+            return Events.clampProbability(metadata.probability);
+        }
+        return defaultIncomeProbability(status, incomeType);
+    }
+
+    function classifyIncomeDueState(deal, nowIso) {
+        var status = normalizeIncomeStatus(deal && deal.status);
+        if (status === 'paid') return 'settled';
+        if (status === 'cancelled' || status === 'lost') return 'inactive';
+        var due = toIsoDateOnly(deal && deal.expectedDateISO);
+        var today = toIsoDateOnly(nowIso);
+        if (!due || !today) return 'upcoming';
+        if (due < today) {
+            var overdueMs = Date.parse(today + 'T00:00:00.000Z') - Date.parse(due + 'T00:00:00.000Z');
+            return overdueMs > 14 * 24 * 60 * 60 * 1000 ? 'severely_overdue' : 'overdue';
+        }
+        if (status === 'overdue') return 'overdue';
+        if (due === today || status === 'due') return 'due_today';
+        var dueSoonEnd = global.FinanceDates && global.FinanceDates.addDaysDateOnly
+            ? global.FinanceDates.addDaysDateOnly(today, 7)
+            : '';
+        if (dueSoonEnd && due <= dueSoonEnd) return 'due_soon';
+        return 'upcoming';
+    }
+
     function assertCurrency(draft, baseCurrency) {
         var currency = Events.normalizeCurrency(draft && draft.currency, baseCurrency);
         if (currency !== Events.normalizeCurrency(baseCurrency, 'EUR')) {
@@ -108,8 +169,8 @@
     }
 
     function isPipelineActive(stage) {
-        var state = String(stage || '').toLowerCase();
-        return state !== 'paid' && state !== 'closed' && state !== 'lost' && state !== 'cancelled' && state !== 'deleted';
+        var state = normalizeIncomeStatus(stage);
+        return state !== 'paid' && state !== 'lost' && state !== 'cancelled';
     }
 
     function toIsoDateOnly(value) {
@@ -247,20 +308,23 @@
             }
 
             if (event.type === 'pipeline.created') {
+                var createdStatus = normalizeIncomeStatus(metadata.stage || metadata.status || 'expected');
+                var createdIncomeType = String(metadata.incomeType || metadata.type || 'one_off');
                 pipelineById[relatedId] = {
                     id: relatedId,
                     title: String(metadata.title || metadata.name || metadata.client || 'Pipeline Item'),
                     value: Number.isFinite(Number(metadata.value)) ? Number(metadata.value) : eventAmount,
-                    probability: Events.clampProbability(metadata.probability != null ? metadata.probability : 1),
-                    status: String(metadata.stage || metadata.status || 'open'),
+                    probability: incomeProbability(metadata, createdStatus, createdIncomeType),
+                    status: createdStatus,
                     expectedDateISO: toIsoDateOnly(metadata.expectedDateISO || metadata.expectedDate || event.timestamp),
                     destinationAccountId: String(metadata.destinationAccountId || '').trim(),
                     destinationAccountName: String(metadata.destinationAccountName || '').trim(),
-                    incomeType: String(metadata.incomeType || metadata.type || 'one_off'),
+                    incomeType: createdIncomeType,
                     scope: String(metadata.scope || 'shared'),
                     projectId: String(metadata.projectId || '').trim(),
                     scenarioInclusion: String(metadata.scenarioInclusion || 'realistic'),
                     currency: event.currency,
+                    dueState: '',
                     createdAt: event.timestamp,
                     updatedAt: event.timestamp
                 };
@@ -268,25 +332,28 @@
             }
 
             if (event.type === 'pipeline.stage_changed') {
+                var stageStatus = normalizeIncomeStatus(metadata.stage || metadata.status || 'expected');
+                var stageIncomeType = String(metadata.incomeType || metadata.type || 'one_off');
                 if (!pipelineById[relatedId]) {
                     pipelineById[relatedId] = {
                         id: relatedId,
                         title: String(metadata.title || metadata.name || 'Pipeline Item'),
                         value: 0,
-                        probability: Events.clampProbability(metadata.probability != null ? metadata.probability : 1),
-                        status: String(metadata.stage || metadata.status || 'open'),
+                        probability: incomeProbability(metadata, stageStatus, stageIncomeType),
+                        status: stageStatus,
                         expectedDateISO: toIsoDateOnly(metadata.expectedDateISO || metadata.expectedDate || event.timestamp),
                         destinationAccountId: String(metadata.destinationAccountId || '').trim(),
                         destinationAccountName: String(metadata.destinationAccountName || '').trim(),
-                        incomeType: String(metadata.incomeType || metadata.type || 'one_off'),
+                        incomeType: stageIncomeType,
                         scope: String(metadata.scope || 'shared'),
                         scenarioInclusion: String(metadata.scenarioInclusion || 'realistic'),
                         currency: event.currency,
+                        dueState: '',
                         createdAt: event.timestamp,
                         updatedAt: event.timestamp
                     };
                 }
-                pipelineById[relatedId].status = String(metadata.stage || metadata.status || pipelineById[relatedId].status || 'open');
+                pipelineById[relatedId].status = normalizeIncomeStatus(metadata.stage || metadata.status || pipelineById[relatedId].status || 'expected');
                 pipelineById[relatedId].scope = String(metadata.scope || pipelineById[relatedId].scope || 'shared');
                 if (Object.prototype.hasOwnProperty.call(metadata, 'projectId')) {
                     pipelineById[relatedId].projectId = String(metadata.projectId || '').trim();
@@ -316,21 +383,24 @@
             }
 
             if (event.type === 'pipeline.value_changed') {
+                var valueStatus = normalizeIncomeStatus(metadata.stage || metadata.status || 'expected');
+                var valueIncomeType = String(metadata.incomeType || metadata.type || 'one_off');
                 if (!pipelineById[relatedId]) {
                     pipelineById[relatedId] = {
                         id: relatedId,
                         title: String(metadata.title || metadata.name || 'Pipeline Item'),
                         value: 0,
-                        probability: Events.clampProbability(metadata.probability != null ? metadata.probability : 1),
-                        status: String(metadata.stage || metadata.status || 'open'),
+                        probability: incomeProbability(metadata, valueStatus, valueIncomeType),
+                        status: valueStatus,
                         expectedDateISO: toIsoDateOnly(metadata.expectedDateISO || metadata.expectedDate || event.timestamp),
                         destinationAccountId: String(metadata.destinationAccountId || '').trim(),
                         destinationAccountName: String(metadata.destinationAccountName || '').trim(),
-                        incomeType: String(metadata.incomeType || metadata.type || 'one_off'),
+                        incomeType: valueIncomeType,
                         scope: String(metadata.scope || 'shared'),
                         projectId: String(metadata.projectId || '').trim(),
                         scenarioInclusion: String(metadata.scenarioInclusion || 'realistic'),
                         currency: event.currency,
+                        dueState: '',
                         createdAt: event.timestamp,
                         updatedAt: event.timestamp
                     };
@@ -365,21 +435,24 @@
             }
 
             if (event.type === 'pipeline.probability_changed') {
+                var probabilityStatus = normalizeIncomeStatus(metadata.stage || metadata.status || 'expected');
+                var probabilityIncomeType = String(metadata.incomeType || metadata.type || 'one_off');
                 if (!pipelineById[relatedId]) {
                     pipelineById[relatedId] = {
                         id: relatedId,
                         title: String(metadata.title || metadata.name || 'Pipeline Item'),
                         value: Number.isFinite(Number(metadata.value)) ? Number(metadata.value) : eventAmount,
-                        probability: 1,
-                        status: String(metadata.stage || metadata.status || 'open'),
+                        probability: incomeProbability(metadata, probabilityStatus, probabilityIncomeType),
+                        status: probabilityStatus,
                         expectedDateISO: toIsoDateOnly(metadata.expectedDateISO || metadata.expectedDate || event.timestamp),
                         destinationAccountId: String(metadata.destinationAccountId || '').trim(),
                         destinationAccountName: String(metadata.destinationAccountName || '').trim(),
-                        incomeType: String(metadata.incomeType || metadata.type || 'one_off'),
+                        incomeType: probabilityIncomeType,
                         scope: String(metadata.scope || 'shared'),
                         projectId: String(metadata.projectId || '').trim(),
                         scenarioInclusion: String(metadata.scenarioInclusion || 'realistic'),
                         currency: event.currency,
+                        dueState: '',
                         createdAt: event.timestamp,
                         updatedAt: event.timestamp
                     };
@@ -663,6 +736,11 @@
 
         var projectProfiles = Object.keys(projectById).map(function (id) { return projectById[id]; });
         var pipelineDeals = Object.keys(pipelineById).map(function (id) { return pipelineById[id]; });
+        pipelineDeals.forEach(function (deal) {
+            deal.status = normalizeIncomeStatus(deal.status);
+            deal.probability = Number.isFinite(Number(deal.probability)) ? Events.clampProbability(deal.probability) : defaultIncomeProbability(deal.status, deal.incomeType);
+            deal.dueState = classifyIncomeDueState(deal, cfg.nowIso);
+        });
         var recurringExpenses = Object.keys(recurringById).map(function (id) { return recurringById[id]; });
         var obligationReviews = Object.keys(obligationReviewById).map(function (id) { return obligationReviewById[id]; });
         var activeRecurringExpenses = recurringExpenses.filter(function (item) { return item && item.active !== false; });

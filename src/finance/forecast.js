@@ -32,8 +32,8 @@ function statusOf(deal) {
 }
 
 function isActiveIncome(deal) {
-  const status = statusOf(deal);
-  return !['paid', 'received', 'cancelled', 'lost', 'closed', 'deleted'].includes(status);
+  const status = normalizeStatus(statusOf(deal));
+  return !['paid', 'cancelled', 'lost'].includes(status);
 }
 
 export const INCOME_STATUS_PROBABILITY_DEFAULTS = {
@@ -43,8 +43,10 @@ export const INCOME_STATUS_PROBABILITY_DEFAULTS = {
   confirmed: 0.9,
   invoiced: 0.95,
   due: 0.95,
-  overdue: 0.75,
+  overdue: 0.85,
   risky: 0.35,
+  retainer: 0.9,
+  recurring: 0.9,
   paid: 1,
   received: 1,
   cancelled: 0,
@@ -53,27 +55,70 @@ export const INCOME_STATUS_PROBABILITY_DEFAULTS = {
 
 function probabilityFor(deal) {
   if (Number.isFinite(Number(deal && deal.probability))) return clampProbability(deal.probability);
-  return INCOME_STATUS_PROBABILITY_DEFAULTS[statusOf(deal)] ?? 0.6;
+  const incomeType = String(deal && deal.incomeType || '').toLowerCase();
+  if (incomeType === 'retainer' || incomeType === 'recurring') return INCOME_STATUS_PROBABILITY_DEFAULTS[incomeType];
+  return INCOME_STATUS_PROBABILITY_DEFAULTS[normalizeStatus(statusOf(deal))] ?? 0.6;
+}
+
+function normalizeStatus(status) {
+  const raw = String(status || 'expected').toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+  if (raw === 'open' || raw === 'manual_expected_income') return 'expected';
+  if (raw === 'signed' || raw === 'verbal_commitment') return 'confirmed';
+  if (raw === 'invoice_sent' || raw === 'sent') return 'invoiced';
+  if (raw === 'received' || raw === 'settled' || raw === 'closed') return 'paid';
+  if (raw === 'deleted') return 'cancelled';
+  if (raw === 'opportunity') return 'lead';
+  return raw;
 }
 
 function incomeScenarioValue(deal, scenario) {
-  const status = statusOf(deal);
+  const status = normalizeStatus(statusOf(deal));
   const amount = Math.max(0, Number(deal && (deal.value ?? deal.amount)) || 0);
   const probability = probabilityFor(deal);
+  const incomeType = String(deal && deal.incomeType || '').toLowerCase();
   if (scenario === 'conservative') {
-    if (['confirmed', 'invoiced', 'due'].includes(status)) return amount * probability;
+    if (['confirmed', 'invoiced', 'due', 'overdue'].includes(status) && probability >= 0.85) return amount * probability;
+    return 0;
+  }
+  if (scenario === 'expected') {
+    if (['confirmed', 'invoiced', 'due', 'overdue'].includes(status) && probability >= 0.85) return amount * probability;
+    if ((['expected'].includes(status) || incomeType === 'retainer' || incomeType === 'recurring') && probability >= 0.5) return amount * probability;
     return 0;
   }
   if (scenario === 'optimistic') {
-    if (['lead', 'proposal'].includes(status)) return amount * Math.max(probability, 0.5);
-    return amount * Math.max(probability, 0.85);
+    if (['lead', 'proposal', 'risky'].includes(status) && probability > 0) return amount * probability;
+    return incomeScenarioValue(deal, 'expected');
   }
-  return amount * probability;
+  return 0;
 }
 
 function isWithinWindow(date, today, horizonEnd) {
   if (!date) return false;
   return date >= today && date <= horizonEnd;
+}
+
+function isRetainerLike(deal) {
+  const type = String(deal && deal.incomeType || '').toLowerCase();
+  return type === 'retainer' || type === 'recurring';
+}
+
+function recurrenceCountInWindow(deal, today, horizonEnd) {
+  if (!isRetainerLike(deal)) return 1;
+  const start = dateOnly(deal && deal.expectedDateISO) || today;
+  if (start > horizonEnd) return 0;
+  const first = start < today ? today : start;
+  const startTs = Date.parse(`${first}T00:00:00.000Z`);
+  const endTs = Date.parse(`${horizonEnd}T00:00:00.000Z`);
+  if (!Number.isFinite(startTs) || !Number.isFinite(endTs) || endTs < startTs) return 0;
+  return Math.max(1, Math.floor((endTs - startTs) / (30 * 24 * 60 * 60 * 1000)) + 1);
+}
+
+function scenarioIncomeTotal(deals, scenario, today, horizonEnd) {
+  return safeArray(deals).reduce((sum, deal) => {
+    const count = recurrenceCountInWindow(deal, today, horizonEnd);
+    if (!count) return sum;
+    return sum + (incomeScenarioValue(deal, scenario) * count);
+  }, 0);
 }
 
 function reserveGap(readModel) {
@@ -112,12 +157,12 @@ function scenarioForHorizon({ readModel, snapshot, treasury, today, days }) {
   }, 0) * (days / 30));
   const activeIncome = safeArray(readModel && readModel.pipelineDeals)
     .filter(isActiveIncome)
-    .filter((deal) => isWithinWindow(dateOnly(deal && deal.expectedDateISO), today, horizonEnd));
+    .filter((deal) => isRetainerLike(deal) ? recurrenceCountInWindow(deal, today, horizonEnd) > 0 : isWithinWindow(dateOnly(deal && deal.expectedDateISO), today, horizonEnd));
   const reserveTargetGap = round(reserveGap(readModel));
   const reserveMovements = reserveMovementCount(readModel, today, horizonEnd);
-  const conservativeIncome = round(activeIncome.reduce((sum, deal) => sum + incomeScenarioValue(deal, 'conservative'), 0));
-  const expectedIncome = round(activeIncome.reduce((sum, deal) => sum + incomeScenarioValue(deal, 'expected'), 0));
-  const optimisticIncome = round(activeIncome.reduce((sum, deal) => sum + incomeScenarioValue(deal, 'optimistic'), 0));
+  const conservativeIncome = round(scenarioIncomeTotal(activeIncome, 'conservative', today, horizonEnd));
+  const expectedIncome = round(scenarioIncomeTotal(activeIncome, 'expected', today, horizonEnd));
+  const optimisticIncome = round(scenarioIncomeTotal(activeIncome, 'optimistic', today, horizonEnd));
 
   return {
     days,
@@ -134,6 +179,9 @@ function scenarioForHorizon({ readModel, snapshot, treasury, today, days }) {
       conservativeIncome,
       expectedIncome,
       optimisticIncome,
+      incomingCash: expectedIncome,
+      outgoingCash: recurringObligations,
+      endingCash: round(startingAvailableCash - recurringObligations + expectedIncome),
     },
   };
 }
@@ -156,8 +204,15 @@ export function buildFinanceForecast({
   if (!safeArray(readModel && readModel.pipelineDeals).some(isActiveIncome)) {
     warnings.push('No active income forecast is recorded.');
   }
+  if (safeArray(readModel && readModel.pipelineDeals).some((deal) => isActiveIncome(deal) && ['overdue', 'severely_overdue'].includes(String(deal && deal.dueState || '').toLowerCase()))) {
+    warnings.push('Overdue income may make this forecast unreliable.');
+  }
   if (Number.isFinite(lowestExpected) && lowestExpected < 0) {
     warnings.push('Expected forecast dips below available cash.');
+  }
+  const startingAvailableCash = Number((treasury && treasury.availableCash) ?? (snapshot && snapshot.availableCash));
+  if (Number.isFinite(startingAvailableCash) && startingAvailableCash < 0) {
+    warnings.push('Available cash is already negative.');
   }
   const confidenceScore = Number(snapshot && (snapshot.confidenceScore ?? snapshot.forecastConfidence));
   if (Number.isFinite(confidenceScore) && confidenceScore < 0.6) {
@@ -166,6 +221,9 @@ export function buildFinanceForecast({
   const reserveTargetGap = round(reserveGap(readModel));
   if (reserveTargetGap > 0) {
     warnings.push('Reserve targets are not fully funded.');
+  }
+  if (safeArray(readModel && readModel.debtAccounts).some((debt) => (Number(debt && debt.outstanding) || 0) > 0 && !(Number(debt && debt.minimumPaymentMonthly) > 0))) {
+    warnings.push('Some debt items still need payment plans.');
   }
 
   return {

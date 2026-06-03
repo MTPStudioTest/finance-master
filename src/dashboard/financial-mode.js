@@ -2168,7 +2168,6 @@ window.FinancialMode = (function () {
                     ${renderCollapsible('treasury-accounts', 'Account Details', `${formatCurrency(actualCash)} across ${pluralize(fiatAccounts.length, 'cash account')}`, `
                         <div class="fin-section-heading-row">
                             <div>
-                                <div class="widget-title ui-title">Account Details</div>
                                 <div class="fin-helper-text">Manage real-world cash accounts without letting rows dominate Treasury.</div>
                             </div>
                             <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'fiatAccount'">Add cash account</button>
@@ -2469,37 +2468,77 @@ window.FinancialMode = (function () {
         `;
     }
 
-    function invoiceStatusFromDeal(deal) {
-        const status = String(deal && (deal.status || deal.stage) || '').toLowerCase();
-        const probability = Number(deal && deal.probability);
+    function incomeStatusFromDeal(deal) {
+        const raw = String(deal && (deal.status || deal.stage) || 'expected').toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+        if (raw === 'open' || raw === 'manual_expected_income') return 'expected';
+        if (raw === 'signed' || raw === 'verbal_commitment') return 'confirmed';
+        if (raw === 'invoice_sent' || raw === 'sent') return 'invoiced';
+        if (raw === 'received' || raw === 'settled' || raw === 'closed') return 'paid';
+        if (raw === 'deleted') return 'cancelled';
+        if (raw === 'opportunity') return 'lead';
+        return ['lead', 'proposal', 'expected', 'confirmed', 'invoiced', 'due', 'overdue', 'paid', 'cancelled', 'lost', 'risky'].includes(raw) ? raw : 'expected';
+    }
+
+    function incomeDueStateFromDeal(deal, status) {
+        const explicit = String(deal && deal.dueState || '').toLowerCase();
+        if (explicit) return explicit;
+        if (status === 'paid') return 'settled';
+        if (status === 'cancelled' || status === 'lost') return 'inactive';
         const due = window.FinanceDates?.toDateOnly?.(deal && deal.expectedDateISO) || String(deal && deal.expectedDateISO || '').slice(0, 10);
         const today = window.FinanceDates?.todayDateOnly?.() || new Date().toISOString().slice(0, 10);
-        const daysUntilDue = due ? Math.ceil(((Date.parse(`${due}T12:00:00.000Z`) || 0) - (Date.parse(`${today}T12:00:00.000Z`) || 0)) / 86400000) : null;
-        if (status === 'paid' || status === 'received') return 'paid';
-        if (status === 'cancelled' || status === 'lost') return status;
-        if (due && due < today) return 'overdue';
-        if (status === 'overdue') return 'overdue';
-        if (status === 'due' || (Number.isFinite(daysUntilDue) && daysUntilDue <= 7)) return 'due';
-        if (status === 'invoiced') return 'invoiced';
-        if (status === 'confirmed' || probability >= 0.8) return 'confirmed';
-        if (status === 'proposal' || status === 'lead') return status;
-        if (status === 'risky' || probability < 0.5) return 'uncertain';
-        return status === 'expected' ? 'expected' : 'likely';
+        if (!due || !today) return 'upcoming';
+        if (due < today) {
+            const overdueMs = Date.parse(`${today}T00:00:00.000Z`) - Date.parse(`${due}T00:00:00.000Z`);
+            return overdueMs > 14 * 24 * 60 * 60 * 1000 ? 'severely_overdue' : 'overdue';
+        }
+        if (due === today || status === 'due') return 'due_today';
+        const dueSoonEnd = window.FinanceDates?.addDaysDateOnly?.(today, 7) || '';
+        return dueSoonEnd && due <= dueSoonEnd ? 'due_soon' : 'upcoming';
+    }
+
+    function incomeProjectLabel(projectId) {
+        const id = String(projectId || '').trim();
+        if (!id) return '';
+        const project = safeArray(currentData && currentData.projectProfiles)
+            .find((entry) => String(entry && entry.id || '') === id);
+        return project ? String(project.name || '') : 'Project treasury';
+    }
+
+    function incomeReliabilityLabel(row) {
+        const status = String(row && row.status || '');
+        const dueState = String(row && row.dueState || '');
+        if (status === 'paid') return 'Settled';
+        if (status === 'cancelled' || status === 'lost') return 'Inactive';
+        if (dueState === 'severely_overdue') return 'Severely overdue';
+        if (dueState === 'overdue') return 'Overdue';
+        if (dueState === 'due_today') return 'Due today';
+        if (dueState === 'due_soon') return 'Due soon';
+        if (['confirmed', 'invoiced', 'due', 'overdue'].includes(status)) return 'High reliability';
+        if (status === 'expected' || row.incomeType === 'retainer' || row.incomeType === 'recurring') return 'Expected';
+        return 'Early signal';
     }
 
     function renderInvoicesSection() {
         const view = getInvoicesView();
         const active = getActivePipelineDeals()
-            .map((deal) => ({
-                id: String(deal && deal.id || ''),
-                title: String(deal && deal.title || 'Expected income'),
-                amount: Number(deal && deal.value) || 0,
-                probability: Number(deal && deal.probability) || 0,
-                expectedDateISO: deal && deal.expectedDateISO,
-                settlementAccount: String(deal && deal.destinationAccountName || deal && deal.destinationAccountId || ''),
-                incomeType: String(deal && deal.incomeType || 'one_off'),
-                status: invoiceStatusFromDeal(deal)
-            }));
+            .map((deal) => {
+                const status = incomeStatusFromDeal(deal);
+                const probability = Number(deal && deal.probability);
+                const safeProbability = Number.isFinite(probability) ? Math.max(0, Math.min(1, probability)) : 0;
+                return {
+                    id: String(deal && deal.id || ''),
+                    title: String(deal && deal.title || 'Expected income'),
+                    amount: Number(deal && deal.value) || 0,
+                    probability: safeProbability,
+                    weightedAmount: Number.isFinite(Number(deal && deal.weightedAmount)) ? Number(deal.weightedAmount) : ((Number(deal && deal.value) || 0) * safeProbability),
+                    expectedDateISO: deal && deal.expectedDateISO,
+                    settlementAccount: String(deal && deal.destinationAccountName || deal && deal.destinationAccountId || ''),
+                    incomeType: String(deal && deal.incomeType || 'one_off'),
+                    status,
+                    dueState: incomeDueStateFromDeal(deal, status),
+                    projectLabel: incomeProjectLabel(deal && deal.projectId)
+                };
+            });
         const paid = safeArray(currentData && currentData.invoices)
             .filter((entry) => String(entry && entry.status || '').toLowerCase() === 'paid')
             .slice(0, 8)
@@ -2508,10 +2547,13 @@ window.FinancialMode = (function () {
                 title: String(entry && (entry.client || entry.title) || 'Paid income'),
                 amount: Number(entry && entry.amount) || 0,
                 probability: 1,
+                weightedAmount: Number(entry && entry.amount) || 0,
                 expectedDateISO: entry && (entry.paidAt || entry.sentAt),
                 settlementAccount: String(entry && entry.destinationAccountName || ''),
                 incomeType: 'one_off',
-                status: 'paid'
+                status: 'paid',
+                dueState: 'settled',
+                projectLabel: incomeProjectLabel(entry && entry.projectId)
             }));
         
         let displayRows = [];
@@ -2524,9 +2566,13 @@ window.FinancialMode = (function () {
         }
 
         const totals = active.reduce((acc, row) => {
-            acc[row.status] = (acc[row.status] || 0) + row.amount;
+            const status = String(row.status || '');
+            if (['confirmed', 'invoiced', 'due', 'overdue'].includes(status)) acc.reliable += row.amount;
+            if (status === 'expected' || row.incomeType === 'retainer' || row.incomeType === 'recurring') acc.expected += row.amount;
+            if (status === 'proposal' || status === 'lead' || status === 'risky') acc.early += row.amount;
+            if (row.dueState === 'overdue' || row.dueState === 'severely_overdue') acc.overdue += row.amount;
             return acc;
-        }, {});
+        }, { reliable: 0, expected: 0, early: 0, overdue: 0 });
         
         return `
             <section class="fin-section">
@@ -2539,10 +2585,10 @@ window.FinancialMode = (function () {
                         <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'income'">Add expected income</button>
                     </div>
                     <div class="fin-status-grid">
-                        <div class="fin-status-card">${renderStatusPill('confirmed')}<strong>${formatCurrency((totals.confirmed || 0) + (totals.invoiced || 0) + (totals.due || 0))}</strong><span>Confirmed, invoiced, or due soon</span></div>
-                        <div class="fin-status-card">${renderStatusPill('expected')}<strong>${formatCurrency((totals.expected || 0) + (totals.likely || 0))}</strong><span>Expected but not guaranteed</span></div>
-                        <div class="fin-status-card">${renderStatusPill('proposal')}<strong>${formatCurrency((totals.proposal || 0) + (totals.lead || 0) + (totals.uncertain || 0))}</strong><span>Early or lower-confidence assumptions</span></div>
-                        <div class="fin-status-card">${renderStatusPill('overdue')}<strong>${formatCurrency(totals.overdue || 0)}</strong><span>Follow-up candidates</span></div>
+                        <div class="fin-status-card">${renderStatusPill('confirmed')}<strong>${formatCurrency(totals.reliable)}</strong><span>Confirmed, invoiced, due, or overdue</span></div>
+                        <div class="fin-status-card">${renderStatusPill('expected')}<strong>${formatCurrency(totals.expected)}</strong><span>Expected, retainer, or recurring income</span></div>
+                        <div class="fin-status-card">${renderStatusPill('proposal')}<strong>${formatCurrency(totals.early)}</strong><span>Proposal, lead, or legacy low-confidence income</span></div>
+                        <div class="fin-status-card">${renderStatusPill('overdue')}<strong>${formatCurrency(totals.overdue)}</strong><span>Needs follow-up</span></div>
                     </div>
                     
                     <div class="fin-tabs" role="tablist" aria-label="Invoice view modes">
@@ -2554,14 +2600,16 @@ window.FinancialMode = (function () {
                     <div class="fin-table-wrap" style="margin-top: 1rem;">
                         ${displayRows.length ? `
                             <table class="fin-table fin-table--compact">
-                                <thead><tr><th>Source</th><th>Status</th><th>Expected / paid</th><th>Confidence</th><th style="text-align:right">Amount</th><th style="text-align:right">Actions</th></tr></thead>
+                                <thead><tr><th>Source</th><th>Status</th><th>Due state</th><th>Expected / paid</th><th>Reliability</th><th style="text-align:right">Weighted</th><th style="text-align:right">Amount</th><th style="text-align:right">Actions</th></tr></thead>
                                 <tbody>
                                     ${displayRows.map((row) => `
                                         <tr>
-                                            <td>${escapeHtml(row.title)}<small>${escapeHtml([row.incomeType === 'retainer' ? 'retainer' : row.incomeType === 'recurring' ? 'recurring' : '', row.settlementAccount].filter(Boolean).join(' · '))}</small></td>
+                                            <td>${escapeHtml(row.title)}<small>${escapeHtml([row.incomeType === 'retainer' ? 'retainer' : row.incomeType === 'recurring' ? 'recurring' : '', row.projectLabel, row.settlementAccount].filter(Boolean).join(' · '))}</small></td>
                                             <td>${renderStatusPill(row.status)}</td>
+                                            <td>${renderStatusPill(row.dueState)}</td>
                                             <td>${row.expectedDateISO ? formatShortDate(row.expectedDateISO) : 'No date'}</td>
-                                            <td>${Math.round(row.probability * 100)}%</td>
+                                            <td>${Math.round(row.probability * 100)}%<small>${escapeHtml(incomeReliabilityLabel(row))}</small></td>
+                                            <td style="text-align:right">${formatCurrency(row.weightedAmount)}</td>
                                             <td style="text-align:right">${formatCurrency(row.amount)}</td>
                                             <td style="text-align:right">
                                                 ${row.status === 'paid' ? '' : `
@@ -3817,9 +3865,10 @@ window.FinancialMode = (function () {
             treasury: currentTreasury || {},
             nowIso: new Date().toISOString(),
         });
-        const horizons = [7, 30, 90, 180]
+        const horizons = [7, 30, 60, 90, 180]
             .map((days) => forecast.byHorizon && forecast.byHorizon[String(days)])
             .filter(Boolean);
+        const warnings = safeArray(forecast.warnings).slice(0, 4);
         return `
             <section class="fin-section">
                 <div class="widget ui-card glass fin-card">
@@ -3835,7 +3884,11 @@ window.FinancialMode = (function () {
                             </div>
                         `).join('')}
                     </div>
-                    ${safeArray(forecast.warnings).length ? `<div class="fin-helper-text">${escapeHtml(forecast.warnings[0])}</div>` : ''}
+                    ${warnings.length ? `
+                        <div class="fin-forecast-warning-list" aria-label="Forecast warnings">
+                            ${warnings.map((warning) => `<div class="fin-confidence-row"><span class="fin-text-med">${escapeHtml(warning)}</span></div>`).join('')}
+                        </div>
+                    ` : ''}
                 </div>
             </section>
         `;
@@ -4161,15 +4214,21 @@ window.FinancialMode = (function () {
             panelHtml = `
                 ${deals.length ? `
                     <table class="fin-table fin-table--compact">
-                        <thead><tr><th>Source</th><th>Expected date</th><th>Amount</th><th>Prob.</th><th>Weighted</th><th style="text-align:right">Actions</th></tr></thead>
+                        <thead><tr><th>Source</th><th>Status</th><th>Due state</th><th>Expected date</th><th>Prob.</th><th>Weighted</th><th style="text-align:right">Actions</th></tr></thead>
                         <tbody>
-                            ${deals.map((deal) => `
+                            ${deals.map((deal) => {
+                                const status = incomeStatusFromDeal(deal);
+                                const dueState = incomeDueStateFromDeal(deal, status);
+                                const probability = Number(deal.probability || 0);
+                                const projectLabel = incomeProjectLabel(deal.projectId);
+                                return `
                                 <tr>
-                                    <td>${deal.title || 'Pipeline item'}</td>
-                                    <td>${deal.expectedDateISO}</td>
-                                    <td>${formatCurrency(deal.value)}</td>
-                                    <td>${(Number(deal.probability || 0) * 100).toFixed(0)}%</td>
-                                    <td class="fin-val-pos">${formatCurrency((Number(deal.value) || 0) * (Number(deal.probability) || 0))}</td>
+                                    <td>${escapeHtml(deal.title || 'Pipeline item')}<small>${escapeHtml([deal.incomeType === 'retainer' ? 'retainer' : deal.incomeType === 'recurring' ? 'recurring' : '', projectLabel].filter(Boolean).join(' · '))}</small></td>
+                                    <td>${renderStatusPill(status)}</td>
+                                    <td>${renderStatusPill(dueState)}</td>
+                                    <td>${deal.expectedDateISO ? formatShortDate(deal.expectedDateISO) : 'No date'}</td>
+                                    <td>${(probability * 100).toFixed(0)}%</td>
+                                    <td class="fin-val-pos">${formatCurrency((Number(deal.value) || 0) * probability)}</td>
                                     <td style="text-align:right">
                                         <span class="fin-inline-icon-actions fin-inline-icon-actions--right">
                                             ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'income', '${escapeActionArg(deal.id)}'`, label: `Edit ${deal.title || 'pipeline item'}` })}
@@ -4178,7 +4237,8 @@ window.FinancialMode = (function () {
                                         </span>
                                     </td>
                                 </tr>
-                            `).join('')}
+                            `;
+                            }).join('')}
                         </tbody>
                     </table>
                 ` : renderCompactEmpty(currentHasFinanceData ? 'Forecast future income. What is the next likely incoming payment?' : 'Begin tracking. Add your first entry.')}

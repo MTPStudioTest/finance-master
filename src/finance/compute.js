@@ -125,13 +125,53 @@
     }
 
     function classifyIncomeStatus(deal) {
-        var status = String(deal && deal.status || '').toLowerCase();
-        var probability = Events.clampProbability(deal && deal.probability);
-        if (status === 'received' || status === 'paid') return 'received';
-        if (status === 'cancelled' || status === 'lost' || status === 'closed') return 'cancelled';
-        if (status === 'confirmed' || status === 'signed' || probability >= 0.8) return 'confirmed';
-        if (status === 'risky' || status === 'open' || probability < 0.5) return 'risky';
-        return 'expected';
+        var raw = String(deal && deal.status || 'expected').toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+        if (raw === 'open' || raw === 'manual_expected_income') return 'expected';
+        if (raw === 'signed' || raw === 'verbal_commitment') return 'confirmed';
+        if (raw === 'invoice_sent' || raw === 'sent') return 'invoiced';
+        if (raw === 'received' || raw === 'settled' || raw === 'closed') return 'paid';
+        if (raw === 'deleted') return 'cancelled';
+        if (raw === 'opportunity') return 'lead';
+        return ['lead', 'proposal', 'expected', 'confirmed', 'invoiced', 'due', 'overdue', 'paid', 'cancelled', 'lost', 'risky'].indexOf(raw) !== -1 ? raw : 'expected';
+    }
+
+    function classifyIncomeDueState(deal, status, nowTs) {
+        if (deal && deal.dueState) return String(deal.dueState);
+        if (status === 'paid') return 'settled';
+        if (status === 'cancelled' || status === 'lost') return 'inactive';
+        var due = dateOnly(deal && deal.expectedDateISO);
+        var today = dateOnly(nowTs);
+        if (!due || !today) return 'upcoming';
+        if (due < today) {
+            var overdueMs = Date.parse(today + 'T00:00:00.000Z') - Date.parse(due + 'T00:00:00.000Z');
+            return overdueMs > 14 * 24 * 60 * 60 * 1000 ? 'severely_overdue' : 'overdue';
+        }
+        if (status === 'overdue') return 'overdue';
+        if (due === today || status === 'due') return 'due_today';
+        var dueSoonEnd = global.FinanceDates && global.FinanceDates.addDaysDateOnly
+            ? global.FinanceDates.addDaysDateOnly(today, 7)
+            : dateOnly(addDays(nowTs, 7));
+        if (dueSoonEnd && due <= dueSoonEnd) return 'due_soon';
+        return 'upcoming';
+    }
+
+    function includeIncome(entry, scenario) {
+        var status = String(entry && entry.status || '');
+        var probability = Events.clampProbability(entry && entry.probability);
+        var incomeType = String(entry && entry.incomeType || '').toLowerCase();
+        if (status === 'paid' || status === 'cancelled' || status === 'lost') return false;
+        if (scenario === 'conservative') {
+            return ['confirmed', 'invoiced', 'due', 'overdue'].indexOf(status) !== -1 && probability >= 0.85;
+        }
+        if (scenario === 'expected') {
+            return includeIncome(entry, 'conservative')
+                || ((status === 'expected' || incomeType === 'retainer' || incomeType === 'recurring') && probability >= 0.5);
+        }
+        if (scenario === 'optimistic') {
+            return includeIncome(entry, 'expected')
+                || (['proposal', 'lead', 'risky'].indexOf(status) !== -1 && probability > 0);
+        }
+        return false;
     }
 
     function classifyObligationStatus(dueDate, nowTs) {
@@ -323,26 +363,37 @@
 
         var income = pipelineDeals.map(function (deal) {
             var status = classifyIncomeStatus(deal);
+            var probability = Events.clampProbability(deal && deal.probability);
             return {
                 id: String((deal && deal.id) || ''),
                 title: String((deal && deal.title) || 'Income'),
                 amount: round(Number(deal && deal.value) || 0),
                 dueDate: dateOnly(deal && deal.expectedDateISO),
                 status: status,
-                probability: Events.clampProbability(deal && deal.probability),
+                dueState: classifyIncomeDueState(deal, status, nowTs),
+                probability: probability,
+                weightedAmount: round((Number(deal && deal.value) || 0) * probability),
+                incomeType: String((deal && deal.incomeType) || 'one_off'),
+                projectId: String((deal && deal.projectId) || ''),
                 scope: String((deal && deal.scope) || 'shared')
             };
         }).filter(function (entry) {
-            return entry.status !== 'received' && entry.status !== 'cancelled';
+            return entry.status !== 'paid' && entry.status !== 'cancelled' && entry.status !== 'lost';
         });
 
-        var incomeThisMonth = { confirmed: 0, expected: 0, risky: 0, received: 0 };
+        var incomeThisMonth = { confirmed: 0, invoiced: 0, due: 0, overdue: 0, expected: 0, proposal: 0, lead: 0, risky: 0, recurring: 0, received: 0 };
         income.forEach(function (entry) {
             var ts = Date.parse(entry.dueDate || '');
             if (!Number.isFinite(ts) || ts < monthStart || ts > monthEnd) return;
             if (entry.status === 'confirmed') incomeThisMonth.confirmed += entry.amount;
+            if (entry.status === 'invoiced') incomeThisMonth.invoiced += entry.amount;
+            if (entry.status === 'due') incomeThisMonth.due += entry.amount;
+            if (entry.status === 'overdue' || entry.dueState === 'overdue' || entry.dueState === 'severely_overdue') incomeThisMonth.overdue += entry.amount;
             if (entry.status === 'expected') incomeThisMonth.expected += entry.amount;
+            if (entry.status === 'proposal') incomeThisMonth.proposal += entry.amount;
+            if (entry.status === 'lead') incomeThisMonth.lead += entry.amount;
             if (entry.status === 'risky') incomeThisMonth.risky += entry.amount;
+            if (entry.incomeType === 'retainer' || entry.incomeType === 'recurring') incomeThisMonth.recurring += entry.amount;
         });
         transactions.forEach(function (entry) {
             var ts = Date.parse(entry && entry.timestamp || '');
@@ -364,12 +415,12 @@
         }
 
         var forecastIncome = income.filter(isInsideForecast);
-        var confirmed90 = forecastIncome.filter(function (entry) { return entry.status === 'confirmed'; })
-            .reduce(function (sum, entry) { return sum + entry.amount; }, 0);
-        var expected90 = forecastIncome.filter(function (entry) { return entry.status === 'expected'; })
-            .reduce(function (sum, entry) { return sum + entry.amount; }, 0);
-        var risky90 = forecastIncome.filter(function (entry) { return entry.status === 'risky'; })
-            .reduce(function (sum, entry) { return sum + entry.amount; }, 0);
+        var conservative90 = forecastIncome.filter(function (entry) { return includeIncome(entry, 'conservative'); })
+            .reduce(function (sum, entry) { return sum + ((Number(entry.amount) || 0) * Events.clampProbability(entry.probability)); }, 0);
+        var expected90 = forecastIncome.filter(function (entry) { return includeIncome(entry, 'expected') && !includeIncome(entry, 'conservative'); })
+            .reduce(function (sum, entry) { return sum + ((Number(entry.amount) || 0) * Events.clampProbability(entry.probability)); }, 0);
+        var optimistic90 = forecastIncome.filter(function (entry) { return includeIncome(entry, 'optimistic') && !includeIncome(entry, 'expected'); })
+            .reduce(function (sum, entry) { return sum + ((Number(entry.amount) || 0) * Events.clampProbability(entry.probability)); }, 0);
         var scheduled90 = obligations
             .filter(function (entry) { return entry.status !== 'paid'; })
             .reduce(function (sum, entry) { return sum + (Number(entry.amount) || 0); }, 0);
@@ -429,16 +480,19 @@
             });
         });
         income.filter(function (entry) {
-            var due = dateOnly(entry && entry.dueDate);
-            return entry.status === 'risky' || (due && due < todayOnly);
+            return entry.status === 'risky'
+                || entry.status === 'lead'
+                || entry.status === 'proposal'
+                || entry.dueState === 'overdue'
+                || entry.dueState === 'severely_overdue';
         }).slice(0, 4).forEach(function (entry) {
             reviewQueue.push({
                 kind: 'pipeline',
                 id: entry.id,
                 targetId: entry.id,
                 title: entry.title,
-                reason: entry.status === 'risky' ? 'Risky income assumption' : 'Expected income is overdue',
-                actionLabel: entry.status === 'risky' ? 'Update' : 'Received',
+                reason: (entry.dueState === 'overdue' || entry.dueState === 'severely_overdue') ? 'Expected income is overdue' : 'Income confidence needs review',
+                actionLabel: (entry.dueState === 'overdue' || entry.dueState === 'severely_overdue') ? 'Received' : 'Update',
                 tone: 'review'
             });
         });
@@ -457,10 +511,10 @@
             return entry.status !== 'paid' && isInsideDays(entry, 30);
         });
         var next30Confirmed = next30Income
-            .filter(function (entry) { return entry.status === 'confirmed'; })
-            .reduce(function (sum, entry) { return sum + (Number(entry.amount) || 0); }, 0);
+            .filter(function (entry) { return includeIncome(entry, 'conservative'); })
+            .reduce(function (sum, entry) { return sum + ((Number(entry.amount) || 0) * Events.clampProbability(entry.probability)); }, 0);
         var next30ExpectedWeighted = next30Income
-            .filter(function (entry) { return entry.status === 'expected'; })
+            .filter(function (entry) { return includeIncome(entry, 'expected') && !includeIncome(entry, 'conservative'); })
             .reduce(function (sum, entry) { return sum + ((Number(entry.amount) || 0) * Events.clampProbability(entry.probability)); }, 0);
         var next30ObligationTotal = next30Obligations
             .reduce(function (sum, entry) { return sum + (Number(entry.amount) || 0); }, 0);
@@ -519,14 +573,20 @@
             income: income,
             incomeThisMonth: {
                 confirmed: round(incomeThisMonth.confirmed),
+                invoiced: round(incomeThisMonth.invoiced),
+                due: round(incomeThisMonth.due),
+                overdue: round(incomeThisMonth.overdue),
                 expected: round(incomeThisMonth.expected),
+                proposal: round(incomeThisMonth.proposal),
+                lead: round(incomeThisMonth.lead),
                 risky: round(incomeThisMonth.risky),
+                recurring: round(incomeThisMonth.recurring),
                 received: round(incomeThisMonth.received)
             },
             incomeScenarios: {
-                conservative: round(availableCash + confirmed90 - scheduled90),
-                expected: round(availableCash + confirmed90 + expected90 - scheduled90),
-                optimistic: round(availableCash + confirmed90 + expected90 + risky90 - scheduled90)
+                conservative: round(availableCash + conservative90 - scheduled90),
+                expected: round(availableCash + conservative90 + expected90 - scheduled90),
+                optimistic: round(availableCash + conservative90 + expected90 + optimistic90 - scheduled90)
             },
             dashboardSummary: {
                 actionThisWeek: {

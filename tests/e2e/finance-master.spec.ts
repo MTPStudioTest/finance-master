@@ -644,9 +644,37 @@ test('income exposes open, settled, and all income views', async ({ page }) => {
   await page.getByRole('button', { name: 'Cashflow', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Cashflow', exact: true })).toBeVisible();
   await expect(page.getByText('Expected and settled income records.', { exact: false })).toBeVisible();
-  await expect(page.getByText('Confirmed, invoiced, or due soon', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Expected but not guaranteed', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Early or lower-confidence assumptions', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Confirmed, invoiced, due, or overdue', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Expected, retainer, or recurring income', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Proposal, lead, or legacy low-confidence income', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Due state', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Forecast Scenarios', { exact: true })).toBeVisible();
+  await expect(page.getByText('60 days', { exact: true })).toBeVisible();
+  const beforeTransactions = await page.evaluate(() => window.Store.getFinancialReadModel().transactions.length);
+  await page.getByRole('button', { name: 'Add expected income', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Add income', exact: true })).toBeVisible();
+  await page.locator('#modal-income-title').fill('Retainer forecast only');
+  await page.locator('#modal-income-amount').fill('600');
+  await page.locator('#modal-income-probability').fill('0.9');
+  await page.locator('#modal-income-date').fill('2026-06-10');
+  await page.locator('#modal-income-status').selectOption('expected');
+  await page.locator('#modal-income-type').selectOption('retainer');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
+  const retainerRow = page.locator('.fin-table tbody tr').filter({ hasText: 'Retainer forecast only' }).first();
+  await expect(retainerRow).toBeVisible();
+  await expect(retainerRow.getByText('retainer', { exact: false }).first()).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.Store.getFinancialReadModel().transactions.length)).toBe(beforeTransactions);
+  await retainerRow.getByRole('button', { name: 'Edit Retainer forecast only', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Edit income', exact: true })).toBeVisible();
+  await page.locator('#modal-income-status').selectOption('confirmed');
+  await page.locator('#modal-income-probability').fill('0.95');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => {
+    const income = window.Store.getFinancialReadModel().pipelineDeals.find((entry: any) => String(entry.title) === 'Retainer forecast only');
+    return `${income?.status || ''}|${income?.probability || ''}|${income?.incomeType || ''}`;
+  })).toBe('confirmed|0.95|retainer');
   await page.getByRole('button', { name: 'Settled', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Settled', exact: true })).toHaveClass(/active/);
   await page.getByRole('button', { name: 'All', exact: true }).click();
@@ -910,13 +938,13 @@ test('review queue actions categorize, match, update pipeline, and add debt plan
   await expect(page.locator('.fin-tab-panel .fin-transaction-row').filter({ hasText: 'Matchable rent payment' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Month Close', exact: true }).click();
 
-  const pipelineRow = page.locator('.fin-review-row').filter({ hasText: 'Risky income assumption' }).first();
+  const pipelineRow = page.locator('.fin-review-row').filter({ hasText: 'Income confidence needs review' }).first();
   await pipelineRow.getByRole('button', { name: 'Edit income review', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Review pipeline item', exact: true })).toBeVisible();
   await page.getByLabel('Status').selectOption('expected');
   await page.getByLabel('Probability').fill('0.75');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page.locator('.fin-review-row').filter({ hasText: 'Risky income assumption' })).toHaveCount(0);
+  await expect(page.locator('.fin-review-row').filter({ hasText: 'Income confidence needs review' })).toHaveCount(0);
 
   const debtRow = page.locator('.fin-review-row').filter({ hasText: 'Debt needs a due date or payment plan' }).first();
   await debtRow.getByRole('button', { name: 'Edit payment plan', exact: true }).click();

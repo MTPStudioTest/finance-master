@@ -358,28 +358,40 @@ body.mode-financial .financial-dashboard {
 .fin-status-pill--confirmed,
 .fin-status-pill--likely,
 .fin-status-pill--paid,
-.fin-status-pill--received {
+.fin-status-pill--received,
+.fin-status-pill--settled {
     border-color: rgba(168, 230, 207, 0.26);
     color: var(--fin-safe);
 }
 
 .fin-status-pill--expected,
 .fin-status-pill--upcoming,
-.fin-status-pill--due_soon {
+.fin-status-pill--due_soon,
+.fin-status-pill--proposal,
+.fin-status-pill--lead {
     border-color: rgba(178, 226, 242, 0.24);
     color: var(--fin-accent);
 }
 
 .fin-status-pill--risky,
 .fin-status-pill--uncertain,
-.fin-status-pill--needs_review {
+.fin-status-pill--needs_review,
+.fin-status-pill--due_today {
     border-color: rgba(226, 192, 68, 0.26);
     color: var(--fin-stress-med);
 }
 
-.fin-status-pill--overdue {
+.fin-status-pill--overdue,
+.fin-status-pill--severely_overdue {
     border-color: rgba(241, 185, 167, 0.3);
     color: var(--fin-stress-high);
+}
+
+.fin-status-pill--cancelled,
+.fin-status-pill--lost,
+.fin-status-pill--inactive {
+    border-color: rgba(160, 167, 173, 0.24);
+    color: var(--text-tertiary);
 }
 
 .fin-table-wrap {

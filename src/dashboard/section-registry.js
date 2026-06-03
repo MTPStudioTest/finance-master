@@ -28,7 +28,7 @@ export function createSectionRenderer(renderers, renderSectionHeading) {
         reserves: {
             title: 'Treasury',
             copy: 'Cash accounts, protected money, reserve targets, obligations, burn, and debt plans.',
-            sections: ['reserves', 'goals', 'fixedCosts']
+            sections: ['reserves']
         }
     };
 
