@@ -321,6 +321,7 @@ test('ledger inspector suggests expected income matches without applying them au
   await page.getByLabel('Probability').fill('0.9');
   await page.getByLabel('Settlement account').selectOption({ index: 1 });
   await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
 
   await openQuickAdd(page);
   await chooseQuickAction(page, /Add transaction/);
@@ -330,6 +331,7 @@ test('ledger inspector suggests expected income matches without applying them au
   await page.getByLabel('Amount').fill('777');
   await page.getByLabel('Account', { exact: true }).selectOption({ index: 1 });
   await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Cash Movement', exact: true }).click();
   await page.getByLabel('Search ledger').fill('Acme launch income');
@@ -762,7 +764,9 @@ test('savings goal progress and weekly reconciliation complete the operating rit
   await expect(page.getByText('Income received', { exact: true })).toBeVisible();
   await expect(page.getByText('Expenses paid', { exact: true })).toBeVisible();
   await expect(page.getByText('Runway now', { exact: true })).toBeVisible();
-  await expect(page.getByText('Runway change needs review history; the current close shows the live runway baseline.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Reserve / burn check', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Previous closes')).toBeVisible();
+  await expect(page.getByText('Close this month to start the local review history.', { exact: true })).toBeVisible();
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
   await page.getByRole('button', { name: 'Close month', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Confirm each account');
@@ -781,5 +785,28 @@ test('savings goal progress and weekly reconciliation complete the operating rit
   await page.locator('#monthly-review-notes').fill('Balances reconciled for release week.');
   await page.getByRole('button', { name: 'Close month', exact: true }).click();
   await expect(page.getByText('Month Close closed', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Previous closes').getByText('Balances reconciled for release week.')).toHaveCount(0);
+  await expect(page.getByLabel('Previous closes').getByText(/\d{4}-\d{2}/).first()).toBeVisible();
+  await expect(page.getByLabel('Previous closes').getByText(/open ·/).first()).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Month Close', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Previous closes').getByText(/\d{4}-\d{2}/).first()).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.Store.getReviewState().history.length)).toBe(1);
+  for (const checkbox of await page.locator('.monthly-review-account-check').all()) {
+    await checkbox.check();
+  }
+  for (const id of [
+    'monthly-review-unresolvedItems',
+    'monthly-review-matchPayments',
+    'monthly-review-confirmObligations',
+    'monthly-review-reviewSignals',
+    'monthly-review-closeMonth',
+  ]) {
+    await page.locator(`#${id}`).check();
+  }
+  await page.locator('#monthly-review-notes').fill('Same month close update.');
+  await page.getByRole('button', { name: 'Close month', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.Store.getReviewState().history.length)).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.Store.getReviewState().history[0]?.notes || '')).toBe('Same month close update.');
   expect(errors).toEqual([]);
 });

@@ -38,6 +38,7 @@ import type {
 import { createPriceProvider } from '../integrations/crypto-prices';
 import { assertFinanceBackup, validateFinanceBackup } from './backup-validation.js';
 import { calculateGoalProgress, normalizeGoalState, normalizeReviewState } from '../finance/goals.js';
+import { buildMonthCloseSummary } from '../finance/month-close.js';
 import type { BrowserStorageStatus } from './data-health.js';
 import type { FinanceMigrationStatus } from './schema-migration.js';
 
@@ -69,6 +70,7 @@ const DEFAULT_REVIEW_STATE: FinanceReviewState = {
     closeMonth: false,
   },
   notes: '',
+  history: [],
 };
 
 const DEFAULT_GOAL_STATE: FinanceGoalState = {
@@ -1166,21 +1168,45 @@ export const Store = {
       }];
     });
     if (drafts.length) this.appendFinanceEvents(drafts, { source: 'completeWeeklyReview.reconcile' });
+    const context = this.computeFinanceContext(true);
+    const summary = buildMonthCloseSummary({
+      readModel: context.readModel,
+      snapshot: context.snapshot,
+      treasury: context.treasury,
+      reviewQueue: context.treasury?.reviewQueue || [],
+      nowIso,
+    });
     const accountReconciliations = Object.fromEntries(submittedAccounts.map((account: { accountId: string; balance: number }) => [
       String(account.accountId),
       { accountId: String(account.accountId), balance: Number(account.balance), reviewedAt: nowIso },
     ]));
+    const checklist = {
+      unresolvedItems: input.unresolvedItems !== false,
+      matchPayments: input.matchPayments !== false,
+      confirmObligations: input.confirmObligations !== false,
+      reviewSignals: input.reviewSignals !== false,
+      closeMonth: input.closeMonth !== false,
+    };
+    const previousReview = this.getReviewState();
+    const historyEntry = {
+      id: `${summary.monthKey}-${nowIso}`,
+      monthKey: summary.monthKey,
+      closedAt: nowIso,
+      notes: String(input.notes || ''),
+      accountReconciliations,
+      checklist,
+      summary,
+    };
+    const history = [
+      historyEntry,
+      ...(previousReview.history || []).filter((entry) => entry.monthKey !== summary.monthKey),
+    ].slice(0, 24);
     const review: FinanceReviewState = {
       lastReviewedAt: nowIso,
       accountReconciliations,
-      checklist: {
-        unresolvedItems: input.unresolvedItems !== false,
-        matchPayments: input.matchPayments !== false,
-        confirmObligations: input.confirmObligations !== false,
-        reviewSignals: input.reviewSignals !== false,
-        closeMonth: input.closeMonth !== false,
-      },
+      checklist,
       notes: String(input.notes || ''),
+      history,
     };
     setJson(STORAGE_KEYS.review, review);
     emitFinanceUpdated(this.getFinancialSnapshot(true), 'completeWeeklyReview');

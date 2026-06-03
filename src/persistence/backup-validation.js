@@ -52,11 +52,42 @@ function validateReview(review, errors, version) {
     errors.push('Weekly review state is incomplete.');
     return;
   }
+  const checklist = isObject(review.checklist) ? review.checklist : {};
+  const hasLegacyChecklist = typeof checklist.recurringCosts === 'boolean'
+    && typeof checklist.pipeline === 'boolean'
+    && typeof checklist.signals === 'boolean';
+  const hasMonthCloseChecklist = typeof checklist.unresolvedItems === 'boolean'
+    && typeof checklist.matchPayments === 'boolean'
+    && typeof checklist.confirmObligations === 'boolean'
+    && typeof checklist.reviewSignals === 'boolean'
+    && typeof checklist.closeMonth === 'boolean';
+  const history = Array.isArray(review.history) ? review.history : [];
+  const invalidHistory = history.some((entry) => !isObject(entry) || !String(entry.id || '').trim()
+    || !/^\d{4}-\d{2}$/.test(String(entry.monthKey || '')) || !isTimestamp(entry.closedAt)
+    || typeof entry.notes !== 'string' || !isObject(entry.accountReconciliations)
+    || !isObject(entry.checklist) || !isObject(entry.summary)
+    || typeof entry.checklist.unresolvedItems !== 'boolean'
+    || typeof entry.checklist.matchPayments !== 'boolean'
+    || typeof entry.checklist.confirmObligations !== 'boolean'
+    || typeof entry.checklist.reviewSignals !== 'boolean'
+    || typeof entry.checklist.closeMonth !== 'boolean'
+    || !/^\d{4}-\d{2}$/.test(String(entry.summary.monthKey || ''))
+    || !Number.isFinite(Number(entry.summary.netMovement))
+    || !Number.isFinite(Number(entry.summary.incomeReceived))
+    || !Number.isFinite(Number(entry.summary.expensesPaid))
+    || !Number.isFinite(Number(entry.summary.obligationsReviewed))
+    || !Number.isFinite(Number(entry.summary.reserveMovements))
+    || !Number.isFinite(Number(entry.summary.unresolvedItems))
+    || !Number.isFinite(Number(entry.summary.protectedCash))
+    || !Number.isFinite(Number(entry.summary.monthlyBurn))
+    || (entry.summary.runwayNow !== null && !Number.isFinite(Number(entry.summary.runwayNow)))
+    || typeof entry.summary.mainRisk !== 'string'
+    || typeof entry.summary.mainAction !== 'string');
   if (version === 2 && (!isObject(review.accountReconciliations) || !isObject(review.checklist)
-    || typeof review.checklist.recurringCosts !== 'boolean' || typeof review.checklist.pipeline !== 'boolean'
-    || typeof review.checklist.signals !== 'boolean' || typeof review.notes !== 'string'
+    || (!hasLegacyChecklist && !hasMonthCloseChecklist) || typeof review.notes !== 'string'
     || Object.values(review.accountReconciliations).some((entry) => !isObject(entry)
-      || !String(entry.accountId || '').trim() || !Number.isFinite(Number(entry.balance)) || !isTimestamp(entry.reviewedAt)))) {
+      || !String(entry.accountId || '').trim() || !Number.isFinite(Number(entry.balance)) || !isTimestamp(entry.reviewedAt))
+    || invalidHistory)) {
     errors.push('Weekly review ritual state is incomplete.');
   }
 }

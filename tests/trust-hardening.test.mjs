@@ -27,6 +27,7 @@ import {
   isWeeklyReviewDue,
   normalizeReviewState,
 } from '../src/finance/goals.js';
+import { buildMonthCloseSummary } from '../src/finance/month-close.js';
 
 function validBackup() {
   return {
@@ -309,10 +310,79 @@ test('weekly review normalization keeps legacy reads useful and marks stale revi
   assert.deepEqual(normalizeReviewState({ lastReviewedAt: null }), {
     lastReviewedAt: null,
     accountReconciliations: {},
-    checklist: { recurringCosts: false, pipeline: false, signals: false },
+    checklist: {
+      unresolvedItems: false,
+      matchPayments: false,
+      confirmObligations: false,
+      reviewSignals: false,
+      closeMonth: false,
+    },
     notes: '',
+    history: [],
   });
+  assert.deepEqual(normalizeReviewState({
+    lastReviewedAt: '2026-06-02T10:00:00.000Z',
+    checklist: { recurringCosts: true, pipeline: true, signals: true },
+  }).checklist, {
+    unresolvedItems: true,
+    matchPayments: false,
+    confirmObligations: true,
+    reviewSignals: true,
+    closeMonth: false,
+  });
+  assert.equal(normalizeReviewState({
+    lastReviewedAt: '2026-06-02T10:00:00.000Z',
+    history: Array.from({ length: 25 }, (_, index) => ({
+      id: `close-${index}`,
+      monthKey: `2026-${String((index % 12) + 1).padStart(2, '0')}`,
+      closedAt: '2026-06-02T10:00:00.000Z',
+      notes: '',
+      accountReconciliations: {},
+      checklist: { unresolvedItems: true, matchPayments: true, confirmObligations: true, reviewSignals: true, closeMonth: true },
+      summary: {
+        monthKey: '2026-06',
+        netMovement: 0,
+        incomeReceived: 0,
+        expensesPaid: 0,
+        obligationsReviewed: 0,
+        reserveMovements: 0,
+        runwayNow: null,
+        unresolvedItems: 0,
+        protectedCash: 0,
+        monthlyBurn: 0,
+        mainRisk: 'No major close risk detected.',
+        mainAction: 'Keep next month reviewed on the same cadence.',
+      },
+    })),
+  }).history.length, 24);
   assert.equal(isWeeklyReviewDue(null, '2026-06-10T10:00:00.000Z'), true);
   assert.equal(isWeeklyReviewDue('2026-06-04T10:00:00.000Z', '2026-06-10T10:00:00.000Z'), false);
   assert.equal(isWeeklyReviewDue('2026-06-03T10:00:00.000Z', '2026-06-10T10:00:00.000Z'), true);
+});
+
+test('month close summary is deterministic and uses existing ledger evidence', () => {
+  const summary = buildMonthCloseSummary({
+    nowIso: '2026-06-15T10:00:00.000Z',
+    readModel: {
+      fiatAccounts: [{ id: 'reserve', reserved: true, bucket: 'tax' }],
+      transactions: [
+        { type: 'income.received', timestamp: '2026-06-02T10:00:00.000Z', signedAmount: 1500 },
+        { type: 'expense.recorded', timestamp: '2026-06-05T10:00:00.000Z', signedAmount: -250, obligationId: 'rent' },
+        { type: 'transfer', timestamp: '2026-06-08T10:00:00.000Z', signedAmount: 0, toAccountId: 'reserve' },
+        { type: 'income.received', timestamp: '2026-05-30T10:00:00.000Z', signedAmount: 999 },
+      ],
+    },
+    snapshot: { runwayMonths: 2.5, monthlyBurn: 900 },
+    treasury: { protectedCash: 400 },
+    reviewQueue: [{ id: 'unclear' }],
+  });
+  assert.equal(summary.monthKey, '2026-06');
+  assert.equal(summary.netMovement, 1250);
+  assert.equal(summary.incomeReceived, 1500);
+  assert.equal(summary.expensesPaid, 250);
+  assert.equal(summary.obligationsReviewed, 1);
+  assert.equal(summary.reserveMovements, 1);
+  assert.equal(summary.runwayNow, 2.5);
+  assert.equal(summary.unresolvedItems, 1);
+  assert.match(summary.mainRisk, /Open items/);
 });

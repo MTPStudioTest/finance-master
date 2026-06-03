@@ -1,4 +1,5 @@
 const SCOPES = ['personal', 'business', 'shared'];
+const REVIEW_HISTORY_LIMIT = 24;
 
 function isObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -27,15 +28,59 @@ export function normalizeReviewState(input) {
   const lastReviewedAt = source.lastReviewedAt === null || Number.isFinite(Date.parse(String(source.lastReviewedAt || '')))
     ? source.lastReviewedAt || null
     : null;
+  const normalizedChecklist = {
+    unresolvedItems: checklist.unresolvedItems === true || checklist.recurringCosts === true,
+    matchPayments: checklist.matchPayments === true,
+    confirmObligations: checklist.confirmObligations === true || checklist.pipeline === true,
+    reviewSignals: checklist.reviewSignals === true || checklist.signals === true,
+    closeMonth: checklist.closeMonth === true,
+  };
+  const history = Array.isArray(source.history) ? source.history.flatMap((entry) => {
+    if (!isObject(entry) || !String(entry.monthKey || '').match(/^\d{4}-\d{2}$/) || !Number.isFinite(Date.parse(String(entry.closedAt || '')))) return [];
+    const summary = isObject(entry.summary) ? entry.summary : {};
+    const historyReconciliations = isObject(entry.accountReconciliations) ? entry.accountReconciliations : {};
+    const closedAt = String(entry.closedAt);
+    return [{
+      id: String(entry.id || `${entry.monthKey}-${closedAt}`),
+      monthKey: String(entry.monthKey),
+      closedAt,
+      notes: typeof entry.notes === 'string' ? entry.notes : '',
+      accountReconciliations: Object.fromEntries(Object.entries(historyReconciliations).flatMap(([id, value]) => {
+        if (!isObject(value) || !String(value.accountId || id).trim()) return [];
+        const balance = Number(value.balance);
+        const reviewedAt = String(value.reviewedAt || closedAt);
+        if (!Number.isFinite(balance) || !Number.isFinite(Date.parse(reviewedAt))) return [];
+        return [[id, { accountId: String(value.accountId || id), balance, reviewedAt }]];
+      })),
+      checklist: {
+        unresolvedItems: isObject(entry.checklist) && entry.checklist.unresolvedItems === true,
+        matchPayments: isObject(entry.checklist) && entry.checklist.matchPayments === true,
+        confirmObligations: isObject(entry.checklist) && entry.checklist.confirmObligations === true,
+        reviewSignals: isObject(entry.checklist) && entry.checklist.reviewSignals === true,
+        closeMonth: isObject(entry.checklist) && entry.checklist.closeMonth === true,
+      },
+      summary: {
+        monthKey: String(summary.monthKey || entry.monthKey),
+        netMovement: Number(summary.netMovement) || 0,
+        incomeReceived: Number(summary.incomeReceived) || 0,
+        expensesPaid: Number(summary.expensesPaid) || 0,
+        obligationsReviewed: Number(summary.obligationsReviewed) || 0,
+        reserveMovements: Number(summary.reserveMovements) || 0,
+        runwayNow: Number.isFinite(Number(summary.runwayNow)) ? Number(summary.runwayNow) : null,
+        unresolvedItems: Number(summary.unresolvedItems) || 0,
+        protectedCash: Number(summary.protectedCash) || 0,
+        monthlyBurn: Number(summary.monthlyBurn) || 0,
+        mainRisk: typeof summary.mainRisk === 'string' ? summary.mainRisk : 'No major close risk detected.',
+        mainAction: typeof summary.mainAction === 'string' ? summary.mainAction : 'Keep next month reviewed on the same cadence.',
+      },
+    }];
+  }).slice(0, REVIEW_HISTORY_LIMIT) : [];
   return {
     lastReviewedAt,
     accountReconciliations,
-    checklist: {
-      recurringCosts: checklist.recurringCosts === true,
-      pipeline: checklist.pipeline === true,
-      signals: checklist.signals === true,
-    },
+    checklist: normalizedChecklist,
     notes: typeof source.notes === 'string' ? source.notes : '',
+    history,
   };
 }
 

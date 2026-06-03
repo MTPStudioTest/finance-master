@@ -21,6 +21,37 @@ interface FinanceAccountReconciliation {
   reviewedAt: string;
 }
 
+export interface FinanceMonthCloseSummary {
+  monthKey: string;
+  netMovement: number;
+  incomeReceived: number;
+  expensesPaid: number;
+  obligationsReviewed: number;
+  reserveMovements: number;
+  runwayNow: number | null;
+  unresolvedItems: number;
+  protectedCash: number;
+  monthlyBurn: number;
+  mainRisk: string;
+  mainAction: string;
+}
+
+export interface FinanceReviewHistoryEntry {
+  id: string;
+  monthKey: string;
+  closedAt: string;
+  notes: string;
+  accountReconciliations: Record<string, FinanceAccountReconciliation>;
+  checklist: {
+    unresolvedItems: boolean;
+    matchPayments: boolean;
+    confirmObligations: boolean;
+    reviewSignals: boolean;
+    closeMonth: boolean;
+  };
+  summary: FinanceMonthCloseSummary;
+}
+
 export interface FinanceReviewState {
   lastReviewedAt: string | null;
   accountReconciliations: Record<string, FinanceAccountReconciliation>;
@@ -32,6 +63,7 @@ export interface FinanceReviewState {
     closeMonth: boolean;
   };
   notes: string;
+  history: FinanceReviewHistoryEntry[];
 }
 
 

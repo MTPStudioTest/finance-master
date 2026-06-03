@@ -9,6 +9,7 @@ import {
     renderStatusPill,
     scopeFilterOptions
 } from './finance-ui.js';
+import { buildMonthCloseSummary } from '../finance/month-close.js';
 
 /**
  * FinancialMode — UI Controller for Dashi "Financial Mode (Gravity Treasury)"
@@ -1320,38 +1321,53 @@ window.FinancialMode = (function () {
     }
 
     function renderMonthCloseSummary() {
-        const transactions = safeArray(currentData && currentData.transactions);
-        const monthKey = window.FinanceDates?.monthKey?.(window.FinanceDates?.todayDateOnly?.() || new Date().toISOString())
-            || new Date().toISOString().slice(0, 7);
-        const monthTransactions = transactions.filter((entry) => {
-            const date = window.FinanceDates?.toDateOnly?.(entry && entry.timestamp) || String(entry && entry.timestamp || '').slice(0, 10);
-            return date.slice(0, 7) === monthKey;
+        const summary = buildMonthCloseSummary({
+            readModel: currentData || {},
+            snapshot: currentSnapshot || {},
+            treasury: currentTreasury || {},
+            reviewQueue: treasuryArray('reviewQueue'),
+            nowIso: new Date().toISOString(),
         });
-        const receivedIncome = monthTransactions
-            .filter((entry) => String(entry && entry.type) === 'income.received')
-            .reduce((sum, entry) => sum + Math.abs(ledgerSignedAmount(entry)), 0);
-        const paidExpenses = monthTransactions
-            .filter((entry) => String(entry && entry.type) === 'expense.recorded' && String(entry && entry.categoryId || '').toLowerCase() !== 'transfer')
-            .reduce((sum, entry) => sum + Math.abs(ledgerSignedAmount(entry)), 0);
-        const netMovement = monthTransactions.reduce((sum, entry) => sum + ledgerSignedAmount(entry), 0);
-        const reviewedObligations = monthTransactions.filter((entry) => String(entry && entry.obligationId || '').trim()).length;
-        const reserveMovements = monthTransactions.filter((entry) => ledgerReserveMovementLabel(entry)).length;
-        const unresolved = treasuryArray('reviewQueue').length;
-        const runway = Number(currentSnapshot && currentSnapshot.runwayMonths);
-        const runwayLabel = Number.isFinite(runway) ? `${runway.toFixed(1)} months` : 'Unknown';
+        const runwayLabel = Number.isFinite(Number(summary.runwayNow)) ? `${Number(summary.runwayNow).toFixed(1)} months` : 'Unknown';
         return `
             <div class="fin-monthly-review-panel fin-monthly-review-summary" aria-label="Month close summary">
                 <div class="fin-eyebrow">Close summary</div>
                 <div class="backup-preview-card">
-                    <div><span>Net movement</span><strong class="${netMovement >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${netMovement >= 0 ? '+' : '-'}${formatCurrency(Math.abs(netMovement))}</strong></div>
-                    <div><span>Income received</span><strong>${formatCurrency(receivedIncome)}</strong></div>
-                    <div><span>Expenses paid</span><strong>${formatCurrency(paidExpenses)}</strong></div>
-                    <div><span>Obligations reviewed</span><strong>${reviewedObligations}</strong></div>
-                    <div><span>Reserve movements</span><strong>${reserveMovements}</strong></div>
+                    <div><span>Net movement</span><strong class="${summary.netMovement >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${summary.netMovement >= 0 ? '+' : '-'}${formatCurrency(Math.abs(summary.netMovement))}</strong></div>
+                    <div><span>Income received</span><strong>${formatCurrency(summary.incomeReceived)}</strong></div>
+                    <div><span>Expenses paid</span><strong>${formatCurrency(summary.expensesPaid)}</strong></div>
+                    <div><span>Obligations reviewed</span><strong>${summary.obligationsReviewed}</strong></div>
+                    <div><span>Reserve movements</span><strong>${summary.reserveMovements}</strong></div>
                     <div><span>Runway now</span><strong>${escapeHtml(runwayLabel)}</strong></div>
-                    <div><span>Unresolved items</span><strong>${unresolved}</strong></div>
+                    <div><span>Unresolved items</span><strong>${summary.unresolvedItems}</strong></div>
+                    <div><span>Reserve / burn check</span><strong>${formatCurrency(summary.protectedCash)} protected · ${formatCurrency(summary.monthlyBurn)}/mo burn</strong></div>
                 </div>
-                <div class="fin-helper-text">Runway change needs review history; the current close shows the live runway baseline.</div>
+                <div class="fin-helper-text">${escapeHtml(summary.mainRisk)} ${escapeHtml(summary.mainAction)}</div>
+            </div>
+        `;
+    }
+
+    function renderMonthCloseHistory() {
+        const history = safeArray(currentReview && currentReview.history).slice(0, 3);
+        return `
+            <div class="fin-monthly-review-panel" aria-label="Previous closes">
+                <div class="fin-eyebrow">Previous closes</div>
+                ${history.length ? history.map((entry) => {
+                    const summary = entry.summary || {};
+                    const runway = Number(summary.runwayNow);
+                    const runwayLabel = Number.isFinite(runway) ? `${runway.toFixed(1)} months` : 'Unknown';
+                    return `
+                        <div class="fin-review-check-row is-ready">
+                            <span>
+                                <strong>${escapeHtml(entry.monthKey || 'Closed month')}</strong>
+                                <small>Closed ${formatShortDate(entry.closedAt)} · ${escapeHtml(summary.mainRisk || 'No major close risk detected.')}</small>
+                                <small>${escapeHtml(summary.mainAction || 'Keep next month reviewed on the same cadence.')}</small>
+                            </span>
+                            <span class="fin-status-pill">${summary.unresolvedItems || 0} open · ${escapeHtml(runwayLabel)}</span>
+                            <strong class="${Number(summary.netMovement) >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${Number(summary.netMovement) >= 0 ? '+' : '-'}${formatCurrency(Math.abs(Number(summary.netMovement) || 0))}</strong>
+                        </div>
+                    `;
+                }).join('') : renderCompactEmpty('Close this month to start the local review history.')}
             </div>
         `;
     }
@@ -1426,6 +1442,7 @@ window.FinancialMode = (function () {
                         </div>
                     </div>
                     ${renderMonthCloseSummary()}
+                    ${renderMonthCloseHistory()}
                     <label class="fin-review-notes">
                         <span class="fin-eyebrow">Review note</span>
                         <textarea id="monthly-review-notes" rows="3" placeholder="What changed, what needs attention?">${escapeHtml(currentReview && currentReview.notes || '')}</textarea>
