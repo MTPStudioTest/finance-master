@@ -1593,6 +1593,24 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+#dashboard-financial #fin-content-area .fin-metric-explainer {
+    width: 100%;
+    margin-top: 0.35rem;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+}
+
+#dashboard-financial #fin-content-area .fin-metric-explainer summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+
+#dashboard-financial #fin-content-area .fin-metric-explainer .fin-confidence-list {
+    margin: 0.55rem 0 0;
+    gap: 0.45rem;
 }
 
 #dashboard-financial #fin-content-area .fin-dot {

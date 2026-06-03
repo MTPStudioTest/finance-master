@@ -6,6 +6,7 @@ export const STORAGE_KEYS = Object.freeze({
   goals: 'finance-master.goals.v1',
   imports: 'finance-master.imports.v1',
   priceCache: 'finance-master.prices.v1',
+  backupMeta: 'finance-master.backup-meta.v1',
   focusMode: 'finance-master.layout.focus-mode',
   pipelineTab: 'finance-master.layout.pipeline-tab',
   collapsedPrefix: 'finance-master.layout.collapsed.',

@@ -11,6 +11,17 @@ export function backupMetadata(
   eventCount: number;
   latestLocalEventAt: string | null;
 };
+export interface BrowserStorageStatus {
+  storageStatus: 'healthy' | 'limited' | 'unavailable';
+  indexedDbAvailable: boolean;
+  localStorageAvailable: boolean;
+  quotaAvailable: boolean;
+  quotaUsage: number | null;
+  quotaLimit: number | null;
+  privateModeWarning: boolean;
+}
+export function evaluateStorageStatus(capabilities?: Partial<BrowserStorageStatus>): BrowserStorageStatus;
+export function inspectBrowserStorageAvailability(browserGlobal?: unknown): Promise<BrowserStorageStatus>;
 export function inspectFinanceStorage(entries: Record<string, { present: boolean; value: unknown }>): {
   ok: boolean;
   issues: Array<{ key: string; label: string; message: string; severity: 'error' | 'warning' }>;

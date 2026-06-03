@@ -75,6 +75,8 @@ test('empty ledger produces a trustworthy empty-state snapshot', () => {
     Array.from(result.snapshot.missingInputs),
     ['recurring expenses', 'recent financial activity', 'monthly burn', 'pipeline', 'compute freshness'],
   );
+  assert.equal(result.explanations.forecastConfidence.label, 'Forecast confidence');
+  assert.equal(result.explanations.forecastConfidence.warnings.some((warning) => warning.includes('Missing recurring expenses')), true);
 });
 
 test('read model preserves account, scope, category, and recurring schedule metadata', () => {
@@ -128,7 +130,7 @@ test('read model preserves account, scope, category, and recurring schedule meta
   assert.equal(result.readModel.recurringExpenses[0].frequency, 'monthly');
   assert.equal(result.snapshot.realBalance, 1200);
   assert.equal(result.snapshot.monthlyBurn, 300);
-  assert.equal(result.snapshot.runwayMonths, 4);
+  assert.equal(result.snapshot.runwayMonths, 3);
 });
 
 test('treasury model separates reserved cash from truly available cash', () => {
@@ -171,12 +173,19 @@ test('treasury model separates reserved cash from truly available cash', () => {
   });
 
   assert.equal(result.treasury.totalCash, 6800);
+  assert.equal(result.treasury.actualCash, 6800);
   assert.equal(result.treasury.reservedCash, 1800);
+  assert.equal(result.treasury.protectedCash, 1800);
   assert.equal(result.treasury.trulyAvailableCash, 5000);
+  assert.equal(result.treasury.committedShortTermObligations, 1000);
+  assert.equal(result.treasury.availableCash, 4000);
   assert.equal(result.treasury.totalMonthlyBurn, 1000);
-  assert.equal(result.treasury.runwayMonths, 5);
+  assert.equal(result.treasury.runwayMonths, 4);
   assert.equal(result.snapshot.realBalance, 6800);
   assert.equal(result.snapshot.trulyAvailableCash, 5000);
+  assert.equal(result.snapshot.availableCash, 4000);
+  assert.equal(result.explanations.availableCash.parts.map((part) => part.label).join('|'), 'Actual cash|This money is protected|Due within 30 days');
+  assert.equal(result.explanations.runway.parts[0].label, 'Available cash');
 });
 
 test('treasury model classifies income scenarios and review items', () => {
@@ -255,9 +264,9 @@ test('treasury model classifies income scenarios and review items', () => {
   assert.equal(result.treasury.incomeThisMonth.confirmed, 1200);
   assert.equal(result.treasury.incomeThisMonth.expected, 800);
   assert.equal(result.treasury.incomeThisMonth.risky, 2000);
-  assert.equal(result.treasury.incomeScenarios.conservative, 3700);
-  assert.equal(result.treasury.incomeScenarios.expected, 4500);
-  assert.equal(result.treasury.incomeScenarios.optimistic, 6500);
+  assert.equal(result.treasury.incomeScenarios.conservative, 3200);
+  assert.equal(result.treasury.incomeScenarios.expected, 4000);
+  assert.equal(result.treasury.incomeScenarios.optimistic, 6000);
   assert.equal(result.treasury.overdueObligations[0].title, 'Workspace');
   assert.equal(result.treasury.reviewQueue.some((item) => item.reason === 'Risky income assumption'), true);
   assert.deepEqual(Array.from(result.treasury.dashboardSummary.actionThisWeek.items.map((item) => item.kind)), ['obligation', 'payment', 'transaction', 'pipeline']);
@@ -312,6 +321,50 @@ test('treasury scenarios only include income inside the forecast horizon', () =>
   assert.equal(result.treasury.incomeScenarios.conservative, 1500);
   assert.equal(result.treasury.incomeScenarios.expected, 1500);
   assert.equal(result.treasury.incomeScenarios.optimistic, 1500);
+});
+
+test('linked received income is not double-counted in forecast pipeline totals', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-02T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-main',
+      type: 'asset.account_set',
+      amount: 3000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating cash', balance: 3000, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'income-confirmed',
+      type: 'pipeline.created',
+      amount: 1200,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'income-confirmed',
+      metadata: { title: 'Settled project', value: 1200, probability: 1, status: 'confirmed', expectedDateISO: '2026-06-20', scope: 'business' },
+    },
+    {
+      id: 'income-received',
+      type: 'income.received',
+      amount: 1200,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:00:00.000Z',
+      related_entity_id: 'txn-paid-project',
+      metadata: { description: 'Settled project paid', accountId: 'cash-main', accountName: 'Operating cash', invoiceId: 'income-confirmed', categoryId: 'client-income', scope: 'business' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(result.treasury.income.some((entry) => entry.id === 'income-confirmed'), false);
+  assert.equal(result.snapshot.weightedPipeline, 0);
+  assert.equal(result.treasury.incomeThisMonth.received, 1200);
 });
 
 test('date utilities preserve date-only values and recurring due dates exactly', () => {
@@ -383,7 +436,7 @@ test('reviewed obligation instances can be marked paid and leave overdue queue',
   assert.equal(result.treasury.overdueObligations.some((entry) => entry.id === 'rent-recurring-2026-06'), false);
   assert.equal(result.treasury.paidObligations.length, 1);
   assert.equal(result.treasury.paidObligations[0].status, 'paid');
-  assert.equal(result.treasury.incomeScenarios.conservative, 100);
+  assert.equal(result.treasury.incomeScenarios.conservative, -200);
 });
 
 test('transaction review events categorize transactions and clear review queue items', () => {
@@ -599,6 +652,123 @@ test('debt plan events remove missing-plan review items', () => {
   assert.equal(result.treasury.reviewQueue.some((item) => item.kind === 'debt' && item.targetId === 'debt-credit-line'), false);
 });
 
+test('recurring expenses normalize weekly, biweekly, monthly, quarterly, and yearly burn', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-03T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-main',
+      type: 'asset.account_set',
+      amount: 12000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating', balance: 12000, scope: 'business', bucket: 'available' },
+    },
+    ['weekly', 100],
+    ['biweekly', 50],
+    ['monthly', 250],
+    ['quarterly', 600],
+    ['yearly', 1200],
+  ].map((entry) => Array.isArray(entry) ? {
+    id: `cost-${entry[0]}`,
+    type: 'expense.recurring_set',
+    amount: entry[1],
+    currency: 'EUR',
+    timestamp: nowIso,
+    related_entity_id: `cost-${entry[0]}`,
+    metadata: { category: `Cost ${entry[0]}`, amount: entry[1], frequency: entry[0], scope: 'business' },
+  } : entry), nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+  const amounts = Object.fromEntries(result.readModel.recurringExpenses.map((entry) => [entry.frequency, entry.monthlyAmount]));
+
+  assert.equal(amounts.weekly, 433.33);
+  assert.equal(amounts.biweekly, 108.33);
+  assert.equal(amounts.monthly, 250);
+  assert.equal(amounts.quarterly, 200);
+  assert.equal(amounts.yearly, 100);
+  assert.equal(result.treasury.totalMonthlyBurn, 1091.66);
+});
+
+test('debt payment plans affect monthly burn and are not double-counted when linked to a recurring cost', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-03T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-main',
+      type: 'asset.account_set',
+      amount: 5000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating', balance: 5000, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'cash-tax',
+      type: 'asset.account_set',
+      amount: 1000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-tax',
+      metadata: { name: 'Tax reserve', balance: 1000, scope: 'business', bucket: 'tax_reserve', reserved: true },
+    },
+    {
+      id: 'debt-added',
+      type: 'debt.added',
+      amount: 2400,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'debt-card',
+      metadata: { name: 'Card repayment', scope: 'business' },
+    },
+    {
+      id: 'debt-plan',
+      type: 'debt.plan_updated',
+      amount: 600,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:05:00.000Z',
+      related_entity_id: 'debt-card',
+      metadata: { name: 'Card repayment', scope: 'business', dueDate: '2026-07-15', minimumPayment: 600, frequency: 'quarterly', paymentPlanNote: 'Quarterly repayment agreed.' },
+    },
+    {
+      id: 'linked-debt-cost',
+      type: 'expense.recurring_set',
+      amount: 600,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:06:00.000Z',
+      related_entity_id: 'linked-debt-cost',
+      metadata: { category: 'Card repayment', amount: 600, frequency: 'quarterly', linkedDebtId: 'debt-card', scope: 'business' },
+    },
+    {
+      id: 'studio-rent',
+      type: 'expense.recurring_set',
+      amount: 300,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:07:00.000Z',
+      related_entity_id: 'studio-rent',
+      metadata: { category: 'Studio rent', monthlyAmount: 300, frequency: 'monthly', scope: 'business' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(result.readModel.debtAccounts[0].minimumPaymentMonthly, 200);
+  assert.equal(result.readModel.recurringExpenses.find((entry) => entry.id === 'linked-debt-cost').monthlyAmount, 200);
+  assert.equal(result.treasury.totalMonthlyBurn, 500);
+  assert.equal(result.snapshot.monthlyBurn, 500);
+  assert.equal(result.treasury.committedShortTermObligations, 300);
+  assert.equal(result.snapshot.runwayMonths, 9.4);
+});
+
 test('ledger transaction read model supports explicit income, expense, transfer, and adjustment semantics', () => {
   const finance = loadFinance();
   const nowIso = '2026-06-03T10:00:00.000Z';
@@ -688,6 +858,7 @@ test('ledger transaction read model supports explicit income, expense, transfer,
   assert.equal(result.readModel.transactions.find((entry) => entry.id === 'expense-event').signedAmount, -120);
   assert.equal(result.readModel.transactions.find((entry) => entry.id === 'transfer-event').ledgerType, 'transfer');
   assert.equal(result.readModel.transactions.find((entry) => entry.id === 'adjustment-event').signedAmount, -40);
+  assert.equal(result.treasury.incomeThisMonth.received, 500);
   assert.equal(result.treasury.totalCash, 1540);
   assert.equal(result.treasury.reservedCash, 500);
 });

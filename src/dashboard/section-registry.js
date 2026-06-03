@@ -6,12 +6,12 @@ export function createSectionRenderer(renderers, renderSectionHeading) {
             sections: ['ledger']
         },
         invoices: {
-            title: 'Invoices',
-            copy: 'Expected income, confidence, overdue follow-up, and settlement into real cash.',
+            title: 'Income',
+            copy: 'Expected, confirmed, overdue, and settled income separated from real cash.',
             sections: ['invoices']
         },
         planning: {
-            title: 'Cashflow Plan',
+            title: 'Cashflow',
             copy: 'Baseline, expected month, and conservative or optimistic scenarios for the next decisions.',
             sections: ['scenarioOutcomes', 'cashCalendar', 'pipelineTabs', 'goals', 'projection', 'scenarioLab']
         },
@@ -36,13 +36,13 @@ export function createSectionRenderer(renderers, renderSectionHeading) {
             sections: ['settings']
         },
         reserves: {
-            title: 'Cash & Reserves',
-            copy: 'Operating cash, tax reserves, and buffer accounts.',
+            title: 'Reserves',
+            copy: 'Protected cash, reserve buckets, and allocation between available and spoken-for money.',
             sections: ['reserves']
         },
         fixedCosts: {
-            title: 'Fixed Costs & Debt',
-            copy: 'Monthly burn rate, subscriptions, and outstanding debt.',
+            title: 'Obligations',
+            copy: 'Recurring obligations, minimum payments, and debt plans that shape monthly burn.',
             sections: ['fixedCosts']
         }
     };
@@ -57,6 +57,7 @@ export function createSectionRenderer(renderers, renderSectionHeading) {
                 renderers.dashboardCockpit(),
                 renderers.attentionQueue(),
                 renderers.next30Days(),
+                renderers.strategicPicture(),
                 `</div>`
             ];
         }

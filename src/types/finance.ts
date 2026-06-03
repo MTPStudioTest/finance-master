@@ -1,6 +1,20 @@
 export type FinanceScope = 'personal' | 'business' | 'shared';
 export type FinanceScopeFilter = 'all' | FinanceScope;
 
+export interface FinanceMetricPart {
+  label: string;
+  value: number;
+  operation?: 'add' | 'subtract' | 'multiply' | 'divide';
+}
+
+export interface FinanceMetricExplanation {
+  key: string;
+  label: string;
+  value: number;
+  parts: FinanceMetricPart[];
+  warnings?: string[];
+}
+
 interface FinanceAccountReconciliation {
   accountId: string;
   balance: number;
@@ -149,6 +163,17 @@ export interface FinanceDataHealth {
   eventCount: number;
   latestEventAt: string | null;
   checkedAt: string;
+  storageStatus: 'healthy' | 'limited' | 'unavailable';
+  indexedDbAvailable: boolean;
+  localStorageAvailable: boolean;
+  quotaAvailable: boolean;
+  quotaUsage: number | null;
+  quotaLimit: number | null;
+  schemaLabel: string;
+  backupVersion: number;
+  lastBackupAt: string | null;
+  privateModeWarning: boolean;
+  migrationStatus: 'current' | 'pending' | 'failed';
   storageKeys: string[];
 }
 

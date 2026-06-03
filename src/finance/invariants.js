@@ -51,8 +51,10 @@
                 });
             }
         } else {
-            var runwayBase = Number.isFinite(Number(snapshot.trulyAvailableCash))
-                ? Number(snapshot.trulyAvailableCash)
+            var runwayBase = Number.isFinite(Number(snapshot.availableCash))
+                ? Number(snapshot.availableCash)
+                : Number.isFinite(Number(snapshot.trulyAvailableCash))
+                    ? Number(snapshot.trulyAvailableCash)
                 : Number(snapshot.realBalance);
             var expectedRunway = round((runwayBase || 0) / (Number(snapshot.monthlyBurn) || 1));
             if (!almostEqual(snapshot.runwayMonths, expectedRunway, 0.01)) {

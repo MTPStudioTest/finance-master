@@ -73,7 +73,7 @@ window.FinancialEngine = (function () {
         const fiatAccounts = Array.isArray(source.fiatAccounts) ? source.fiatAccounts : [];
         const savings = Array.isArray(source.savings) ? source.savings : [];
         const recurring = expenses.reduce((acc, entry) => acc + toNumber(entry && entry.monthlyAmount, 0), 0);
-        const debtPayment = debt.reduce((acc, entry) => acc + toNumber(entry && entry.monthlyPayment, 0), 0);
+        const debtPayment = debt.reduce((acc, entry) => acc + toNumber(entry && (entry.monthlyPayment ?? entry.minimumPaymentMonthly), 0), 0);
         const monthlyBurn = recurring + debtPayment;
         const realBalance = fiatAccounts.reduce((acc, entry) => acc + toNumber(entry && entry.balance, 0), 0)
             + savings.reduce((acc, entry) => acc + toNumber(entry && entry.amount, 0), 0);

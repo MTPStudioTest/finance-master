@@ -24,6 +24,7 @@ window.FinancialMode = (function () {
     let currentDiagnostics = null;
     let currentReview = null;
     let currentTreasury = null;
+    let currentExplanations = {};
     let currentHasFinanceData = false;
     let labState = { marketMajors: 0, burnDelta: 0, probFloor: 50 };
     let adviceExpanded = false;
@@ -38,6 +39,18 @@ window.FinancialMode = (function () {
     };
 
     const SECTIONS = ['dashboard', 'ledger', 'invoices', 'planning', 'review', 'reports', 'data', 'settings', 'reserves', 'fixedCosts'];
+    const SECTION_ALIASES = {
+        today: 'dashboard',
+        transactions: 'ledger',
+        income: 'invoices',
+        invoices: 'invoices',
+        cashflow: 'planning',
+        planning: 'planning',
+        import: 'data',
+        obligations: 'fixedCosts',
+        fixedcosts: 'fixedCosts',
+        fixedCosts: 'fixedCosts'
+    };
 
     // Elements
     const elements = {
@@ -72,6 +85,14 @@ window.FinancialMode = (function () {
         }
     }
 
+    function normalizeSection(section) {
+        const raw = String(section || 'dashboard').trim();
+        const lower = raw.toLowerCase();
+        const alias = SECTION_ALIASES[raw] || SECTION_ALIASES[lower];
+        const next = alias || raw;
+        return SECTIONS.indexOf(next) !== -1 ? next : 'dashboard';
+    }
+
     function getFocusMode() {
         return readStoredBoolean(UI_KEYS.focusMode, false);
     }
@@ -102,27 +123,14 @@ window.FinancialMode = (function () {
 
     function getActiveSection() {
         try {
-            const raw = String(localStorage.getItem(UI_KEYS.activeSection) || 'dashboard');
-            const lower = raw.toLowerCase();
-            if (lower === 'today') return 'dashboard';
-            if (lower === 'transactions') return 'ledger';
-            if (lower === 'cashflow') return 'planning';
-            if (lower === 'import') return 'data';
-            return SECTIONS.indexOf(raw) !== -1 ? raw : 'dashboard';
+            return normalizeSection(localStorage.getItem(UI_KEYS.activeSection) || 'dashboard');
         } catch (error) {
             return 'dashboard';
         }
     }
 
     function setActiveSection(section) {
-        let next = String(section || 'dashboard');
-        const lower = next.toLowerCase();
-        if (lower === 'today') next = 'dashboard';
-        if (lower === 'transactions') next = 'ledger';
-        if (lower === 'cashflow') next = 'planning';
-        if (lower === 'import') next = 'data';
-        
-        const safeSection = SECTIONS.indexOf(next) !== -1 ? next : 'dashboard';
+        const safeSection = normalizeSection(section);
         try {
             localStorage.setItem(UI_KEYS.activeSection, safeSection);
         } catch (error) {
@@ -503,9 +511,17 @@ window.FinancialMode = (function () {
             if (action === 'reverse-ledger-transaction') {
                 const id = String(actionEl.getAttribute('data-fin-transaction-id') || '').trim();
                 if (!id) return;
-                if (window.confirm('Reverse this transaction and its linked account balance update?')) {
-                    window.Store.reverseTransaction(id, 'ledger.page.reverse');
-                    render();
+                if (typeof window.requestDestructiveConfirmation === 'function') {
+                    window.requestDestructiveConfirmation({
+                        action: 'reverseTransaction',
+                        targetId: id,
+                        source: 'ledger.page.reverse',
+                        title: 'Reverse transaction',
+                        copy: 'This reverses the transaction and its linked account balance update.',
+                        phrase: 'REVERSE TRANSACTION',
+                        buttonLabel: 'Reverse transaction',
+                        renderAfter: true
+                    });
                 }
                 return;
             }
@@ -557,6 +573,7 @@ window.FinancialMode = (function () {
         currentSnapshot = context.snapshot;
         currentData = context.readModel;
         currentTreasury = context.treasury || {};
+        currentExplanations = context.explanations || {};
         currentDiagnostics = context.diagnostics || {};
         currentReview = window.Store.getReviewState();
         currentHasFinanceData = Number(currentData && currentData.eventsCount) > 0;
@@ -611,7 +628,8 @@ window.FinancialMode = (function () {
             observatoryHeader: renderObservatoryHeader,
             dashboardCockpit: renderDashboardCockpit,
             attentionQueue: renderAttentionQueue,
-            next30Days: renderNext30Days
+            next30Days: renderNext30Days,
+            strategicPicture: renderStrategicPicture
         }, renderSectionHeading)(activeSection);
     }
 
@@ -830,7 +848,10 @@ window.FinancialMode = (function () {
             : null;
         const dataHealth = window.Store && typeof window.Store.getLocalDataHealth === 'function'
             ? window.Store.getLocalDataHealth()
-            : { ok: true, issues: [], eventCount: 0, latestEventAt: null };
+            : { ok: true, issues: [], eventCount: 0, latestEventAt: null, storageStatus: 'healthy', schemaLabel: 'unknown', backupVersion: 0, lastBackupAt: null, privateModeWarning: false, migrationStatus: 'current' };
+        const storageStatus = String(dataHealth.storageStatus || 'healthy');
+        const storageLabel = storageStatus === 'unavailable' ? 'Unavailable' : (storageStatus === 'limited' ? 'Limited' : 'Healthy');
+        const backupLabel = dataHealth.lastBackupAt ? formatShortDate(dataHealth.lastBackupAt) : 'Never';
         return `
             <section class="fin-section">
                 <div class="fin-operational-row">
@@ -857,6 +878,15 @@ window.FinancialMode = (function () {
                             <span><strong>${dataHealth.ok ? 'Healthy' : 'Needs attention'}</strong><br><small>${Number(dataHealth.eventCount || 0)} finance events${dataHealth.latestEventAt ? ` · latest ${formatShortDate(dataHealth.latestEventAt)}` : ''}</small></span>
                             <span>${dataHealth.issues.length} issue${dataHealth.issues.length === 1 ? '' : 's'}</span>
                         </div>
+                        <div class="backup-preview-card">
+                            <div><span>Storage</span><strong>${storageLabel}</strong></div>
+                            <div><span>Last backup</span><strong>${backupLabel}</strong></div>
+                            <div><span>Schema</span><strong>${escapeHtml(dataHealth.schemaLabel || 'unknown')}</strong></div>
+                            <div><span>Migration</span><strong>${escapeHtml(dataHealth.migrationStatus || 'current')}</strong></div>
+                        </div>
+                        ${dataHealth.privateModeWarning ? `
+                            <div class="fin-compact-empty">Your browser may not keep local data permanently in this mode. Export a backup before closing this window.</div>
+                        ` : ''}
                         ${dataHealth.issues.length ? `
                             <div class="fin-compact-empty">${dataHealth.issues.map((entry) => `${escapeHtml(entry.label)}: ${escapeHtml(entry.message)}`).join('<br>')}</div>
                         ` : ''}
@@ -881,7 +911,11 @@ window.FinancialMode = (function () {
     function renderReservesSection() {
         const fiatAccounts = safeArray(currentData?.fiatAccounts).filter(acc => !acc.bucket || acc.bucket === 'available');
         const buckets = safeArray(currentData?.reserveBuckets);
-        const trulyAvailable = treasuryNumber('trulyAvailableCash', treasuryNumber('totalCash', Number(currentSnapshot?.realBalance) || 0) - treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0));
+        const actualCash = treasuryNumber('actualCash', treasuryNumber('totalCash', Number(currentSnapshot?.realBalance) || 0));
+        const protectedCash = treasuryNumber('protectedCash', treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0));
+        const availableCash = treasuryNumber('availableCash', Number.isFinite(Number(currentSnapshot?.availableCash)) ? Number(currentSnapshot.availableCash) : actualCash - protectedCash);
+        const cashAfterReserves = treasuryNumber('trulyAvailableCash', actualCash - protectedCash);
+        const committedObligations = treasuryNumber('committedShortTermObligations', 0);
         
         return `
             <section class="fin-section">
@@ -908,8 +942,9 @@ window.FinancialMode = (function () {
                 <div class="widget ui-card glass fin-card" style="margin-top: 1rem; padding: 1.5rem;">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <div>
-                            <div style="font-size: 0.8rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary);">Truly Available Cash</div>
-                            <div style="font-size: 2rem; font-family:var(--font-mono); font-weight:600; margin-top:0.25rem;">${formatCurrency(trulyAvailable)}</div>
+                            <div style="font-size: 0.8rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary);">Available Cash</div>
+                            <div style="font-size: 2rem; font-family:var(--font-mono); font-weight:600; margin-top:0.25rem;">${formatCurrency(availableCash)}</div>
+                            <div class="fin-helper-text" style="margin-top:0.35rem;">${formatCurrency(cashAfterReserves)} after reserves · ${formatCurrency(committedObligations)} due within 30 days</div>
                         </div>
                         <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'allocateReserves'">Allocate cash</button>
                     </div>
@@ -965,12 +1000,13 @@ window.FinancialMode = (function () {
             return posA - posB;
         });
 
-        const totalBurn = expenses.reduce((sum, e) => sum + (Number(e.monthlyAmount) || 0), 0);
+        const recurringBurn = expenses.reduce((sum, e) => sum + (Number(e.monthlyAmount) || 0), 0);
+        const totalBurn = treasuryNumber('totalMonthlyBurn', Number(currentSnapshot?.monthlyBurn) || recurringBurn);
         const essentialCosts = expenses.filter(e => e.essential);
         const flexCosts = expenses.filter(e => !e.essential);
         const essentialTotal = essentialCosts.reduce((sum, e) => sum + (Number(e.monthlyAmount) || 0), 0);
         const flexTotal = flexCosts.reduce((sum, e) => sum + (Number(e.monthlyAmount) || 0), 0);
-        const totalDebt = debts.reduce((sum, d) => sum + (Number(d.outstanding) || 0), 0);
+        const totalDebt = explanationNumber('debtBurden', debts.reduce((sum, d) => sum + (Number(d.outstanding) || 0), 0));
         const totalMinPayments = debts.reduce((sum, d) => sum + (Number(d.minimumPayment) || 0), 0);
         
         return `
@@ -1188,6 +1224,49 @@ window.FinancialMode = (function () {
         return Number.isFinite(value) ? value : fallback;
     }
 
+    function explanationNumber(key, fallback = 0) {
+        const value = Number(currentExplanations && currentExplanations[key] && currentExplanations[key].value);
+        return Number.isFinite(value) ? value : fallback;
+    }
+
+    function operationLabel(operation) {
+        if (operation === 'subtract') return 'Subtract';
+        if (operation === 'divide') return 'Divide by';
+        if (operation === 'multiply') return 'Multiply by';
+        return 'Add';
+    }
+
+    function explanationValue(explanation, value) {
+        const key = String(explanation && explanation.key || '');
+        const amount = Number(value) || 0;
+        if (key === 'runway') return `${amount.toFixed(1)} months`;
+        if (key === 'forecastConfidence') return `${Math.round(amount)}%`;
+        return formatCurrency(amount);
+    }
+
+    function renderMetricExplanation(key) {
+        const explanation = currentExplanations && currentExplanations[key];
+        if (!explanation || !Array.isArray(explanation.parts)) return '';
+        return `
+            <details class="fin-metric-explainer" data-fin-explainer="${escapeHtml(key)}">
+                <summary>How calculated</summary>
+                <div class="fin-confidence-list">
+                    ${explanation.parts.map((part) => `
+                        <div class="fin-confidence-row">
+                            <span class="fin-muted">${operationLabel(part.operation)} ${escapeHtml(part.label)}</span>
+                            <strong>${explanationValue(explanation, part.value)}</strong>
+                        </div>
+                    `).join('')}
+                    ${safeArray(explanation.warnings).map((warning) => `
+                        <div class="fin-confidence-row">
+                            <span class="fin-text-med">${escapeHtml(warning)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </details>
+        `;
+    }
+
     function invoiceStatusFromDeal(deal) {
         const status = String(deal && (deal.status || deal.stage) || '').toLowerCase();
         const probability = Number(deal && deal.probability);
@@ -1244,10 +1323,10 @@ window.FinancialMode = (function () {
                 <div class="widget ui-card glass fin-card">
                     <div class="fin-section-heading-row">
                         <div>
-                            <div class="widget-title ui-title">Income & Invoices</div>
-                            <div class="fin-helper-text">Invoices here are expected income records. Settlement turns them into real account cash.</div>
+                            <div class="widget-title ui-title">Income</div>
+                            <div class="fin-helper-text">Expected and settled income records. Settlement turns expected money into real account cash.</div>
                         </div>
-                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'income'">Add invoice</button>
+                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'income'">Add expected income</button>
                     </div>
                     <div class="fin-status-grid">
                         <div class="fin-status-card">${renderStatusPill('confirmed')}<strong>${formatCurrency(totals.confirmed || 0)}</strong><span>Signed or high-confidence income</span></div>
@@ -1293,9 +1372,10 @@ window.FinancialMode = (function () {
 
     function renderReportsSection() {
         const rhythmData = buildCashflowRhythmData();
-        const totalCash = treasuryNumber('totalCash', Number(currentSnapshot && currentSnapshot.realBalance) || 0);
-        const reservedCash = treasuryNumber('reservedCash', Number(currentSnapshot && currentSnapshot.reservedCash) || 0);
-        const availableCash = treasuryNumber('trulyAvailableCash', totalCash - reservedCash);
+        const totalCash = treasuryNumber('actualCash', treasuryNumber('totalCash', Number(currentSnapshot && currentSnapshot.realBalance) || 0));
+        const reservedCash = treasuryNumber('protectedCash', treasuryNumber('reservedCash', Number(currentSnapshot && currentSnapshot.reservedCash) || 0));
+        const snapshotAvailableCash = Number(currentSnapshot && currentSnapshot.availableCash);
+        const availableCash = treasuryNumber('availableCash', Number.isFinite(snapshotAvailableCash) ? snapshotAvailableCash : totalCash - reservedCash);
         const reserveShare = totalCash > 0 ? Math.round((reservedCash / totalCash) * 100) : 0;
         const health = resolveFinancialHeroSignal();
         
@@ -1356,7 +1436,7 @@ window.FinancialMode = (function () {
                     <div class="widget ui-card glass fin-card">
                         <div class="widget-title ui-title">Reserve Pattern</div>
                         <div class="fin-status-grid">
-                            <div class="fin-status-card"><span>Available</span><strong>${formatCurrency(availableCash)}</strong><span>After reserves</span></div>
+                            <div class="fin-status-card"><span>Available</span><strong>${formatCurrency(availableCash)}</strong><span>After protected cash and 30-day obligations</span></div>
                             <div class="fin-status-card"><span>Reserved</span><strong>${formatCurrency(reservedCash)}</strong><span>${reserveShare}% of total cash</span></div>
                         </div>
                         ${renderCashflowRhythm(rhythmData)}
@@ -1439,9 +1519,10 @@ window.FinancialMode = (function () {
     }
 
     function renderDashboardCockpit() {
-        const totalCash = treasuryNumber('totalCash', Number(currentSnapshot?.realBalance) || 0);
-        const reservedCash = treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0);
-        const availableCash = treasuryNumber('trulyAvailableCash', totalCash - reservedCash);
+        const totalCash = treasuryNumber('actualCash', treasuryNumber('totalCash', Number(currentSnapshot?.realBalance) || 0));
+        const reservedCash = treasuryNumber('protectedCash', treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0));
+        const snapshotAvailableCash = Number(currentSnapshot?.availableCash);
+        const availableCash = treasuryNumber('availableCash', Number.isFinite(snapshotAvailableCash) ? snapshotAvailableCash : treasuryNumber('trulyAvailableCash', totalCash - reservedCash));
         const monthlyBurn = treasuryNumber('totalMonthlyBurn', Number(currentSnapshot?.monthlyBurn) || 0);
         const scenarios = currentTreasury?.incomeScenarios || {};
         const expectedMonthEnd = Number.isFinite(Number(scenarios.expected))
@@ -1464,8 +1545,8 @@ window.FinancialMode = (function () {
 
         // Cash breakdown bar percentages
         const cashTotal = totalCash || 1; // avoid division by zero
-        const availPct = Math.max(0, Math.min(100, Math.round((availableCash / cashTotal) * 100)));
-        const protectedPct = 100 - availPct;
+        const availPct = Math.max(0, Math.min(100, Math.round((Math.max(0, availableCash) / cashTotal) * 100)));
+        const protectedPct = Math.max(0, Math.min(100 - availPct, Math.round((reservedCash / cashTotal) * 100)));
 
         // Month-end copy
         let monthEndCopy = '';
@@ -1478,6 +1559,12 @@ window.FinancialMode = (function () {
         return `
             <section class="fin-section">
                 <div class="widget ui-card glass fin-card fin-cockpit-overview">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Current Status</div>
+                            <div class="fin-helper-text">Available cash, protected money, runway, and monthly burn from the central calculation engine.</div>
+                        </div>
+                    </div>
 
                     <!-- Hero: Runway + Burn -->
                     <div class="fin-cockpit-hero">
@@ -1485,11 +1572,13 @@ window.FinancialMode = (function () {
                             <div class="fin-runway-label">Runway</div>
                             <div class="fin-runway-value ${runwayClass}">${runwayLabel}<span style="font-size: 1.2rem; opacity: 0.6; margin-left: 0.25rem;">${runway != null ? 'months' : ''}</span></div>
                             <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;">${runwayStatus}</div>
+                            ${renderMetricExplanation('runway')}
                         </div>
                         <div class="fin-cockpit-burn">
                             <div class="fin-burn-label">Monthly burn</div>
                             <div class="fin-burn-value">${currentHasFinanceData ? formatCurrency(monthlyBurn) : '—'}</div>
                             <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.15rem;">Recurring costs</div>
+                            ${renderMetricExplanation('monthlyBurnRate')}
                         </div>
                     </div>
 
@@ -1507,11 +1596,13 @@ window.FinancialMode = (function () {
                                 <span class="fin-dot fin-dot-available"></span>
                                 <span class="fin-legend-val">${formatCurrency(availableCash)}</span>
                                 <span class="fin-legend-lbl">Available</span>
+                                ${renderMetricExplanation('availableCash')}
                             </div>
                             <div class="fin-legend-item">
                                 <span class="fin-dot fin-dot-protected"></span>
                                 <span class="fin-legend-val">${formatCurrency(reservedCash)}</span>
                                 <span class="fin-legend-lbl">Protected</span>
+                                ${renderMetricExplanation('protectedCash')}
                             </div>
                         </div>
                         ${buckets.length ? `
@@ -1622,10 +1713,15 @@ window.FinancialMode = (function () {
                 <div class="widget ui-card glass fin-card">
                     <div class="fin-section-heading-row">
                         <div>
-                            <div class="widget-title ui-title">Forecast Confidence</div>
+                            <div class="widget-title ui-title">Near Future</div>
+                            <div class="fin-helper-text">Expected income and confirmed obligations in the next 30 days.</div>
                         </div>
                     </div>
                     <div class="fin-confidence-list">
+                        <div class="fin-confidence-row">
+                            <span class="fin-muted">Forecast Confidence</span>
+                            <strong>${explanationValue((currentExplanations && currentExplanations.forecastConfidence) || { key: 'forecastConfidence' }, explanationNumber('forecastConfidence', Math.round((Number(currentSnapshot?.confidenceScore) || 0) * 100)))}</strong>
+                        </div>
                         <div class="fin-confidence-row">
                             <span class="fin-muted">Expected weighted</span>
                             <strong class="fin-text-primary">${formatCurrency(next30.expectedWeightedIncoming)}</strong>
@@ -1644,8 +1740,54 @@ window.FinancialMode = (function () {
                             <strong class="fin-text-high">${formatCurrency(unconfirmed)}</strong>
                         </div>
                     </div>
+                    ${renderMetricExplanation('forecastConfidence')}
                     <div class="fin-action-row">
                         <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'income'">Confirm income</button>
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderStrategicPicture() {
+        const actualCash = treasuryNumber('actualCash', treasuryNumber('totalCash', Number(currentSnapshot?.realBalance) || 0));
+        const protectedCash = treasuryNumber('protectedCash', treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0));
+        const monthlyBurn = treasuryNumber('totalMonthlyBurn', Number(currentSnapshot?.monthlyBurn) || 0);
+        const debtBurden = explanationNumber('debtBurden', Number(currentSnapshot?.totalDebt) || 0);
+        const confidence = explanationNumber('forecastConfidence', Math.round((Number(currentSnapshot?.confidenceScore) || 0) * 100));
+        const protectedShare = actualCash > 0 ? Math.round((protectedCash / actualCash) * 100) : 0;
+
+        return `
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Strategic Picture</div>
+                            <div class="fin-helper-text">Burn, protected cash, debt pressure, and forecast confidence for slower decisions.</div>
+                        </div>
+                    </div>
+                    <div class="fin-status-grid">
+                        <div class="fin-status-card">
+                            <span>Monthly burn</span>
+                            <strong>${formatCurrency(monthlyBurn)}</strong>
+                            <span>Recurring obligations and payment plans</span>
+                        </div>
+                        <div class="fin-status-card">
+                            <span>Debt burden</span>
+                            <strong>${formatCurrency(debtBurden)}</strong>
+                            <span>This payment plan affects runway when active</span>
+                            ${renderMetricExplanation('debtBurden')}
+                        </div>
+                        <div class="fin-status-card">
+                            <span>Protected cash</span>
+                            <strong>${formatCurrency(protectedCash)}</strong>
+                            <span>${protectedShare}% of actual cash</span>
+                        </div>
+                        <div class="fin-status-card">
+                            <span>Forecast confidence</span>
+                            <strong>${explanationValue((currentExplanations && currentExplanations.forecastConfidence) || { key: 'forecastConfidence' }, confidence)}</strong>
+                            <span>Based on missing inputs and warnings</span>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -2110,14 +2252,16 @@ window.FinancialMode = (function () {
     }
 
     function computeHybridTotals() {
-        const fiatTotal = safeArray(currentData && currentData.fiatAccounts)
+        const accountCash = safeArray(currentData && currentData.fiatAccounts)
             .reduce((sum, account) => sum + (Number(account && account.balance) || 0), 0);
-        const liabilities = Math.max(0, Number(currentSnapshot && currentSnapshot.totalDebt) || 0);
+        const fiatTotal = treasuryNumber('actualCash', accountCash);
+        const liabilities = Math.max(0, explanationNumber('debtBurden', Number(currentSnapshot && currentSnapshot.totalDebt) || 0));
+        const snapshotAvailableCash = Number(currentSnapshot && currentSnapshot.availableCash);
         return {
             fiatTotal,
             liabilities,
-            availableCash: Number(currentSnapshot && currentSnapshot.trulyAvailableCash) || fiatTotal,
-            reservedCash: Number(currentSnapshot && currentSnapshot.reservedCash) || 0
+            availableCash: treasuryNumber('availableCash', Number.isFinite(snapshotAvailableCash) ? snapshotAvailableCash : fiatTotal),
+            reservedCash: treasuryNumber('protectedCash', Number(currentSnapshot && currentSnapshot.reservedCash) || 0)
         };
     }
 
@@ -2150,7 +2294,7 @@ window.FinancialMode = (function () {
                             </div>
                             <hr class="fin-divider">
                             <div class="fin-summary-row fin-summary-row--strong">
-                                <span>Truly Available</span>
+                                <span>Available Cash</span>
                                 <span>${formatCurrency(totals.availableCash)}</span>
                             </div>
                             <div class="fin-summary-row fin-summary-row--sub">

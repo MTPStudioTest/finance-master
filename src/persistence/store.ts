@@ -11,7 +11,13 @@ import {
   repositoryRemove,
   repositorySet,
 } from './repositories';
-import { backupMetadata, inspectFinanceStorage } from './data-health.js';
+import {
+  backupMetadata,
+  evaluateStorageStatus,
+  inspectBrowserStorageAvailability,
+  inspectFinanceStorage,
+} from './data-health.js';
+import { inspectRepositoryMigration } from './schema-migration.js';
 import type {
   CsvImportSummary,
   CsvTransactionRow,
@@ -30,6 +36,8 @@ import type {
 import { createPriceProvider } from '../integrations/crypto-prices';
 import { assertFinanceBackup, validateFinanceBackup } from './backup-validation.js';
 import { calculateGoalProgress, normalizeGoalState, normalizeReviewState } from '../finance/goals.js';
+import type { BrowserStorageStatus } from './data-health.js';
+import type { FinanceMigrationStatus } from './schema-migration.js';
 
 const DEFAULT_FINANCE_SETTINGS: FinanceSettings = {
   baseCurrency: 'EUR',
@@ -72,6 +80,17 @@ const DEFAULT_IMPORT_STATE: FinanceImportState = {
 const DEFAULT_PRICE_CACHE: FinancePriceCache = {
   quotes: {},
 };
+
+const DEFAULT_BACKUP_META = {
+  lastBackupAt: null as string | null,
+};
+
+let browserStorageStatus: BrowserStorageStatus = evaluateStorageStatus({
+  indexedDbAvailable: false,
+  localStorageAvailable: false,
+  quotaAvailable: false,
+});
+let migrationStatus: FinanceMigrationStatus = 'current';
 
 const MISSING_STORAGE_VALUE = Object.freeze({ __financeMasterMissing: true });
 
@@ -232,8 +251,19 @@ export const Store = {
       STORAGE_KEYS.goals,
       STORAGE_KEYS.imports,
       STORAGE_KEYS.priceCache,
+      STORAGE_KEYS.backupMeta,
       STORAGE_KEYS.demoSeed,
     ]);
+    browserStorageStatus = await inspectBrowserStorageAvailability(window);
+    migrationStatus = inspectRepositoryMigration({
+      ledger: rawStorageEntry(STORAGE_KEYS.ledger).value,
+      settings: rawStorageEntry(STORAGE_KEYS.settings).value,
+      ui: rawStorageEntry(STORAGE_KEYS.ui).value,
+      review: rawStorageEntry(STORAGE_KEYS.review).value,
+      goals: rawStorageEntry(STORAGE_KEYS.goals).value,
+      imports: rawStorageEntry(STORAGE_KEYS.imports).value,
+      priceCache: rawStorageEntry(STORAGE_KEYS.priceCache).value,
+    }, DATA_SCHEMA_LABEL).status;
   },
 
   getFinanceSettings(): FinanceSettings {
@@ -1306,6 +1336,10 @@ export const Store = {
     };
   },
 
+  recordBackupExport(exportedAt = new Date().toISOString()): void {
+    setJson(STORAGE_KEYS.backupMeta, { lastBackupAt: exportedAt });
+  },
+
   previewBackup(input: unknown): import('../types/finance').FinanceBackupPreview {
     return validateFinanceBackup(input, { latestLocalEventAt: this.getLocalDataHealth().latestEventAt });
   },
@@ -1327,6 +1361,7 @@ export const Store = {
   },
 
   getLocalDataHealth(): FinanceDataHealth {
+    const backupMeta = getJson<typeof DEFAULT_BACKUP_META>(STORAGE_KEYS.backupMeta, DEFAULT_BACKUP_META);
     const health = inspectFinanceStorage({
       ledger: rawStorageEntry(STORAGE_KEYS.ledger),
       settings: rawStorageEntry(STORAGE_KEYS.settings),
@@ -1338,6 +1373,11 @@ export const Store = {
     });
     return {
       ...health,
+      ...browserStorageStatus,
+      schemaLabel: DATA_SCHEMA_LABEL,
+      backupVersion: CURRENT_BACKUP_VERSION,
+      lastBackupAt: typeof backupMeta.lastBackupAt === 'string' ? backupMeta.lastBackupAt : null,
+      migrationStatus,
       storageKeys: [...FINANCE_STORAGE_KEYS],
     };
   },

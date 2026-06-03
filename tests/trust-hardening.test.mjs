@@ -14,9 +14,14 @@ import {
 } from '../src/persistence/backup-validation.js';
 import {
   backupMetadata,
+  evaluateStorageStatus,
   inspectFinanceStorage,
   latestLedgerTimestamp,
 } from '../src/persistence/data-health.js';
+import {
+  evaluateMigrationStatus,
+  inspectRepositoryMigration,
+} from '../src/persistence/schema-migration.js';
 import {
   calculateGoalProgress,
   isWeeklyReviewDue,
@@ -183,6 +188,60 @@ test('local data health reports corrupt Finance Master storage without throwing'
   assert.equal(health.latestEventAt, null);
   assert.deepEqual(health.issues.map((entry) => entry.key), ['ledger', 'settings', 'imports']);
   assert.equal(latestLedgerTimestamp(validBackup().ledger), '2026-06-02T09:00:00.000Z');
+});
+
+test('storage health distinguishes healthy, limited, and unavailable browser storage', () => {
+  assert.deepEqual(evaluateStorageStatus({
+    indexedDbAvailable: true,
+    localStorageAvailable: true,
+    quotaAvailable: true,
+    quotaUsage: 10,
+    quotaLimit: 100,
+  }), {
+    storageStatus: 'healthy',
+    indexedDbAvailable: true,
+    localStorageAvailable: true,
+    quotaAvailable: true,
+    quotaUsage: 10,
+    quotaLimit: 100,
+    privateModeWarning: false,
+  });
+
+  assert.equal(evaluateStorageStatus({
+    indexedDbAvailable: true,
+    localStorageAvailable: false,
+    quotaAvailable: true,
+  }).storageStatus, 'limited');
+  assert.equal(evaluateStorageStatus({
+    indexedDbAvailable: false,
+    localStorageAvailable: false,
+    quotaAvailable: false,
+  }).storageStatus, 'unavailable');
+});
+
+test('migration guardrails report current schema and future schema safely', () => {
+  const snapshot = {
+    ledger: validBackup().ledger,
+    settings: validBackup().financeSettings,
+    ui: validBackup().uiSettings,
+    review: migrateFinanceBackupV1(validBackup()).review,
+    goals: { goals: [] },
+    imports: { batches: [] },
+    priceCache: { quotes: {} },
+  };
+
+  assert.equal(evaluateMigrationStatus('finance-master.local-first.v1'), 'current');
+  assert.equal(evaluateMigrationStatus('finance-master.local-first.v99'), 'pending');
+  assert.deepEqual(inspectRepositoryMigration(snapshot, 'finance-master.local-first.v1'), {
+    status: 'current',
+    safeToMigrate: true,
+    errors: [],
+  });
+  assert.deepEqual(inspectRepositoryMigration({ ...snapshot, ledger: 'broken' }, 'finance-master.local-first.v1'), {
+    status: 'failed',
+    safeToMigrate: false,
+    errors: ['Ledger events must be stored as a list.'],
+  });
 });
 
 test('goal progress derives linked cash balances and respects treasury scope', () => {

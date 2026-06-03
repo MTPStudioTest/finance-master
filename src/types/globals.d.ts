@@ -36,6 +36,7 @@ declare global {
     deleteInvoice(id: string): void;
     markAsPaid(id: string): void;
     openEditModal(type: string, options?: { id?: string }): void;
+    requestDestructiveConfirmation?: (config: Record<string, unknown>) => void;
     renderSAGIcon?: (icon: string, options?: Record<string, string>) => string;
   }
 
@@ -63,6 +64,7 @@ declare global {
     snapshot: Record<string, any>;
     readModel: Record<string, any>;
     treasury?: Record<string, any>;
+    explanations?: Record<string, import('./finance').FinanceMetricExplanation>;
     invariants?: Record<string, any>;
     confidence?: Record<string, any>;
     diagnostics?: Record<string, any>;
@@ -200,6 +202,7 @@ declare global {
     deleteGoal(id: string): import('./finance').FinanceGoalState;
     exportBackup(): import('./finance').FinanceBackupV2;
     previewBackup(input: unknown): import('./finance').FinanceBackupPreview;
+    recordBackupExport(exportedAt?: string): void;
     refreshCryptoPrices(): Promise<{ updated: number; source: string }>;
     restoreBackup(input: unknown): import('./finance').FinanceBackupV2;
     resetLocalFinanceData(): import('./finance').FinanceDataHealth;

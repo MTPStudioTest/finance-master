@@ -10,6 +10,66 @@ function issue(key, label, message, severity = 'error') {
   return { key, label, message, severity };
 }
 
+export function evaluateStorageStatus(capabilities = {}) {
+  const indexedDbAvailable = capabilities.indexedDbAvailable === true;
+  const localStorageAvailable = capabilities.localStorageAvailable === true;
+  const quotaAvailable = capabilities.quotaAvailable === true;
+  const quotaUsage = Number.isFinite(Number(capabilities.quotaUsage)) ? Number(capabilities.quotaUsage) : null;
+  const quotaLimit = Number.isFinite(Number(capabilities.quotaLimit)) ? Number(capabilities.quotaLimit) : null;
+  const privateModeWarning = indexedDbAvailable !== true || localStorageAvailable !== true || quotaAvailable !== true;
+  const storageStatus = !indexedDbAvailable && !localStorageAvailable
+    ? 'unavailable'
+    : privateModeWarning
+      ? 'limited'
+      : 'healthy';
+  return {
+    storageStatus,
+    indexedDbAvailable,
+    localStorageAvailable,
+    quotaAvailable,
+    quotaUsage,
+    quotaLimit,
+    privateModeWarning,
+  };
+}
+
+export async function inspectBrowserStorageAvailability(browserGlobal = globalThis) {
+  var localStorageAvailable = false;
+  try {
+    var storage = browserGlobal && browserGlobal.localStorage;
+    if (storage) {
+      var key = 'finance-master.storage-check';
+      storage.setItem(key, 'ok');
+      storage.removeItem(key);
+      localStorageAvailable = true;
+    }
+  } catch {
+    localStorageAvailable = false;
+  }
+
+  var quotaAvailable = false;
+  var quotaUsage = null;
+  var quotaLimit = null;
+  try {
+    var estimate = await browserGlobal?.navigator?.storage?.estimate?.();
+    if (estimate && Number.isFinite(Number(estimate.quota))) {
+      quotaAvailable = true;
+      quotaUsage = Number.isFinite(Number(estimate.usage)) ? Number(estimate.usage) : 0;
+      quotaLimit = Number(estimate.quota);
+    }
+  } catch {
+    quotaAvailable = false;
+  }
+
+  return evaluateStorageStatus({
+    indexedDbAvailable: Boolean(browserGlobal && 'indexedDB' in browserGlobal),
+    localStorageAvailable,
+    quotaAvailable,
+    quotaUsage,
+    quotaLimit,
+  });
+}
+
 export function latestLedgerTimestamp(ledger) {
   if (!Array.isArray(ledger)) return null;
   const latest = ledger.reduce((max, event) => {
@@ -79,4 +139,3 @@ export function inspectFinanceStorage(entries) {
     checkedAt: new Date().toISOString(),
   };
 }
-

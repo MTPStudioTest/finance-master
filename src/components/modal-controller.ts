@@ -43,6 +43,32 @@ let csvDefaultScope: FinanceScope = 'business';
 let pendingBackup: unknown = null;
 let backupPreview: FinanceBackupPreview | null = null;
 let modalReturnFocus: HTMLElement | null = null;
+type DestructiveConfirmationAction =
+  | 'resetLocalFinanceData'
+  | 'restoreBackup'
+  | 'resetDemoData'
+  | 'deleteDemoData'
+  | 'deactivateFiatAccount'
+  | 'deactivateRecurringExpense'
+  | 'deactivateDebtAccount'
+  | 'reverseTransaction'
+  | 'deleteInvoice'
+  | 'cancelPipelineItem'
+  | 'deleteGoal'
+  | 'undoImportBatch';
+interface DestructiveConfirmation {
+  action: DestructiveConfirmationAction;
+  title: string;
+  copy: string;
+  phrase: string;
+  buttonLabel: string;
+  targetId?: string;
+  source?: string;
+  reverseSettlement?: boolean;
+  reopenModal?: string;
+  renderAfter?: boolean;
+}
+let destructiveConfirmation: DestructiveConfirmation | null = null;
 const transactionFilters = {
   search: '',
   accountId: '',
@@ -85,12 +111,19 @@ function money(amount: unknown): string {
 
 function renderDataHealthPanel(): string {
   const health = Store.getLocalDataHealth();
+  const storageCopy = health.storageStatus === 'healthy'
+    ? 'Storage is healthy.'
+    : health.storageStatus === 'limited'
+      ? 'Storage is limited in this browser session.'
+      : 'Storage is unavailable in this browser session.';
   return `
     <div class="modal-section settings-reset-panel">
       <div>
         <div class="ui-title">Local data health</div>
         <p>${health.ok ? 'Local finance data is readable.' : 'Some local Finance Master data needs attention before it can be trusted.'}</p>
-        <p>${health.eventCount} finance event${health.eventCount === 1 ? '' : 's'}${health.latestEventAt ? ` · latest event ${formatDate(health.latestEventAt)}` : ''}</p>
+        <p>${escapeHtml(storageCopy)} Schema ${escapeHtml(health.schemaLabel)} · Backup version ${health.backupVersion}</p>
+        <p>${health.eventCount} finance event${health.eventCount === 1 ? '' : 's'}${health.latestEventAt ? ` · latest event ${formatDate(health.latestEventAt)}` : ''} · last backup ${health.lastBackupAt ? formatDate(health.lastBackupAt) : 'Never'}</p>
+        ${health.privateModeWarning ? '<p>Your browser may not keep local data permanently in this mode. Export a backup before closing this window.</p>' : ''}
         ${health.issues.length ? `
           <div class="csv-validation-list csv-validation-list--error" role="alert">
             ${health.issues.map((entry) => `<span><strong>${escapeHtml(entry.label)}:</strong> ${escapeHtml(entry.message)}</span>`).join('')}
@@ -99,6 +132,35 @@ function renderDataHealthPanel(): string {
       </div>
     </div>
   `;
+}
+
+function renderDestructiveConfirm(): string {
+  const config = destructiveConfirmation;
+  if (!config) {
+    return '<div class="modal-form"><h2 id="modal-title">Confirmation unavailable</h2><p class="modal-copy">Close this dialog and try the action again.</p></div>';
+  }
+  return `
+    <div class="modal-form">
+      <h2 id="modal-title">${escapeHtml(config.title)}</h2>
+      <p class="modal-copy">${escapeHtml(config.copy)}</p>
+      <p class="modal-copy"><strong>Recommended first:</strong> export a backup from Import & Backup if you may need this data later.</p>
+      <div class="form-group">
+        <label for="modal-destructive-phrase">Type ${escapeHtml(config.phrase)} to continue</label>
+        <input id="modal-destructive-phrase" data-autofocus autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary ui-btn ui-btn--secondary" type="button" data-action="closeModal">Cancel</button>
+        <button id="modal-destructive-confirm" class="btn-danger ui-btn" type="button" data-action="applyDestructiveConfirmation" disabled>${escapeHtml(config.buttonLabel)}</button>
+      </div>
+    </div>
+  `;
+}
+
+function updateDestructiveConfirmButton(): void {
+  const input = document.querySelector<HTMLInputElement>('#modal-destructive-phrase');
+  const button = document.querySelector<HTMLButtonElement>('#modal-destructive-confirm');
+  if (!input || !button || !destructiveConfirmation) return;
+  button.disabled = input.value !== destructiveConfirmation.phrase;
 }
 
 function optionList(selected = '', emptyLabel = 'Not mapped'): string {
@@ -152,7 +214,7 @@ function renderOverview(): string {
       <p class="modal-copy">A searchable raw log. Use it as evidence for the Observatory, not as the center of the product.</p>
       <div class="modal-grid-two">
         ${[
-          ['Truly available', money(snapshot.trulyAvailableCash ?? snapshot.realBalance)],
+          ['Available cash', money(snapshot.availableCash ?? snapshot.trulyAvailableCash ?? snapshot.realBalance)],
           ['Reserved', money(snapshot.reservedCash ?? 0)],
           ['Total cash', money(snapshot.totalCash ?? snapshot.realBalance)],
           ['Monthly burn', money(snapshot.monthlyBurn)],
@@ -825,6 +887,7 @@ function renderModal(type: string, id = ''): string {
   if (type === 'goal') return renderGoal(id);
   if (type === 'csvImport') return renderCsvImport();
   if (type === 'backupRestore') return renderBackupRestore();
+  if (type === 'destructiveConfirm') return renderDestructiveConfirm();
   if (type === 'settleIncome') return renderSettleIncome(id);
   if (type === 'income') return renderIncome(id);
   if (type === 'fiatAccount') return renderFiatAccount(id);
@@ -857,11 +920,17 @@ function openEditModal(type: string, options: { id?: string } | string = {}): vo
   });
 }
 
+function openDestructiveConfirmation(config: DestructiveConfirmation): void {
+  destructiveConfirmation = config;
+  openEditModal('destructiveConfirm');
+}
+
 function closeModal(): void {
   if (!overlay || !body) return;
   overlay.classList.remove('active');
   overlay.setAttribute('aria-hidden', 'true');
   body.innerHTML = '';
+  destructiveConfirmation = null;
   modalReturnFocus?.focus();
   modalReturnFocus = null;
 }
@@ -941,6 +1010,7 @@ function downloadBackup(): void {
   link.href = URL.createObjectURL(blob);
   link.download = `finance-master-backup-${today()}.json`;
   link.click();
+  Store.recordBackupExport(backup.exportedAt);
   URL.revokeObjectURL(link.href);
 }
 
@@ -1290,13 +1360,20 @@ function resolveAction(path: string): ((...args: string[]) => unknown) | null {
 
 function confirmDeactivate(method: keyof typeof Store, idField: string): void {
   const id = value(idField);
-  if (!id || !window.confirm('Deactivate this item?')) return;
-  (Store[method] as (id: string) => FinanceEvent[])(id);
-  closeModal();
+  if (!id) return;
+  openDestructiveConfirmation({
+    action: method as DestructiveConfirmationAction,
+    targetId: id,
+    title: 'Deactivate item',
+    copy: 'This archives the selected item from active finance calculations while keeping the event history.',
+    phrase: 'DEACTIVATE ITEM',
+    buttonLabel: 'Deactivate item',
+  });
 }
 
 Object.assign(window, {
   openEditModal,
+  requestDestructiveConfirmation: openDestructiveConfirmation,
   closeModal,
   saveFinanceModal,
   addTransaction: () => {
@@ -1314,16 +1391,33 @@ Object.assign(window, {
     openEditModal('financeOverview');
   },
   deleteTransaction: (id: string) => {
-    if (window.confirm('Reverse this transaction and its linked account balance update?')) Store.reverseTransaction(id, 'modal.transaction.reverse');
-    openEditModal('financeOverview');
+    if (!id) return;
+    openDestructiveConfirmation({
+      action: 'reverseTransaction',
+      targetId: id,
+      source: 'modal.transaction.reverse',
+      title: 'Reverse transaction',
+      copy: 'This reverses the transaction and its linked account balance update.',
+      phrase: 'REVERSE TRANSACTION',
+      buttonLabel: 'Reverse transaction',
+      reopenModal: 'financeOverview',
+    });
   },
   markAsPaid: (id: string) => {
     openEditModal('settleIncome', { id });
   },
   deleteInvoice: (id: string) => {
-    if (!window.confirm('Archive this pipeline or settlement entry?')) return;
+    if (!id) return;
     const invoice = (Store.getFinancialReadModel().invoices || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
-    Store.deleteInvoice(id, { reverseSettlement: String(invoice?.status || '').toLowerCase() === 'paid' });
+    openDestructiveConfirmation({
+      action: 'deleteInvoice',
+      targetId: id,
+      reverseSettlement: String(invoice?.status || '').toLowerCase() === 'paid',
+      title: 'Archive income entry',
+      copy: 'This archives the selected pipeline or settlement entry. If it is settled, the linked settlement can be reversed as part of the archive.',
+      phrase: 'ARCHIVE INCOME ENTRY',
+      buttonLabel: 'Archive entry',
+    });
   },
   markObligationNeedsReview: (id: string) => {
     try {
@@ -1333,12 +1427,17 @@ Object.assign(window, {
     }
   },
   cancelPipelineFromReview: (id: string) => {
-    if (!id || !window.confirm('Cancel this pipeline item?')) return;
-    try {
-      Store.cancelPipelineItem(id, 'Cancelled during Review.');
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Could not cancel this pipeline item.');
-    }
+    if (!id) return;
+    openDestructiveConfirmation({
+      action: 'cancelPipelineItem',
+      targetId: id,
+      source: 'Cancelled during Review.',
+      title: 'Cancel pipeline item',
+      copy: 'This removes the selected pipeline item from expected income and forecast assumptions.',
+      phrase: 'CANCEL PIPELINE ITEM',
+      buttonLabel: 'Cancel pipeline item',
+      renderAfter: true,
+    });
   },
   toggleDebtPlanType: (type: string) => {
     const regular = document.getElementById('modal-debt-plan-regular-section');
@@ -1365,22 +1464,31 @@ Object.assign(window, {
   deactivateRecurringExpense: () => confirmDeactivate('deactivateRecurringExpense', 'modal-expense-id'),
   deactivateDebtAccount: () => confirmDeactivate('deactivateDebtAccount', 'modal-debt-id'),
   resetDemoData: () => {
-    if (!window.confirm('Restore the original Finance Master sample data? Your finance entries will be replaced.')) return;
-    Store.clearAndReseedDemo();
-    applyAppearance(Store);
-    closeModal();
+    openDestructiveConfirmation({
+      action: 'resetDemoData',
+      title: 'Restore sample data',
+      copy: 'This replaces the current local Finance Master ledger with the fictional sample data.',
+      phrase: 'RESTORE SAMPLE DATA',
+      buttonLabel: 'Restore sample data',
+    });
   },
   deleteDemoData: () => {
-    if (!window.confirm('Delete the Finance Master sample data? The dashboard ledger will be empty until you add entries or restore the sample data.')) return;
-    Store.deleteSampleData();
-    closeModal();
+    openDestructiveConfirmation({
+      action: 'deleteDemoData',
+      title: 'Delete sample data',
+      copy: 'This clears the fictional sample ledger from this browser. Your dashboard will be empty until you add entries or restore a backup.',
+      phrase: 'DELETE SAMPLE DATA',
+      buttonLabel: 'Delete sample data',
+    });
   },
   resetLocalFinanceData: () => {
-    const confirmation = window.prompt('Type RESET to clear only Finance Master local finance data in this browser. Export a backup first if you may need this data later.');
-    if (confirmation !== 'RESET') return;
-    Store.resetLocalFinanceData();
-    applyAppearance(Store);
-    closeModal();
+    openDestructiveConfirmation({
+      action: 'resetLocalFinanceData',
+      title: 'Reset local finance data',
+      copy: 'This clears only Finance Master local finance data in this browser, including ledger events, settings, review state, import history, goals, and cached local values.',
+      phrase: 'DELETE LOCAL FINANCE DATA',
+      buttonLabel: 'Reset local data',
+    });
   },
   completeWeeklyReview: () => {
     const accountChecks = [...document.querySelectorAll<HTMLInputElement>('.review-account-check')];
@@ -1419,18 +1527,31 @@ Object.assign(window, {
     }
   },
   deleteGoal: (id: string) => {
-    if (!id || !window.confirm('Delete this savings goal?')) return;
-    Store.deleteGoal(id);
-    openEditModal('goals');
+    if (!id) return;
+    openDestructiveConfirmation({
+      action: 'deleteGoal',
+      targetId: id,
+      title: 'Delete savings goal',
+      copy: 'This deletes the selected savings or buffer goal. It does not delete linked account balances.',
+      phrase: 'DELETE SAVINGS GOAL',
+      buttonLabel: 'Delete goal',
+      reopenModal: 'goals',
+    });
   },
   exportFinanceBackup: () => downloadBackup(),
   exportTransactionsCsv: () => downloadTransactionsCsv(),
   chooseFinanceBackup: () => document.querySelector<HTMLInputElement>('#modal-backup-file')?.click(),
   undoImportBatch: (batchId: string) => {
-    if (!batchId || !window.confirm('Reverse the transactions imported in this CSV batch?')) return;
-    Store.undoImportBatch(batchId);
-    closeModal();
-    window.FinancialMode?.render?.();
+    if (!batchId) return;
+    openDestructiveConfirmation({
+      action: 'undoImportBatch',
+      targetId: batchId,
+      title: 'Undo CSV import',
+      copy: 'This reverses the transactions imported in the selected CSV batch.',
+      phrase: 'UNDO CSV IMPORT',
+      buttonLabel: 'Undo import',
+      renderAfter: true,
+    });
   },
   chooseCsvImport: () => document.querySelector<HTMLInputElement>('#modal-csv-file')?.click(),
   analyzeCsvImport: () => {
@@ -1493,15 +1614,63 @@ Object.assign(window, {
       showModalError('Choose a valid Finance Master backup before restoring.');
       return;
     }
-    if (!window.confirm('Replace current local Finance Master data with this backup? This cannot be undone unless you exported a backup first.')) return;
+    openDestructiveConfirmation({
+      action: 'restoreBackup',
+      title: 'Replace local finance data',
+      copy: 'This replaces the current local Finance Master data in this browser with the selected backup.',
+      phrase: 'RESTORE LOCAL FINANCE DATA',
+      buttonLabel: 'Replace current data',
+    });
+  },
+  applyDestructiveConfirmation: () => {
+    const config = destructiveConfirmation;
+    if (!config) {
+      showModalError('Choose an action before confirming.');
+      return;
+    }
+    if (value('modal-destructive-phrase') !== config.phrase) {
+      showModalError('The confirmation phrase does not match.');
+      return;
+    }
     try {
-      Store.restoreBackup(pendingBackup);
+      if (config.action === 'restoreBackup') {
+        if (!backupPreview?.valid || !pendingBackup) throw new Error('Choose a valid Finance Master backup before restoring.');
+        Store.restoreBackup(pendingBackup);
+        pendingBackup = null;
+        backupPreview = null;
+      } else if (config.action === 'resetLocalFinanceData') {
+        Store.resetLocalFinanceData();
+      } else if (config.action === 'resetDemoData') {
+        Store.clearAndReseedDemo();
+      } else if (config.action === 'deleteDemoData') {
+        Store.deleteSampleData();
+      } else if (config.action === 'deactivateFiatAccount' || config.action === 'deactivateRecurringExpense' || config.action === 'deactivateDebtAccount') {
+        if (!config.targetId) throw new Error('Choose an item before deactivating.');
+        (Store[config.action] as (id: string) => FinanceEvent[])(config.targetId);
+      } else if (config.action === 'reverseTransaction') {
+        if (!config.targetId) throw new Error('Choose a transaction before reversing.');
+        Store.reverseTransaction(config.targetId, config.source || 'modal.transaction.reverse');
+      } else if (config.action === 'deleteInvoice') {
+        if (!config.targetId) throw new Error('Choose an income entry before archiving.');
+        Store.deleteInvoice(config.targetId, { reverseSettlement: config.reverseSettlement === true });
+      } else if (config.action === 'cancelPipelineItem') {
+        if (!config.targetId) throw new Error('Choose a pipeline item before cancelling.');
+        Store.cancelPipelineItem(config.targetId, config.source || 'Cancelled.');
+      } else if (config.action === 'deleteGoal') {
+        if (!config.targetId) throw new Error('Choose a goal before deleting.');
+        Store.deleteGoal(config.targetId);
+      } else if (config.action === 'undoImportBatch') {
+        if (!config.targetId) throw new Error('Choose an import batch before undoing.');
+        Store.undoImportBatch(config.targetId);
+      }
+      const reopenModal = config.reopenModal;
+      const renderAfter = config.renderAfter === true;
       applyAppearance(Store);
-      pendingBackup = null;
-      backupPreview = null;
       closeModal();
+      if (reopenModal) openEditModal(reopenModal);
+      if (renderAfter || !reopenModal) window.FinancialMode?.render?.();
     } catch (error) {
-      showModalError(error instanceof Error ? error.message : 'Could not restore this backup.');
+      showModalError(error instanceof Error ? error.message : 'Could not complete this action.');
     }
   },
 });
@@ -1541,6 +1710,11 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     first.focus();
   }
+});
+
+document.addEventListener('input', (event) => {
+  const input = event.target as HTMLInputElement | null;
+  if (input?.id === 'modal-destructive-phrase') updateDestructiveConfirmButton();
 });
 
 document.addEventListener('change', (event) => {

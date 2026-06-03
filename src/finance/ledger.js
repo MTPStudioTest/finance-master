@@ -22,6 +22,26 @@
         };
     }
 
+    function normalizeFrequency(value) {
+        var raw = String(value || 'monthly').trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+        if (raw === 'week') return 'weekly';
+        if (raw === 'two_weekly' || raw === 'every_two_weeks' || raw === 'fortnightly') return 'biweekly';
+        if (raw === 'month') return 'monthly';
+        if (raw === 'quarter') return 'quarterly';
+        if (raw === 'annual' || raw === 'annually') return 'yearly';
+        return ['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'].includes(raw) ? raw : 'monthly';
+    }
+
+    function normalizeRecurrenceMonthlyAmount(amount, frequency) {
+        var value = Math.abs(Number(amount) || 0);
+        var normalizedFrequency = normalizeFrequency(frequency);
+        if (normalizedFrequency === 'weekly') return Events.roundMoney(value * 52 / 12);
+        if (normalizedFrequency === 'biweekly') return Events.roundMoney(value * 26 / 12);
+        if (normalizedFrequency === 'quarterly') return Events.roundMoney(value / 3);
+        if (normalizedFrequency === 'yearly') return Events.roundMoney(value / 12);
+        return Events.roundMoney(value);
+    }
+
     function assertCurrency(draft, baseCurrency) {
         var currency = Events.normalizeCurrency(draft && draft.currency, baseCurrency);
         if (currency !== Events.normalizeCurrency(baseCurrency, 'EUR')) {
@@ -349,14 +369,21 @@
             }
 
             if (event.type === 'expense.recurring_set') {
+                var recurringFrequency = normalizeFrequency(metadata.frequency);
+                var recurringAmount = Number.isFinite(Number(metadata.amount)) ? Math.abs(Number(metadata.amount)) : Math.abs(eventAmount);
+                var recurringMonthlyAmount = Number.isFinite(Number(metadata.monthlyAmount))
+                    ? Math.abs(Number(metadata.monthlyAmount))
+                    : normalizeRecurrenceMonthlyAmount(recurringAmount, recurringFrequency);
                 recurringById[relatedId] = {
                     id: relatedId,
                     category: String(metadata.category || metadata.name || 'Recurring Expense'),
-                    monthlyAmount: Number.isFinite(Number(metadata.monthlyAmount)) ? Number(metadata.monthlyAmount) : Math.abs(eventAmount),
+                    amount: recurringAmount,
+                    monthlyAmount: recurringMonthlyAmount,
                     essential: Boolean(metadata.essential),
                     active: metadata.active !== false,
                     dueDay: Math.max(1, Math.min(28, Number(metadata.dueDay) || 1)),
-                    frequency: String(metadata.frequency || 'monthly'),
+                    frequency: recurringFrequency,
+                    linkedDebtId: String(metadata.linkedDebtId || metadata.debtId || '').trim(),
                     scope: String(metadata.scope || 'shared'),
                     currency: event.currency,
                     updatedAt: event.timestamp
@@ -408,6 +435,7 @@
                         outstanding: 0,
                         dueDate: '',
                         minimumPayment: 0,
+                        minimumPaymentMonthly: 0,
                         paymentPlanNote: '',
                         planType: 'regular',
                         frequency: 'monthly',
@@ -423,6 +451,7 @@
                     if (metadata.dueDate) debtById[relatedId].dueDate = toIsoDateOnly(metadata.dueDate);
                     if (Number.isFinite(Number(metadata.minimumPayment))) debtById[relatedId].minimumPayment = Math.max(0, Number(metadata.minimumPayment));
                     if (metadata.paymentPlanNote) debtById[relatedId].paymentPlanNote = String(metadata.paymentPlanNote);
+                    debtById[relatedId].frequency = normalizeFrequency(metadata.frequency || debtById[relatedId].frequency);
                 } else if (event.type === 'debt.payment_made') {
                     debtById[relatedId].totalPaid += Math.max(0, eventAmount);
                 } else {
@@ -430,11 +459,12 @@
                     debtById[relatedId].minimumPayment = Math.max(0, Number(metadata.minimumPayment) || 0);
                     debtById[relatedId].paymentPlanNote = String(metadata.paymentPlanNote || '');
                     debtById[relatedId].planType = String(metadata.planType || 'regular');
-                    debtById[relatedId].frequency = String(metadata.frequency || 'monthly');
+                    debtById[relatedId].frequency = normalizeFrequency(metadata.frequency);
                     debtById[relatedId].installments = Array.isArray(metadata.installments) ? metadata.installments : [];
                     debtById[relatedId].planReviewedAt = event.timestamp;
                 }
                 debtById[relatedId].outstanding = Math.max(0, debtById[relatedId].totalAdded - debtById[relatedId].totalPaid);
+                debtById[relatedId].minimumPaymentMonthly = normalizeRecurrenceMonthlyAmount(debtById[relatedId].minimumPayment, debtById[relatedId].frequency);
                 debtById[relatedId].scope = String(metadata.scope || debtById[relatedId].scope || 'shared');
                 debtById[relatedId].updatedAt = event.timestamp;
                 return;
@@ -627,7 +657,9 @@
         reverseEvent: reverseEvent,
         getActiveEvents: getActiveEvents,
         buildReadModel: buildReadModel,
-        isPipelineActive: isPipelineActive
+        isPipelineActive: isPipelineActive,
+        normalizeFrequency: normalizeFrequency,
+        normalizeRecurrenceMonthlyAmount: normalizeRecurrenceMonthlyAmount
     };
 
     if (typeof module !== 'undefined' && module.exports) {

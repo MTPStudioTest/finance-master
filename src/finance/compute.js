@@ -146,6 +146,32 @@
         return 'upcoming';
     }
 
+    function metricExplanation(key, label, value, parts, warnings) {
+        return {
+            key: key,
+            label: label,
+            value: round(Number(value) || 0),
+            parts: safeArray(parts).map(function (part) {
+                return {
+                    label: String(part && part.label || ''),
+                    value: round(Number(part && part.value) || 0),
+                    operation: part && part.operation ? String(part.operation) : undefined
+                };
+            }),
+            warnings: safeArray(warnings).map(function (warning) { return String(warning || ''); }).filter(Boolean)
+        };
+    }
+
+    function incomeSettledIdMap(transactions) {
+        var map = Object.create(null);
+        safeArray(transactions).forEach(function (entry) {
+            if (String(entry && entry.type) !== 'income.received') return;
+            var linkedIncomeId = String(entry && entry.linkedIncomeId || '').trim();
+            if (linkedIncomeId) map[linkedIncomeId] = true;
+        });
+        return map;
+    }
+
     function buildTreasuryModel(readModel, snapshotSeed, cfg, nowTs) {
         var fiatAccounts = safeArray(readModel.fiatAccounts);
         var recurringExpenses = safeArray(readModel.recurringExpenses);
@@ -154,11 +180,24 @@
             if (!review || !review.id) return;
             obligationReviewMap[String(review.id)] = review;
         });
-        var pipelineDeals = safeArray(readModel.pipelineDeals).filter(function (deal) {
-            return isPipelineIncluded(deal && deal.status);
-        });
         var transactions = safeArray(readModel.transactions);
+        var settledIncomeIds = incomeSettledIdMap(transactions);
+        var pipelineDeals = safeArray(readModel.pipelineDeals).filter(function (deal) {
+            return isPipelineIncluded(deal && deal.status) && settledIncomeIds[String(deal && deal.id || '')] !== true;
+        });
         var debtAccounts = safeArray(readModel.debtAccounts);
+        var debtPlanIds = Object.create(null);
+        var debtPlansForBurn = debtAccounts.filter(function (debt) {
+            var outstanding = Number(debt && debt.outstanding) || 0;
+            var monthlyPayment = Number(debt && debt.minimumPaymentMonthly) || Number(debt && debt.minimumPayment) || 0;
+            if (outstanding <= 0 || monthlyPayment <= 0) return false;
+            debtPlanIds[String((debt && debt.id) || '')] = true;
+            return true;
+        });
+        var recurringBurnExpenses = recurringExpenses.filter(function (expense) {
+            var linkedDebtId = String(expense && expense.linkedDebtId || '').trim();
+            return !linkedDebtId || debtPlanIds[linkedDebtId] !== true;
+        });
         var monthStart = startOfMonth(nowTs).getTime();
         var monthEnd = endOfMonth(nowTs).getTime();
         var forecastEndTs = addDays(nowTs, cfg.forecastDays).getTime();
@@ -200,14 +239,23 @@
                 return String(a.label).localeCompare(String(b.label));
             });
 
-        var personalBurn = recurringExpenses
+        var personalBurn = recurringBurnExpenses
             .filter(function (expense) { return String(expense && expense.scope || '').toLowerCase() === 'personal' || String(expense && expense.scope || '').toLowerCase() === 'shared'; })
             .reduce(function (sum, expense) { return sum + (Number(expense && expense.monthlyAmount) || 0); }, 0);
-        var businessBurn = recurringExpenses
+        var businessBurn = recurringBurnExpenses
             .filter(function (expense) { return String(expense && expense.scope || '').toLowerCase() === 'business' || String(expense && expense.scope || '').toLowerCase() === 'shared'; })
             .reduce(function (sum, expense) { return sum + (Number(expense && expense.monthlyAmount) || 0); }, 0);
-        var totalBurn = recurringExpenses
+        debtPlansForBurn.forEach(function (debt) {
+            var amount = Number(debt && debt.minimumPaymentMonthly) || Number(debt && debt.minimumPayment) || 0;
+            var scope = String(debt && debt.scope || 'shared').toLowerCase();
+            if (scope === 'personal' || scope === 'shared') personalBurn += amount;
+            if (scope === 'business' || scope === 'shared') businessBurn += amount;
+        });
+        var recurringBurn = recurringBurnExpenses
             .reduce(function (sum, expense) { return sum + (Number(expense && expense.monthlyAmount) || 0); }, 0);
+        var debtBurn = debtPlansForBurn
+            .reduce(function (sum, debt) { return sum + (Number(debt && debt.minimumPaymentMonthly) || Number(debt && debt.minimumPayment) || 0); }, 0);
+        var totalBurn = recurringBurn + debtBurn;
 
         var obligations = [];
         var todayOnly = dateOnly(nowTs);
@@ -216,7 +264,7 @@
         var lookbackStartOnly = global.FinanceDates && global.FinanceDates.addDaysDateOnly
             ? global.FinanceDates.addDaysDateOnly(todayOnly, -30)
             : dateOnly(addDays(nowTs, -30));
-        recurringExpenses.forEach(function (expense) {
+        recurringBurnExpenses.forEach(function (expense) {
             var dueDay = Math.max(1, Math.min(28, Number(expense && expense.dueDay) || 1));
             for (var monthOffset = 0; monthOffset < 4; monthOffset += 1) {
                 var dueMonth = new Date(Date.UTC(todayParts[0] || new Date(nowTs).getUTCFullYear(), (todayParts[1] || (new Date(nowTs).getUTCMonth() + 1)) - 1 + monthOffset, dueDay, 12, 0, 0, 0));
@@ -256,7 +304,7 @@
             var outstanding = Number(debt && debt.outstanding) || 0;
             if (outstanding <= 0) return;
             var debtDueDate = dateOnly(debt && debt.dueDate);
-            var hasPlan = Boolean(debtDueDate) && (Number(debt && debt.minimumPayment) || 0) > 0 && String(debt && debt.paymentPlanNote || '').trim();
+            var hasPlan = (Number(debt && debt.minimumPayment) || 0) > 0;
             obligations.push({
                 id: String((debt && debt.id) || 'debt'),
                 title: String((debt && debt.name) || 'Debt repayment'),
@@ -416,16 +464,53 @@
             .reduce(function (sum, entry) { return sum + ((Number(entry.amount) || 0) * Events.clampProbability(entry.probability)); }, 0);
         var next30ObligationTotal = next30Obligations
             .reduce(function (sum, entry) { return sum + (Number(entry.amount) || 0); }, 0);
+        var actualCash = round(totalCash);
+        var protectedCash = round(reservedCash);
+        var committedShortTermObligations = round(next30ObligationTotal);
+        var availableCash = round(actualCash - protectedCash - committedShortTermObligations);
+        var debtRemaining = round(debtAccounts.reduce(function (sum, debt) {
+            return sum + (Number(debt && debt.outstanding) || 0);
+        }, 0));
+        var explanations = {
+            actualCash: metricExplanation('actualCash', 'Actual cash', actualCash, [
+                { label: 'Active liquid account balances', value: actualCash, operation: 'add' }
+            ]),
+            protectedCash: metricExplanation('protectedCash', 'Protected cash', protectedCash, reserveBuckets
+                .filter(function (bucket) { return Number(bucket && bucket.amount) > 0; })
+                .map(function (bucket) { return { label: String(bucket.label || 'Reserve bucket'), value: Number(bucket.amount) || 0, operation: 'add' }; })),
+            availableCash: metricExplanation('availableCash', 'Available cash', availableCash, [
+                { label: 'Actual cash', value: actualCash, operation: 'add' },
+                { label: 'This money is protected', value: protectedCash, operation: 'subtract' },
+                { label: 'Due within 30 days', value: committedShortTermObligations, operation: 'subtract' }
+            ]),
+            monthlyBurnRate: metricExplanation('monthlyBurnRate', 'Monthly burn rate', totalBurn, [
+                { label: 'Recurring costs', value: recurringBurn, operation: 'add' },
+                { label: 'Debt payment plans', value: debtBurn, operation: 'add' }
+            ]),
+            runway: metricExplanation('runway', 'Runway', totalBurn > 0 ? round(availableCash / totalBurn) : 0, [
+                { label: 'Available cash', value: availableCash, operation: 'divide' },
+                { label: 'Monthly burn rate', value: totalBurn, operation: 'divide' }
+            ], totalBurn > 0 ? [] : ['Runway is unavailable until monthly burn is known.']),
+            debtBurden: metricExplanation('debtBurden', 'Debt burden', debtRemaining, debtAccounts
+                .filter(function (debt) { return (Number(debt && debt.outstanding) || 0) > 0; })
+                .map(function (debt) { return { label: String(debt.name || 'Debt'), value: Number(debt.outstanding) || 0, operation: 'add' }; }))
+        };
 
         return {
-            totalCash: round(totalCash),
-            reservedCash: round(reservedCash),
+            actualCash: actualCash,
+            totalCash: actualCash,
+            protectedCash: protectedCash,
+            reservedCash: protectedCash,
             trulyAvailableCash: trulyAvailable,
+            availableCash: availableCash,
+            committedShortTermObligations: committedShortTermObligations,
+            shortTermObligationWindowDays: 30,
             reserveBuckets: reserveBuckets,
             monthlyPersonalBurn: round(personalBurn),
             monthlyBusinessBurn: round(businessBurn),
             totalMonthlyBurn: round(totalBurn),
-            runwayMonths: totalBurn > 0 ? round(trulyAvailable / totalBurn) : null,
+            runwayMonths: totalBurn > 0 ? round(availableCash / totalBurn) : null,
+            explanations: explanations,
             obligations: obligations,
             overdueObligations: obligations.filter(function (entry) { return entry.status === 'overdue'; }),
             dueSoonObligations: obligations.filter(function (entry) { return entry.status === 'due_soon'; }),
@@ -439,9 +524,9 @@
                 received: round(incomeThisMonth.received)
             },
             incomeScenarios: {
-                conservative: round(trulyAvailable + confirmed90 - scheduled90),
-                expected: round(trulyAvailable + confirmed90 + expected90 - scheduled90),
-                optimistic: round(trulyAvailable + confirmed90 + expected90 + risky90 - scheduled90)
+                conservative: round(availableCash + confirmed90 - scheduled90),
+                expected: round(availableCash + confirmed90 + expected90 - scheduled90),
+                optimistic: round(availableCash + confirmed90 + expected90 + risky90 - scheduled90)
             },
             dashboardSummary: {
                 actionThisWeek: {
@@ -553,8 +638,10 @@
         var weightedPipelineMinor = 0;
         var forecastExpectedPipelineMinor = 0;
 
+        var settledIncomeIdsForForecast = incomeSettledIdMap(readModel.transactions);
         safeArray(readModel.pipelineDeals).forEach(function (deal) {
             if (!isPipelineIncluded(deal.status)) return;
+            if (settledIncomeIdsForForecast[String(deal && deal.id || '')] === true) return;
 
             var probability = Events.clampProbability(deal.probability);
             var weightedMinor = Events.toMinor((toNumber(deal.value, 0) * probability));
@@ -663,8 +750,12 @@ var snapshot = {
             missingInputs: [],
             lastComputedAt: nowIso,
             totalCash: treasury.totalCash,
+            actualCash: treasury.actualCash,
             reservedCash: treasury.reservedCash,
+            protectedCash: treasury.protectedCash,
             trulyAvailableCash: treasury.trulyAvailableCash,
+            availableCash: treasury.availableCash,
+            committedShortTermObligations: treasury.committedShortTermObligations,
             monthlyPersonalBurn: treasury.monthlyPersonalBurn,
             monthlyBusinessBurn: treasury.monthlyBusinessBurn,
             totalMonthlyBurn: treasury.totalMonthlyBurn,
@@ -730,6 +821,11 @@ var snapshot = {
             snapshot: snapshot,
             readModel: readModel,
             treasury: treasury,
+            explanations: Object.assign({}, treasury.explanations, {
+                forecastConfidence: metricExplanation('forecastConfidence', 'Forecast confidence', Math.round((Number(confidenceResult.score) || 0) * 100), [
+                    { label: 'Confidence score', value: Math.round((Number(confidenceResult.score) || 0) * 100), operation: 'add' }
+                ], confidenceResult.reasons || confidenceResult.missingInputs || [])
+            }),
             invariants: invariantResult,
             confidence: confidenceResult,
             diagnostics: {
