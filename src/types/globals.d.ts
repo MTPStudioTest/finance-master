@@ -117,6 +117,32 @@ declare global {
     getUiSettings(): FinanceUiSettings;
     importCsvTransactions(rows: import('./finance').CsvTransactionRow[], options: { accountId: string; sourceFile?: string }): import('./finance').CsvImportSummary;
     markPipelineItemPaid(id: string, context?: Record<string, unknown>): FinanceEvent[];
+    reviewTransaction(input: {
+      id: string;
+      categoryId: string;
+      scope?: FinanceScope;
+      notes?: string;
+    }): FinanceEvent[];
+    matchTransactionToObligation(input: {
+      transactionId: string;
+      obligationId: string;
+      notes?: string;
+    }): FinanceEvent[];
+    updatePipelineReview(input: {
+      id: string;
+      status: string;
+      probability: number;
+      expectedDateISO: string;
+      destinationAccountId?: string;
+      notes?: string;
+    }): FinanceEvent[];
+    cancelPipelineItem(id: string, notes?: string): FinanceEvent[];
+    saveDebtPlan(input: {
+      id: string;
+      dueDate: string;
+      minimumPayment: number;
+      paymentPlanNote: string;
+    }): FinanceEvent[];
     recordTransaction(input: {
       description: string;
       amount: number;

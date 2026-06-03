@@ -255,14 +255,16 @@
         debtAccounts.forEach(function (debt) {
             var outstanding = Number(debt && debt.outstanding) || 0;
             if (outstanding <= 0) return;
+            var debtDueDate = dateOnly(debt && debt.dueDate);
+            var hasPlan = Boolean(debtDueDate) && (Number(debt && debt.minimumPayment) || 0) > 0 && String(debt && debt.paymentPlanNote || '').trim();
             obligations.push({
                 id: String((debt && debt.id) || 'debt'),
                 title: String((debt && debt.name) || 'Debt repayment'),
                 type: 'debt',
-                amount: round(outstanding),
-                dueDate: '',
-                status: 'needs_review',
-            scope: String((debt && debt.scope) || 'shared')
+                amount: round((Number(debt && debt.minimumPayment) || 0) > 0 ? Number(debt && debt.minimumPayment) : outstanding),
+                dueDate: debtDueDate,
+                status: hasPlan ? classifyObligationStatus(debtDueDate, nowTs) : 'needs_review',
+                scope: String((debt && debt.scope) || 'shared')
             });
         });
         obligations.sort(function (a, b) {
@@ -319,38 +321,78 @@
             .reduce(function (sum, entry) { return sum + (Number(entry.amount) || 0); }, 0);
         var trulyAvailable = round(totalCash - reservedCash);
 
+        function pushReviewItem(item) {
+            reviewQueue.push(Object.assign({
+                kind: 'setup',
+                targetId: '',
+                actionLabel: 'Review',
+                tone: 'review'
+            }, item));
+        }
+
         var reviewQueue = [];
-        obligations.filter(function (entry) { return entry.status === 'overdue' || entry.status === 'needs_review'; }).slice(0, 6).forEach(function (entry) {
+        obligations.filter(function (entry) {
+            return entry.status === 'overdue' || entry.status === 'due_soon' || entry.status === 'needs_review' || entry.status === 'deferred';
+        }).slice(0, 8).forEach(function (entry) {
+            var isDebt = String(entry.type) === 'debt';
             reviewQueue.push({
+                kind: isDebt ? 'debt' : 'obligation',
                 id: entry.id,
+                targetId: entry.id,
                 title: entry.title,
-                reason: entry.status === 'overdue' ? 'Overdue obligation' : 'Needs a due date or payment plan',
+                reason: isDebt ? 'Debt needs a due date or payment plan' : (entry.status === 'overdue' ? 'Overdue obligation' : (entry.status === 'due_soon' ? 'Due within 7 days' : 'Needs an obligation decision')),
+                actionLabel: isDebt ? 'Add plan' : (entry.status === 'overdue' ? 'Mark paid' : 'Review'),
                 tone: entry.status === 'overdue' ? 'urgent' : 'review'
             });
         });
-        income.filter(function (entry) { return entry.status === 'risky'; }).slice(0, 4).forEach(function (entry) {
-            reviewQueue.push({
-                id: entry.id,
-                title: entry.title,
-                reason: 'Risky income assumption',
+        transactions.filter(function (entry) {
+            return String(entry && entry.type) === 'expense.recorded'
+                && !String(entry && entry.obligationId || '').trim()
+                && String(entry && entry.categoryId || '').toLowerCase() === 'obligation';
+        }).slice(0, 4).forEach(function (entry) {
+            pushReviewItem({
+                kind: 'payment',
+                id: String(entry && entry.id || ''),
+                targetId: String(entry && entry.id || ''),
+                title: String(entry && entry.description || 'Payment'),
+                reason: 'Actual payment needs matching to an obligation',
+                actionLabel: 'Match',
                 tone: 'review'
             });
         });
         transactions.filter(function (entry) {
-            return String(entry && entry.categoryId || '').toLowerCase() === 'uncategorized';
+            return String(entry && entry.categoryId || '').toLowerCase() === 'uncategorized'
+                || String(entry && entry.reviewStatus || '').toLowerCase() === 'needs_review';
         }).slice(0, 4).forEach(function (entry) {
-            reviewQueue.push({
+            pushReviewItem({
+                kind: 'transaction',
                 id: String(entry && entry.id || ''),
+                targetId: String(entry && entry.id || ''),
                 title: String(entry && entry.description || 'Transaction'),
                 reason: 'Uncategorized transaction',
+                actionLabel: 'Categorize',
+                tone: 'review'
+            });
+        });
+        income.filter(function (entry) {
+            var due = dateOnly(entry && entry.dueDate);
+            return entry.status === 'risky' || (due && due < todayOnly);
+        }).slice(0, 4).forEach(function (entry) {
+            reviewQueue.push({
+                kind: 'pipeline',
+                id: entry.id,
+                targetId: entry.id,
+                title: entry.title,
+                reason: entry.status === 'risky' ? 'Risky income assumption' : 'Expected income is overdue',
+                actionLabel: entry.status === 'risky' ? 'Update' : 'Received',
                 tone: 'review'
             });
         });
         if (!fiatAccounts.length) {
-            reviewQueue.unshift({ id: 'missing-cash', title: 'Cash baseline', reason: 'Add at least one cash account', tone: 'urgent' });
+            reviewQueue.unshift({ kind: 'setup', id: 'missing-cash', targetId: 'missing-cash', title: 'Cash baseline', reason: 'Add at least one cash account', actionLabel: 'Add account', tone: 'urgent' });
         }
         if (!recurringExpenses.length) {
-            reviewQueue.push({ id: 'missing-burn', title: 'Monthly burn', reason: 'Add recurring fixed costs', tone: 'review' });
+            pushReviewItem({ kind: 'setup', id: 'missing-burn', targetId: 'missing-burn', title: 'Monthly burn', reason: 'Add recurring fixed costs', actionLabel: 'Add recurring cost', tone: 'review' });
         }
 
         return {

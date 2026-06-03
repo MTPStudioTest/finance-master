@@ -171,6 +171,68 @@ test('overdue obligation can be booked as paid and appears in payment review', a
   expect(errors).toEqual([]);
 });
 
+test('review queue actions categorize, match, update pipeline, and add debt plans', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+
+  await page.getByRole('button', { name: '+ Add', exact: true }).click();
+  await page.locator(".quick-add-card[data-action-args=\"'transaction'\"]").click();
+  await page.getByLabel('Note').fill('Review uncategorized');
+  await page.getByLabel('Amount').fill('-12');
+  await page.getByLabel('Account').selectOption({ index: 1 });
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+
+  await page.getByRole('button', { name: '+ Add', exact: true }).click();
+  await page.locator(".quick-add-card[data-action-args=\"'transaction'\"]").click();
+  await page.getByLabel('Note').fill('Matchable rent payment');
+  await page.getByLabel('Amount').fill('-300');
+  await page.getByLabel('Account').selectOption({ index: 1 });
+  await page.getByLabel('Category').fill('obligation');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+
+  await page.getByRole('banner').getByRole('button', { name: 'Review', exact: true }).click();
+  await expect(page.getByText('Review Queue', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Categorize', exact: true }).first()).toBeVisible();
+
+  const categorizeRow = page.locator('.modal-list-row').filter({ hasText: 'Review uncategorized' });
+  await categorizeRow.getByRole('button', { name: 'Categorize', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Categorize transaction', exact: true })).toBeVisible();
+  await page.getByLabel('Category').fill('');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Choose a transaction category');
+  await page.getByLabel('Category').fill('software');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.modal-list-row').filter({ hasText: 'Review uncategorized' })).toHaveCount(0);
+
+  const paymentRow = page.locator('.modal-list-row').filter({ hasText: 'Matchable rent payment' });
+  await paymentRow.getByRole('button', { name: 'Match', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Match payment to obligation', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Choose a payment and an obligation');
+  await page.getByLabel('Obligation').selectOption({ index: 1 });
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.modal-list-row').filter({ hasText: 'Matchable rent payment' }).getByText('Paid', { exact: true }).first()).toBeVisible();
+
+  const pipelineRow = page.locator('.modal-list-row').filter({ hasText: 'Risky income assumption' }).first();
+  await pipelineRow.getByRole('button', { name: 'Update', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Review pipeline item', exact: true })).toBeVisible();
+  await page.getByLabel('Status').selectOption('expected');
+  await page.getByLabel('Probability').fill('0.75');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.modal-list-row').filter({ hasText: 'Risky income assumption' })).toHaveCount(0);
+
+  const debtRow = page.locator('.modal-list-row').filter({ hasText: 'Debt needs a due date or payment plan' }).first();
+  await debtRow.getByRole('button', { name: 'Add plan', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Add debt payment plan', exact: true })).toBeVisible();
+  await page.getByLabel('Next due date').fill('2026-07-15');
+  await page.getByLabel('Minimum payment').fill('150');
+  await page.getByLabel('Payment plan note').fill('Monthly minimum agreed.');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.modal-list-row').filter({ hasText: 'Debt needs a due date or payment plan' })).toHaveCount(0);
+
+  expect(errors).toEqual([]);
+});
+
 test('mobile and tablet capture surfaces avoid horizontal overflow', async ({ page }) => {
   const errors = monitorConsole(page);
   for (const viewport of [{ width: 390, height: 844 }, { width: 820, height: 1180 }]) {

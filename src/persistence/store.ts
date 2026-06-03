@@ -456,6 +456,201 @@ export const Store = {
     return review ? [review] : [];
   },
 
+  reviewTransaction(input: {
+    id: string;
+    categoryId: string;
+    scope?: FinanceScope;
+    notes?: string;
+  }): FinanceEvent[] {
+    const readModel = this.getFinancialReadModel();
+    const transaction = (readModel.transactions || [])
+      .find((entry: Record<string, unknown>) => String(entry.id) === String(input.id || '') || String(entry.transactionEntityId || '') === String(input.id || ''));
+    if (!transaction) throw new Error('This transaction could not be found.');
+    const categoryId = String(input.categoryId || '').trim();
+    if (!categoryId) throw new Error('Choose a category for this transaction.');
+    const currency = this.getFinanceSettings().baseCurrency;
+    const transactionId = String(transaction.id || input.id);
+    const event = this.appendFinanceEvent({
+      type: 'transaction.reviewed',
+      amount: Math.abs(Number(transaction.amount) || 0),
+      currency,
+      timestamp: financeTimestamp(transactionId),
+      related_entity_id: transactionId,
+      metadata: {
+        categoryId,
+        scope: scope(input.scope, scope(transaction.scope)),
+        reviewStatus: 'reviewed',
+        notes: String(input.notes || ''),
+      },
+    }, { source: 'reviewTransaction' });
+    return event ? [event] : [];
+  },
+
+  matchTransactionToObligation(input: {
+    transactionId: string;
+    obligationId: string;
+    notes?: string;
+  }): FinanceEvent[] {
+    const readModel = this.getFinancialReadModel();
+    const transaction = (readModel.transactions || [])
+      .find((entry: Record<string, unknown>) => String(entry.id) === String(input.transactionId || '') || String(entry.transactionEntityId || '') === String(input.transactionId || ''));
+    if (!transaction) throw new Error('This payment could not be found.');
+    if (String(transaction.type) !== 'expense.recorded') throw new Error('Only expense payments can be matched to obligations.');
+    const treasury = this.computeFinanceContext(true).treasury || {};
+    const obligation = ((treasury.obligations || []) as Array<Record<string, unknown>>)
+      .find((entry) => String(entry.id || '') === String(input.obligationId || ''));
+    if (!obligation) throw new Error('Choose an obligation to match this payment to.');
+    const currency = this.getFinanceSettings().baseCurrency;
+    const transactionId = String(transaction.id || input.transactionId);
+    const scopeValue = scope(obligation.scope, scope(transaction.scope));
+    const timestamp = financeTimestamp(String(obligation.id));
+    return this.appendFinanceEvents([
+      {
+        type: 'transaction.reviewed',
+        amount: Math.abs(Number(transaction.amount) || 0),
+        currency,
+        timestamp,
+        related_entity_id: transactionId,
+        metadata: {
+          categoryId: 'obligation',
+          scope: scope(transaction.scope),
+          reviewStatus: 'reviewed',
+          obligationId: String(obligation.id),
+          obligationTitle: String(obligation.title || 'Obligation'),
+          notes: String(input.notes || ''),
+        },
+      },
+      {
+        type: 'obligation.reviewed',
+        amount: Math.abs(Number(transaction.amount) || Number(obligation.amount) || 0),
+        currency,
+        timestamp: financeTimestamp(String(obligation.id), timestamp),
+        related_entity_id: String(obligation.id),
+        metadata: {
+          status: 'paid',
+          title: String(obligation.title || 'Obligation'),
+          dueDate: String(obligation.dueDate || ''),
+          originalDueDate: String(obligation.originalDueDate || obligation.dueDate || ''),
+          paidAt: String(transaction.timestamp || new Date().toISOString()),
+          accountId: String(transaction.accountId || ''),
+          accountName: String(transaction.accountName || ''),
+          transactionId,
+          scope: scopeValue,
+          notes: String(input.notes || ''),
+        },
+      },
+    ], { source: 'matchTransactionToObligation' });
+  },
+
+  updatePipelineReview(input: {
+    id: string;
+    status: string;
+    probability: number;
+    expectedDateISO: string;
+    destinationAccountId?: string;
+    notes?: string;
+  }): FinanceEvent[] {
+    const readModel = this.getFinancialReadModel();
+    const deal = (readModel.pipelineDeals || []).find((entry: Record<string, unknown>) => String(entry.id) === String(input.id || ''));
+    if (!deal) throw new Error('This pipeline item could not be found.');
+    const status = String(input.status || '').toLowerCase();
+    if (!['confirmed', 'expected', 'risky'].includes(status)) throw new Error('Choose confirmed, expected, or risky.');
+    const probability = Number(input.probability);
+    if (!Number.isFinite(probability) || probability < 0 || probability > 1) throw new Error('Probability must be between 0 and 1.');
+    const expectedDateISO = window.FinanceDates?.toDateOnly?.(input.expectedDateISO) || '';
+    if (!expectedDateISO) throw new Error('Choose a valid expected date.');
+    const destination = (readModel.fiatAccounts || []).find((account: Record<string, unknown>) => String(account.id) === String(input.destinationAccountId || ''));
+    const currency = this.getFinanceSettings().baseCurrency;
+    const timestamp = financeTimestamp(String(deal.id));
+    return this.appendFinanceEvents([
+      {
+        type: 'pipeline.stage_changed',
+        amount: 0,
+        currency,
+        timestamp,
+        related_entity_id: String(deal.id),
+        metadata: {
+          stage: status,
+          status,
+          title: deal.title,
+          scope: scope(deal.scope),
+          expectedDateISO,
+          destinationAccountId: String(input.destinationAccountId || ''),
+          destinationAccountName: destination ? String(destination.name || '') : '',
+          notes: String(input.notes || ''),
+        },
+      },
+      {
+        type: 'pipeline.probability_changed',
+        amount: probability,
+        currency,
+        timestamp: financeTimestamp(String(deal.id), timestamp),
+        related_entity_id: String(deal.id),
+        metadata: {
+          probability,
+          scope: scope(deal.scope),
+          expectedDateISO,
+          destinationAccountId: String(input.destinationAccountId || ''),
+          destinationAccountName: destination ? String(destination.name || '') : '',
+          notes: String(input.notes || ''),
+        },
+      },
+    ], { source: 'updatePipelineReview' });
+  },
+
+  cancelPipelineItem(id: string, notes = ''): FinanceEvent[] {
+    const deal = (this.getFinancialReadModel().pipelineDeals || [])
+      .find((entry: Record<string, unknown>) => String(entry.id) === String(id || ''));
+    if (!deal) throw new Error('This pipeline item could not be found.');
+    const currency = this.getFinanceSettings().baseCurrency;
+    return this.appendFinanceEvents([{
+      type: 'pipeline.stage_changed',
+      amount: 0,
+      currency,
+      timestamp: financeTimestamp(String(deal.id)),
+      related_entity_id: String(deal.id),
+      metadata: {
+        stage: 'cancelled',
+        status: 'cancelled',
+        title: deal.title,
+        scope: scope(deal.scope),
+        notes,
+      },
+    }], { source: 'cancelPipelineItem' });
+  },
+
+  saveDebtPlan(input: {
+    id: string;
+    dueDate: string;
+    minimumPayment: number;
+    paymentPlanNote: string;
+  }): FinanceEvent[] {
+    const debt = (this.getFinancialReadModel().debtAccounts || [])
+      .find((entry: Record<string, unknown>) => String(entry.id) === String(input.id || ''));
+    if (!debt) throw new Error('This debt item could not be found.');
+    const dueDate = window.FinanceDates?.toDateOnly?.(input.dueDate) || '';
+    const minimumPayment = Math.abs(Number(input.minimumPayment));
+    if (!dueDate) throw new Error('Choose a debt due date.');
+    if (!Number.isFinite(minimumPayment) || minimumPayment <= 0) throw new Error('Add a positive minimum payment.');
+    if (!String(input.paymentPlanNote || '').trim()) throw new Error('Add a short payment plan note.');
+    const currency = this.getFinanceSettings().baseCurrency;
+    const event = this.appendFinanceEvent({
+      type: 'debt.plan_updated',
+      amount: minimumPayment,
+      currency,
+      timestamp: financeTimestamp(String(debt.id)),
+      related_entity_id: String(debt.id),
+      metadata: {
+        name: debt.name,
+        scope: scope(debt.scope),
+        dueDate,
+        minimumPayment,
+        paymentPlanNote: String(input.paymentPlanNote || '').trim(),
+      },
+    }, { source: 'saveDebtPlan' });
+    return event ? [event] : [];
+  },
+
   deactivateFiatAccount(id: string): FinanceEvent[] {
     return reverseMatching(id, ['asset.account_set'], 'deactivateFiatAccount', (event) => {
       const metadata = event.metadata || {};

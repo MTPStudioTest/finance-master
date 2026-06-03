@@ -107,6 +107,7 @@
         var invoiceById = Object.create(null);
         var recurringById = Object.create(null);
         var obligationReviewById = Object.create(null);
+        var transactionReviewById = Object.create(null);
         var debtById = Object.create(null);
         var fiatById = Object.create(null);
         var web3ById = Object.create(null);
@@ -125,6 +126,7 @@
             if (event.type === 'income.received' || event.type === 'expense.recorded') {
                 transactions.push({
                     id: event.id,
+                    transactionEntityId: relatedId,
                     type: event.type,
                     description: String(metadata.description || event.type),
                     amount: eventAmount,
@@ -139,6 +141,8 @@
                     obligationId: String(metadata.obligationId || '').trim(),
                     obligationDueDate: String(metadata.obligationDueDate || '').trim(),
                     obligationTitle: String(metadata.obligationTitle || '').trim(),
+                    reviewStatus: String(metadata.reviewStatus || '').trim() || (String(metadata.categoryId || 'uncategorized').toLowerCase() === 'uncategorized' ? 'needs_review' : 'clear'),
+                    reviewNotes: '',
                     timestamp: event.timestamp
                 });
             }
@@ -351,7 +355,21 @@
                 return;
             }
 
-            if (event.type === 'debt.added' || event.type === 'debt.payment_made') {
+            if (event.type === 'transaction.reviewed') {
+                transactionReviewById[relatedId] = {
+                    id: relatedId,
+                    categoryId: String(metadata.categoryId || '').trim(),
+                    scope: String(metadata.scope || '').trim(),
+                    reviewStatus: String(metadata.reviewStatus || 'reviewed').trim(),
+                    notes: String(metadata.notes || ''),
+                    obligationId: String(metadata.obligationId || '').trim(),
+                    obligationTitle: String(metadata.obligationTitle || '').trim(),
+                    reviewedAt: event.timestamp
+                };
+                return;
+            }
+
+            if (event.type === 'debt.added' || event.type === 'debt.payment_made' || event.type === 'debt.plan_updated') {
                 if (!debtById[relatedId]) {
                     debtById[relatedId] = {
                         id: relatedId,
@@ -359,6 +377,10 @@
                         totalAdded: 0,
                         totalPaid: 0,
                         outstanding: 0,
+                        dueDate: '',
+                        minimumPayment: 0,
+                        paymentPlanNote: '',
+                        planReviewedAt: '',
                         scope: String(metadata.scope || 'shared'),
                         currency: event.currency,
                         updatedAt: event.timestamp
@@ -366,8 +388,16 @@
                 }
                 if (event.type === 'debt.added') {
                     debtById[relatedId].totalAdded += Math.max(0, eventAmount);
-                } else {
+                    if (metadata.dueDate) debtById[relatedId].dueDate = toIsoDateOnly(metadata.dueDate);
+                    if (Number.isFinite(Number(metadata.minimumPayment))) debtById[relatedId].minimumPayment = Math.max(0, Number(metadata.minimumPayment));
+                    if (metadata.paymentPlanNote) debtById[relatedId].paymentPlanNote = String(metadata.paymentPlanNote);
+                } else if (event.type === 'debt.payment_made') {
                     debtById[relatedId].totalPaid += Math.max(0, eventAmount);
+                } else {
+                    if (metadata.dueDate) debtById[relatedId].dueDate = toIsoDateOnly(metadata.dueDate);
+                    debtById[relatedId].minimumPayment = Math.max(0, Number(metadata.minimumPayment) || 0);
+                    debtById[relatedId].paymentPlanNote = String(metadata.paymentPlanNote || '');
+                    debtById[relatedId].planReviewedAt = event.timestamp;
                 }
                 debtById[relatedId].outstanding = Math.max(0, debtById[relatedId].totalAdded - debtById[relatedId].totalPaid);
                 debtById[relatedId].scope = String(metadata.scope || debtById[relatedId].scope || 'shared');
@@ -426,6 +456,26 @@
         var activeRecurringExpenses = recurringExpenses.filter(function (item) { return item && item.active !== false; });
         var debtAccounts = Object.keys(debtById).map(function (id) { return debtById[id]; });
         var invoices = Object.keys(invoiceById).map(function (id) { return invoiceById[id]; });
+        var obligationByTransactionId = Object.create(null);
+        Object.keys(obligationReviewById).forEach(function (id) {
+            var review = obligationReviewById[id];
+            if (review && review.transactionId) obligationByTransactionId[String(review.transactionId)] = review;
+        });
+        transactions = transactions.map(function (transaction) {
+            var review = transactionReviewById[String(transaction.id)] || transactionReviewById[String(transaction.transactionEntityId)] || null;
+            var matched = obligationByTransactionId[String(transaction.id)] || obligationByTransactionId[String(transaction.transactionEntityId)] || null;
+            var categoryId = review && review.categoryId ? review.categoryId : transaction.categoryId;
+            var scope = review && review.scope ? review.scope : transaction.scope;
+            var obligationId = transaction.obligationId || (review && review.obligationId) || (matched && matched.id) || '';
+            return Object.assign({}, transaction, {
+                categoryId: categoryId,
+                scope: scope,
+                obligationId: obligationId,
+                obligationTitle: transaction.obligationTitle || (review && review.obligationTitle) || (matched && matched.title) || '',
+                reviewStatus: review && review.reviewStatus ? review.reviewStatus : (String(categoryId || '').toLowerCase() === 'uncategorized' ? 'needs_review' : (obligationId ? 'reviewed' : transaction.reviewStatus)),
+                reviewNotes: review && review.notes ? review.notes : transaction.reviewNotes
+            });
+        });
         transactions.sort(function (a, b) {
             return (Date.parse(b.timestamp || '') || 0) - (Date.parse(a.timestamp || '') || 0);
         });

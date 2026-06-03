@@ -65,6 +65,8 @@ Acceptance criteria:
 
 ## Phase 1B: Review Queue As Real Operations
 
+Status: implemented in the Review-first slice.
+
 Goal: Make Review the weekly financial command center rather than a passive list.
 
 Planned work:

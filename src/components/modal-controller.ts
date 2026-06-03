@@ -730,6 +730,87 @@ function renderObligationDefer(id = ''): string {
   `;
 }
 
+function findTransaction(id: string): Record<string, unknown> | null {
+  return (Store.getFinancialReadModel().transactions || [])
+    .find((entry: Record<string, unknown>) => String(entry.id) === String(id || '') || String(entry.transactionEntityId || '') === String(id || '')) || null;
+}
+
+function obligationOptions(selected = ''): string {
+  const obligations = ((Store.computeFinanceContext(true).treasury || {}).obligations || [])
+    .filter((entry: Record<string, unknown>) => String(entry.status || '') !== 'paid' && String(entry.type || '') !== 'debt');
+  return `<option value="">Choose obligation</option>${obligations.map((entry: Record<string, unknown>) => `
+    <option value="${escapeHtml(entry.id)}"${String(entry.id) === selected ? ' selected' : ''}>${escapeHtml(entry.title)} · ${formatDate(entry.dueDate)} · ${money(entry.amount)}</option>
+  `).join('')}`;
+}
+
+function renderTransactionReview(id = ''): string {
+  const transaction = findTransaction(id);
+  return `
+    <div class="modal-form">
+      <h2 id="modal-title">Categorize transaction</h2>
+      <p class="modal-copy">${escapeHtml(transaction?.description || 'Transaction')} · ${money(transaction?.amount)} · ${formatDate(transaction?.timestamp)}</p>
+      <input id="modal-review-transaction-id" type="hidden" value="${escapeHtml(id)}" />
+      <div class="modal-grid-two">
+        <div class="form-group"><label for="modal-review-transaction-category">Category</label><input id="modal-review-transaction-category" value="${escapeHtml(transaction?.categoryId === 'uncategorized' ? '' : transaction?.categoryId || '')}" placeholder="software, tax, client-income" /></div>
+        <div class="form-group"><label for="modal-review-transaction-scope">Scope</label><select id="modal-review-transaction-scope">${scopeOptions(String(transaction?.scope || 'business'))}</select></div>
+      </div>
+      <div class="form-group"><label for="modal-review-transaction-notes">Review note</label><textarea id="modal-review-transaction-notes" rows="2" placeholder="Optional note for why this is clear"></textarea></div>
+      ${formActions('transactionReview')}
+    </div>
+  `;
+}
+
+function renderPaymentMatch(id = ''): string {
+  const transaction = findTransaction(id);
+  return `
+    <div class="modal-form">
+      <h2 id="modal-title">Match payment to obligation</h2>
+      <p class="modal-copy">${escapeHtml(transaction?.description || 'Payment')} · ${money(transaction?.amount)} · ${formatDate(transaction?.timestamp)}</p>
+      <input id="modal-match-transaction-id" type="hidden" value="${escapeHtml(id)}" />
+      <div class="form-group"><label for="modal-match-obligation-id">Obligation</label><select id="modal-match-obligation-id">${obligationOptions('')}</select></div>
+      <div class="form-group"><label for="modal-match-notes">Review note</label><textarea id="modal-match-notes" rows="2" placeholder="Optional note for the match"></textarea></div>
+      ${formActions('paymentMatch')}
+    </div>
+  `;
+}
+
+function renderPipelineReview(id = ''): string {
+  const item = (Store.getFinancialReadModel().pipelineDeals || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
+  const status = String(item?.status || 'expected').toLowerCase();
+  return `
+    <div class="modal-form">
+      <h2 id="modal-title">Review pipeline item</h2>
+      <p class="modal-copy">${escapeHtml(item?.title || 'Pipeline item')} · ${money(item?.value)}</p>
+      <input id="modal-pipeline-review-id" type="hidden" value="${escapeHtml(id)}" />
+      <div class="modal-grid-two">
+        <div class="form-group"><label for="modal-pipeline-review-status">Status</label><select id="modal-pipeline-review-status">${['confirmed', 'expected', 'risky'].map((entry) => `<option value="${entry}"${status === entry ? ' selected' : ''}>${entry}</option>`).join('')}</select></div>
+        <div class="form-group"><label for="modal-pipeline-review-probability">Probability</label><input id="modal-pipeline-review-probability" type="number" min="0" max="1" step="0.05" value="${escapeHtml(item?.probability ?? 0.65)}" /></div>
+        <div class="form-group"><label for="modal-pipeline-review-date">Expected date</label><input id="modal-pipeline-review-date" type="date" value="${escapeHtml(item?.expectedDateISO || today())}" /></div>
+        <div class="form-group"><label for="modal-pipeline-review-account">Settlement account</label><select id="modal-pipeline-review-account">${accountOptions(String(item?.destinationAccountId || ''))}</select></div>
+      </div>
+      <div class="form-group"><label for="modal-pipeline-review-notes">Review note</label><textarea id="modal-pipeline-review-notes" rows="2" placeholder="What changed about this income?"></textarea></div>
+      ${formActions('pipelineReview')}
+    </div>
+  `;
+}
+
+function renderDebtPlan(id = ''): string {
+  const debt = (Store.getFinancialReadModel().debtAccounts || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
+  return `
+    <div class="modal-form">
+      <h2 id="modal-title">Add debt payment plan</h2>
+      <p class="modal-copy">${escapeHtml(debt?.name || 'Debt item')} · ${money(debt?.outstanding)} outstanding</p>
+      <input id="modal-debt-plan-id" type="hidden" value="${escapeHtml(id)}" />
+      <div class="modal-grid-two">
+        <div class="form-group"><label for="modal-debt-plan-due-date">Next due date</label><input id="modal-debt-plan-due-date" type="date" value="${escapeHtml(debt?.dueDate || today())}" /></div>
+        <div class="form-group"><label for="modal-debt-plan-minimum">Minimum payment</label><input id="modal-debt-plan-minimum" type="number" min="0" step="0.01" value="${escapeHtml(debt?.minimumPayment || '')}" /></div>
+      </div>
+      <div class="form-group"><label for="modal-debt-plan-note">Payment plan note</label><textarea id="modal-debt-plan-note" rows="2" placeholder="Monthly minimum, creditor agreement, or next decision">${escapeHtml(debt?.paymentPlanNote || '')}</textarea></div>
+      ${formActions('debtPlan')}
+    </div>
+  `;
+}
+
 function renderModal(type: string, id = ''): string {
   if (type === 'quickAdd') return renderQuickAdd();
   if (type === 'transaction') return renderTransaction();
@@ -748,6 +829,10 @@ function renderModal(type: string, id = ''): string {
   if (type === 'debtAdd' || type === 'debtPayment') return renderDebt(type, id);
   if (type === 'obligationPayment') return renderObligationPayment(id);
   if (type === 'obligationDefer') return renderObligationDefer(id);
+  if (type === 'transactionReview') return renderTransactionReview(id);
+  if (type === 'paymentMatch') return renderPaymentMatch(id);
+  if (type === 'pipelineReview') return renderPipelineReview(id);
+  if (type === 'debtPlan') return renderDebtPlan(id);
   return '<div class="modal-form"><h2 id="modal-title">Nothing to edit</h2></div>';
 }
 
@@ -972,6 +1057,81 @@ function saveFinanceModal(type: string): void {
     }
     return;
   }
+  if (type === 'transactionReview') {
+    if (!value('modal-review-transaction-id') || !value('modal-review-transaction-category')) {
+      showModalError('Choose a transaction category before clearing this item.');
+      return;
+    }
+    try {
+      Store.reviewTransaction({
+        id: value('modal-review-transaction-id'),
+        categoryId: value('modal-review-transaction-category'),
+        scope: value('modal-review-transaction-scope') as FinanceScope,
+        notes: value('modal-review-transaction-notes'),
+      });
+      closeModal();
+    } catch (error) {
+      showModalError(error instanceof Error ? error.message : 'Could not categorize this transaction.');
+    }
+    return;
+  }
+  if (type === 'paymentMatch') {
+    if (!value('modal-match-transaction-id') || !value('modal-match-obligation-id')) {
+      showModalError('Choose a payment and an obligation to match.');
+      return;
+    }
+    try {
+      Store.matchTransactionToObligation({
+        transactionId: value('modal-match-transaction-id'),
+        obligationId: value('modal-match-obligation-id'),
+        notes: value('modal-match-notes'),
+      });
+      closeModal();
+    } catch (error) {
+      showModalError(error instanceof Error ? error.message : 'Could not match this payment.');
+    }
+    return;
+  }
+  if (type === 'pipelineReview') {
+    const probability = Number(value('modal-pipeline-review-probability'));
+    if (!value('modal-pipeline-review-id') || !value('modal-pipeline-review-date') || !Number.isFinite(probability) || probability < 0 || probability > 1) {
+      showModalError('Choose a pipeline item, expected date, and probability between 0 and 1.');
+      return;
+    }
+    try {
+      Store.updatePipelineReview({
+        id: value('modal-pipeline-review-id'),
+        status: value('modal-pipeline-review-status'),
+        probability,
+        expectedDateISO: value('modal-pipeline-review-date'),
+        destinationAccountId: value('modal-pipeline-review-account'),
+        notes: value('modal-pipeline-review-notes'),
+      });
+      closeModal();
+    } catch (error) {
+      showModalError(error instanceof Error ? error.message : 'Could not update this pipeline item.');
+    }
+    return;
+  }
+  if (type === 'debtPlan') {
+    const minimumPayment = Number(value('modal-debt-plan-minimum'));
+    if (!value('modal-debt-plan-id') || !value('modal-debt-plan-due-date') || !Number.isFinite(minimumPayment) || minimumPayment <= 0 || !value('modal-debt-plan-note')) {
+      showModalError('Add a due date, positive minimum payment, and payment plan note.');
+      return;
+    }
+    try {
+      Store.saveDebtPlan({
+        id: value('modal-debt-plan-id'),
+        dueDate: value('modal-debt-plan-due-date'),
+        minimumPayment,
+        paymentPlanNote: value('modal-debt-plan-note'),
+      });
+      closeModal();
+    } catch (error) {
+      showModalError(error instanceof Error ? error.message : 'Could not save this debt plan.');
+    }
+    return;
+  }
   if (type === 'transaction') {
     addTransactionFromFields('modal-fast-txn');
     return;
@@ -1063,6 +1223,14 @@ Object.assign(window, {
       Store.reviewObligation({ id, status: 'needs_review' });
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Could not update this obligation.');
+    }
+  },
+  cancelPipelineFromReview: (id: string) => {
+    if (!id || !window.confirm('Cancel this pipeline item?')) return;
+    try {
+      Store.cancelPipelineItem(id, 'Cancelled during Review.');
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not cancel this pipeline item.');
     }
   },
   deactivateFiatAccount: () => confirmDeactivate('deactivateFiatAccount', 'modal-fiat-id'),

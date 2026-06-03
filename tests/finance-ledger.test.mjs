@@ -362,6 +362,219 @@ test('reviewed obligation instances can be marked paid and leave overdue queue',
   assert.equal(result.treasury.incomeScenarios.conservative, 100);
 });
 
+test('transaction review events categorize transactions and clear review queue items', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-03T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-main',
+      type: 'asset.account_set',
+      amount: 1000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating cash', balance: 1000, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'txn-unclear',
+      type: 'expense.recorded',
+      amount: 30,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'txn-entity',
+      metadata: { description: 'Unclear tool charge', accountId: 'cash-main', accountName: 'Operating cash', categoryId: 'uncategorized', scope: 'business' },
+    },
+    {
+      id: 'txn-reviewed',
+      type: 'transaction.reviewed',
+      amount: 30,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:05:00.000Z',
+      related_entity_id: 'txn-unclear',
+      metadata: { categoryId: 'software', scope: 'business', reviewStatus: 'reviewed', notes: 'Classified during weekly review.' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(result.readModel.transactions[0].categoryId, 'software');
+  assert.equal(result.readModel.transactions[0].reviewStatus, 'reviewed');
+  assert.equal(result.treasury.reviewQueue.some((item) => item.kind === 'transaction' && item.targetId === 'txn-unclear'), false);
+});
+
+test('matching an existing payment to an obligation does not create a duplicate payment', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-03T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-main',
+      type: 'asset.account_set',
+      amount: 700,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating cash', balance: 700, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'rent-recurring',
+      type: 'expense.recurring_set',
+      amount: 300,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'rent-recurring',
+      metadata: { category: 'Studio rent', monthlyAmount: 300, dueDay: 1, frequency: 'monthly', scope: 'business' },
+    },
+    {
+      id: 'payment-event',
+      type: 'expense.recorded',
+      amount: 300,
+      currency: 'EUR',
+      timestamp: '2026-06-02T12:00:00.000Z',
+      related_entity_id: 'payment-entity',
+      metadata: { description: 'Studio rent paid', accountId: 'cash-main', accountName: 'Operating cash', categoryId: 'obligation', scope: 'business' },
+    },
+    {
+      id: 'payment-reviewed',
+      type: 'transaction.reviewed',
+      amount: 300,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:05:00.000Z',
+      related_entity_id: 'payment-event',
+      metadata: { categoryId: 'obligation', scope: 'business', obligationId: 'rent-recurring-2026-06', obligationTitle: 'Studio rent', reviewStatus: 'reviewed' },
+    },
+    {
+      id: 'rent-reviewed',
+      type: 'obligation.reviewed',
+      amount: 300,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:06:00.000Z',
+      related_entity_id: 'rent-recurring-2026-06',
+      metadata: { status: 'paid', title: 'Studio rent', dueDate: '2026-06-01', paidAt: '2026-06-02T12:00:00.000Z', transactionId: 'payment-event', scope: 'business' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(result.readModel.transactions.filter((entry) => entry.type === 'expense.recorded').length, 1);
+  assert.equal(result.readModel.transactions[0].obligationId, 'rent-recurring-2026-06');
+  assert.equal(result.treasury.paidObligations.length, 1);
+  assert.equal(result.treasury.reviewQueue.some((item) => item.kind === 'payment' && item.targetId === 'payment-event'), false);
+});
+
+test('pipeline review and cancellation events update unresolved review state', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-03T10:00:00.000Z';
+  const reviewedEvents = append(finance, [
+    {
+      id: 'pipeline-risky',
+      type: 'pipeline.created',
+      amount: 1000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'pipeline-risky',
+      metadata: { title: 'Speculative campaign', value: 1000, probability: 0.25, status: 'risky', expectedDateISO: '2026-06-20', scope: 'business' },
+    },
+    {
+      id: 'pipeline-stage',
+      type: 'pipeline.stage_changed',
+      amount: 0,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:05:00.000Z',
+      related_entity_id: 'pipeline-risky',
+      metadata: { status: 'expected', stage: 'expected', expectedDateISO: '2026-06-22', scope: 'business' },
+    },
+    {
+      id: 'pipeline-probability',
+      type: 'pipeline.probability_changed',
+      amount: 0.7,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:06:00.000Z',
+      related_entity_id: 'pipeline-risky',
+      metadata: { probability: 0.7, expectedDateISO: '2026-06-22', scope: 'business' },
+    },
+  ], nowIso);
+  const reviewed = finance.FinanceCompute.computeFinancialContext(reviewedEvents, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(reviewed.readModel.pipelineDeals[0].status, 'expected');
+  assert.equal(reviewed.readModel.pipelineDeals[0].probability, 0.7);
+  assert.equal(reviewed.treasury.reviewQueue.some((item) => item.kind === 'pipeline' && item.targetId === 'pipeline-risky'), false);
+
+  const cancelledEvents = append(finance, [
+    {
+      id: 'pipeline-risky',
+      type: 'pipeline.created',
+      amount: 1000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'pipeline-risky',
+      metadata: { title: 'Speculative campaign', value: 1000, probability: 0.25, status: 'risky', expectedDateISO: '2026-06-20', scope: 'business' },
+    },
+    {
+      id: 'pipeline-cancelled',
+      type: 'pipeline.stage_changed',
+      amount: 0,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:05:00.000Z',
+      related_entity_id: 'pipeline-risky',
+      metadata: { status: 'cancelled', stage: 'cancelled', scope: 'business' },
+    },
+  ], nowIso);
+  const cancelled = finance.FinanceCompute.computeFinancialContext(cancelledEvents, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(cancelled.treasury.income.some((entry) => entry.id === 'pipeline-risky'), false);
+});
+
+test('debt plan events remove missing-plan review items', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-03T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'debt-added',
+      type: 'debt.added',
+      amount: 2000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'debt-credit-line',
+      metadata: { name: 'Credit line', scope: 'business' },
+    },
+    {
+      id: 'debt-plan',
+      type: 'debt.plan_updated',
+      amount: 150,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:05:00.000Z',
+      related_entity_id: 'debt-credit-line',
+      metadata: { name: 'Credit line', scope: 'business', dueDate: '2026-07-15', minimumPayment: 150, paymentPlanNote: 'Monthly minimum agreed.' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(result.readModel.debtAccounts[0].dueDate, '2026-07-15');
+  assert.equal(result.readModel.debtAccounts[0].minimumPayment, 150);
+  assert.equal(result.treasury.reviewQueue.some((item) => item.kind === 'debt' && item.targetId === 'debt-credit-line'), false);
+});
+
 test('currency formatting respects an explicit currency before base currency', () => {
   assert.equal(resolveCurrencyCode('usd', 'EUR'), 'USD');
   assert.equal(resolveCurrencyCode('', 'EUR'), 'EUR');

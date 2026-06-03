@@ -13,7 +13,9 @@
         'pipeline.created',
         'pipeline.stage_changed',
         'pipeline.value_changed',
-        'pipeline.probability_changed'
+        'pipeline.probability_changed',
+        'transaction.reviewed',
+        'debt.plan_updated'
     ];
 
     var SUPPLEMENTAL_EVENT_TYPES = [

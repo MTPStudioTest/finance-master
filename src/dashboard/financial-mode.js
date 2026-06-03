@@ -622,12 +622,13 @@ window.FinancialMode = (function () {
     }
 
     function renderObservatoryHeader() {
+        const reviewCount = treasuryArray('reviewQueue').length;
         return `
             <section class="fin-section">
                 <div class="fin-ui-toolbar">
                     <div>
                         <div class="fin-ui-toolbar-copy">Local-first treasury cockpit. Start with what is real, reserved, due, and unclear.</div>
-                        <div class="fin-operating-meta">Last updated ${formatShortDate(currentDiagnostics.latestEventTimestamp)} · Last reviewed ${formatShortDate(currentReview && currentReview.lastReviewedAt)}</div>
+                        <div class="fin-operating-meta">Last updated ${formatShortDate(currentDiagnostics.latestEventTimestamp)} · Last reviewed ${formatShortDate(currentReview && currentReview.lastReviewedAt)} · ${reviewCount} unresolved review item${reviewCount === 1 ? '' : 's'}</div>
                     </div>
                     <div class="fin-toolbar-actions">
                         <select id="fin-scope-filter" class="fin-scope-filter" aria-label="Treasury scope">${scopeFilterOptions(window.Store.getUiSettings().scopeFilter || 'all')}</select>
@@ -795,25 +796,65 @@ window.FinancialMode = (function () {
     function renderReviewQueue() {
         const queue = treasuryArray('reviewQueue');
         const reviewDue = isWeeklyReviewDue();
+        const unresolvedCount = queue.length;
         return `
             <section class="fin-section">
                 <div class="widget ui-card glass fin-card">
                     <div class="fin-section-heading-row">
                         <div>
                             <div class="widget-title ui-title">Review Queue</div>
-                            <div class="fin-helper-text">Only items that need a classification, decision, or check.</div>
+                            <div class="fin-helper-text">${unresolvedCount} unresolved · Only items that need a classification, decision, or check.</div>
                         </div>
                         <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">${reviewDue ? 'Start review' : 'Open review'}</button>
                     </div>
                     ${queue.length ? queue.map((item) => `
                         <div class="modal-list-row">
-                            <span><strong>${escapeHtml(item.title)}</strong><br><small>${escapeHtml(item.reason)}</small></span>
-                            ${renderStatusPill(item.tone === 'urgent' ? 'overdue' : 'needs_review')}
+                            <span><strong>${escapeHtml(item.title)}</strong><br><small>${escapeHtml(item.reason)} · ${escapeHtml(item.kind || 'review')}</small></span>
+                            <span>${renderStatusPill(item.tone === 'urgent' ? 'overdue' : 'needs_review')}</span>
+                            <span class="goal-modal-actions">${renderReviewQueueActions(item)}</span>
                         </div>
                     `).join('') : renderCompactEmpty('Nothing needs review right now.')}
                 </div>
             </section>
         `;
+    }
+
+    function renderReviewQueueActions(item) {
+        const kind = String(item && item.kind || 'setup');
+        const id = escapeActionArg(item && (item.targetId || item.id) || '');
+        if (kind === 'transaction') {
+            return `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${id}'">Categorize</button>`;
+        }
+        if (kind === 'payment') {
+            return `
+                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'paymentMatch', '${id}'">Match</button>
+                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${id}'">Categorize</button>
+            `;
+        }
+        if (kind === 'pipeline') {
+            return `
+                <button class="fin-mini-btn" type="button" data-action="markAsPaid" data-action-args="'${id}'">Received</button>
+                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'pipelineReview', '${id}'">Update</button>
+                <button class="fin-mini-btn" type="button" data-action="cancelPipelineFromReview" data-action-args="'${id}'">Cancel</button>
+            `;
+        }
+        if (kind === 'debt') {
+            return `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'debtPlan', '${id}'">Add plan</button>`;
+        }
+        if (kind === 'obligation') {
+            return `
+                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'obligationPayment', '${id}'">Mark paid</button>
+                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'obligationDefer', '${id}'">Defer</button>
+                <button class="fin-mini-btn" type="button" data-action="markObligationNeedsReview" data-action-args="'${id}'">Review</button>
+            `;
+        }
+        if (String(item && item.id) === 'missing-cash') {
+            return `<button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'fiatAccount'">Add account</button>`;
+        }
+        if (String(item && item.id) === 'missing-burn') {
+            return `<button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense'">Add cost</button>`;
+        }
+        return `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'weeklyReview'">${escapeHtml(item && item.actionLabel || 'Review')}</button>`;
     }
 
     function renderObligationReviewSection() {
@@ -866,6 +907,10 @@ window.FinancialMode = (function () {
                         <div class="modal-list-row">
                             <span><strong>${escapeHtml(entry.description || 'Payment')}</strong><br><small>${formatShortDate(entry.timestamp)} · ${escapeHtml(entry.accountName || 'Account')} · ${escapeHtml(entry.categoryId || 'uncategorized')}</small></span>
                             <span>${renderStatusPill(matched ? 'paid' : 'needs_review')} ${formatCurrency(entry.amount, entry.currency)}</span>
+                            <span class="goal-modal-actions">
+                                ${matched ? '' : `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'paymentMatch', '${escapeActionArg(entry.id)}'">Match</button>`}
+                                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${escapeActionArg(entry.id)}'">Categorize</button>
+                            </span>
                         </div>
                     `;
             }).join('') : renderCompactEmpty('No actual payments have been booked yet.')}
