@@ -627,8 +627,9 @@ window.FinancialMode = (function () {
             fixedCosts: renderFixedCostsSection,
             observatoryHeader: renderObservatoryHeader,
             dashboardCockpit: renderDashboardCockpit,
-            attentionQueue: renderAttentionQueue,
+            todaysDecision: renderTodaysDecision,
             next30Days: renderNext30Days,
+            nextActions: renderNextActions,
             strategicPicture: renderStrategicPicture
         }, renderSectionHeading)(activeSection);
     }
@@ -1518,177 +1519,234 @@ window.FinancialMode = (function () {
         `;
     }
 
+    function overviewExpectedMonthEnd() {
+        const scenarios = currentTreasury?.incomeScenarios || {};
+        const value = Number(scenarios.expected);
+        if (Number.isFinite(value)) return value;
+        const projected = Number(currentSnapshot?.projectedBalance);
+        return Number.isFinite(projected) ? projected : treasuryNumber('availableCash', 0);
+    }
+
+    function overviewRunwayValue() {
+        return currentTreasury?.runwayMonths != null ? currentTreasury.runwayMonths : currentSnapshot?.runwayMonths;
+    }
+
+    function overviewButton(label, action, args = '', variant = '') {
+        const extra = variant ? ` ${variant}` : '';
+        return `<button class="fin-mini-btn${extra}" type="button" data-action="${escapeHtml(action)}"${args ? ` data-action-args="${escapeHtml(args)}"` : ''}>${escapeHtml(label)}</button>`;
+    }
+
+    function overviewActionForItem(item) {
+        const type = String(item && item.type || '');
+        const id = escapeActionArg(item && item.id || '');
+        if (String(item && item.id) === 'month-end-gap') return { label: 'Adjust reserves', action: 'FinancialMode.setSection', args: "'reserves'" };
+        if (String(item && item.id) === 'monthly-review') return { label: 'Start review', action: 'openEditModal', args: "'weeklyReview'" };
+        if (type === 'Overdue') return { label: 'Review income', action: 'FinancialMode.setSection', args: "'invoices'" };
+        if (type === 'Due soon') return { label: 'Review obligation', action: 'FinancialMode.setSection', args: "'review'" };
+        if (type === 'Missing forecast input') return { label: 'Add income', action: 'FinancialMode.openAddModal', args: "'income'" };
+        if (type === 'Missing plan' && /reserve/i.test(String(item && item.title || ''))) {
+            return { label: 'Add reserve', action: 'FinancialMode.openAddModal', args: "'reserveBucket'" };
+        }
+        if (type === 'Missing plan') return { label: 'Confirm plan', action: 'openEditModal', args: `'debtPlan', '${id}'` };
+        if (type === 'Needs review') return { label: 'Categorize', action: 'FinancialMode.setSection', args: "'review'" };
+        return { label: 'Review', action: 'FinancialMode.setSection', args: "'review'" };
+    }
+
+    function overviewGroupForItem(item) {
+        const type = String(item && item.type || '');
+        const id = String(item && item.id || '');
+        if (id === 'month-end-gap' || type === 'Overdue') return 'Critical';
+        if (type === 'Due soon' || type === 'Missing plan') return 'Needs review';
+        return 'Housekeeping';
+    }
+
+    function overviewReasonForItem(item) {
+        const type = String(item && item.type || '');
+        const id = String(item && item.id || '');
+        if (id === 'month-end-gap') return 'Current plan closes short in the next 30 days.';
+        if (id === 'monthly-review') return 'Close the monthly loop when you have a minute.';
+        if (type === 'Overdue') return 'Expected income or payment is past its date.';
+        if (type === 'Due soon') return 'A confirmed obligation needs a decision.';
+        if (type === 'Missing plan') return 'Add a plan so burn and runway stay accurate.';
+        if (type === 'Missing forecast input') return 'Add expected income to sharpen the forecast.';
+        if (type === 'Needs review') return 'Classify this item so totals stay clean.';
+        return 'Small cleanup that improves the cockpit.';
+    }
+
+    function buildOverviewActionItems() {
+        const expectedMonthEnd = overviewExpectedMonthEnd();
+        const reviewDue = isWeeklyReviewDue();
+        const sourceItems = safeArray(currentSnapshot?.attentionQueue);
+        const reviewItems = treasuryArray('reviewQueue')
+            .filter((item) => !sourceItems.some((source) => String(source && source.id || '') === String(item && item.id || '')))
+            .map((item) => ({
+                type: item && item.tone === 'urgent' ? 'Overdue' : (item && item.kind === 'transaction' ? 'Needs review' : 'Missing plan'),
+                title: item && item.title,
+                amount: item && item.amount,
+                action: item && item.actionLabel,
+                id: item && (item.targetId || item.id),
+                original: item
+            }));
+
+        const rows = [
+            ...(expectedMonthEnd < 0 ? [{
+                type: 'Critical',
+                title: 'Projected month-end gap',
+                amount: -Math.abs(expectedMonthEnd),
+                action: 'Adjust reserves',
+                id: 'month-end-gap'
+            }] : []),
+            ...(reviewDue ? [{
+                type: 'Needs review',
+                title: 'Monthly review',
+                amount: null,
+                action: 'Start review',
+                id: 'monthly-review'
+            }] : []),
+            ...sourceItems,
+            ...reviewItems
+        ].map((item) => {
+            const group = overviewGroupForItem(item);
+            const button = overviewActionForItem(item);
+            return {
+                id: String(item && item.id || item && item.title || group),
+                group,
+                title: String(item && item.title || 'Review item'),
+                amount: item && item.amount,
+                reason: overviewReasonForItem(item),
+                button
+            };
+        });
+
+        const groupOrder = { 'Critical': 0, 'Needs review': 1, 'Housekeeping': 2 };
+        return rows
+            .sort((a, b) => (groupOrder[a.group] ?? 9) - (groupOrder[b.group] ?? 9))
+            .slice(0, 5);
+    }
+
     function renderDashboardCockpit() {
         const totalCash = treasuryNumber('actualCash', treasuryNumber('totalCash', Number(currentSnapshot?.realBalance) || 0));
         const reservedCash = treasuryNumber('protectedCash', treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0));
         const snapshotAvailableCash = Number(currentSnapshot?.availableCash);
         const availableCash = treasuryNumber('availableCash', Number.isFinite(snapshotAvailableCash) ? snapshotAvailableCash : treasuryNumber('trulyAvailableCash', totalCash - reservedCash));
         const monthlyBurn = treasuryNumber('totalMonthlyBurn', Number(currentSnapshot?.monthlyBurn) || 0);
-        const scenarios = currentTreasury?.incomeScenarios || {};
-        const expectedMonthEnd = Number.isFinite(Number(scenarios.expected))
-            ? Number(scenarios.expected)
-            : Number(currentSnapshot?.projectedBalance) || availableCash;
-
-        const runway = currentTreasury?.runwayMonths != null ? currentTreasury.runwayMonths : currentSnapshot?.runwayMonths;
+        const expectedMonthEnd = overviewExpectedMonthEnd();
+        const runway = overviewRunwayValue();
         const runwayLabel = runway == null ? '—' : `${Number(runway).toFixed(1)}`;
-        const runwayClass = runway == null || Number(runway) < 3 ? 'stress-high' : (Number(runway) < 6 ? 'stress-medium' : 'stress-low');
-        const runwayStatus = runway == null ? 'No data' : (Number(runway) < 3 ? 'Vulnerable' : (Number(runway) < 6 ? 'Stable' : 'Safe to operate'));
-
-        const buckets = treasuryArray('reserveBuckets')
-            .filter((bucket) => ['tax_reserve', 'vat_reserve', 'health_insurance', 'debt_repayment', 'buffer'].includes(String(bucket.bucket)))
-            .filter((bucket) => Number(bucket.amount) > 0);
-
-        const next30 = currentTreasury?.dashboardSummary?.next30Days || {};
-        const incoming = Number(next30.confirmedIncoming) || 0;
-        const obligations = Number(next30.obligationsDue) || 0;
-        const netFlow = incoming - obligations - monthlyBurn;
-
-        // Cash breakdown bar percentages
-        const cashTotal = totalCash || 1; // avoid division by zero
-        const availPct = Math.max(0, Math.min(100, Math.round((Math.max(0, availableCash) / cashTotal) * 100)));
-        const protectedPct = Math.max(0, Math.min(100 - availPct, Math.round((reservedCash / cashTotal) * 100)));
-
-        // Month-end copy
-        let monthEndCopy = '';
-        if (expectedMonthEnd < 0) {
-            monthEndCopy = `Projected to close ${formatCurrency(expectedMonthEnd)}. Action needed.`;
-        } else {
-            monthEndCopy = `On track to close with ${formatCurrency(expectedMonthEnd)} surplus.`;
-        }
+        const runwayClass = runway == null || Number(runway) < 3 ? 'is-critical' : (Number(runway) < 6 ? 'is-watch' : 'is-steady');
+        const resultClass = expectedMonthEnd < 0 ? 'is-critical' : 'is-steady';
 
         return `
             <section class="fin-section">
-                <div class="widget ui-card glass fin-card fin-cockpit-overview">
+                <div class="widget ui-card glass fin-card fin-command-summary" data-fin-command-summary>
                     <div class="fin-section-heading-row">
                         <div>
-                            <div class="widget-title ui-title">Current Status</div>
-                            <div class="fin-helper-text">Available cash, protected money, runway, and monthly burn from the central calculation engine.</div>
+                            <div class="widget-title ui-title">Treasury Command Summary</div>
+                            <div class="fin-helper-text">The money picture before any review work.</div>
                         </div>
                     </div>
-
-                    <!-- Hero: Runway + Burn -->
-                    <div class="fin-cockpit-hero">
-                        <div class="fin-runway-gauge">
-                            <div class="fin-runway-label">Runway</div>
-                            <div class="fin-runway-value ${runwayClass}">${runwayLabel}<span style="font-size: 1.2rem; opacity: 0.6; margin-left: 0.25rem;">${runway != null ? 'months' : ''}</span></div>
-                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;">${runwayStatus}</div>
+                    <div class="fin-command-grid">
+                        <div class="fin-command-metric">
+                            <span>Total cash</span>
+                            <strong>${currentHasFinanceData ? formatCurrency(totalCash) : '—'}</strong>
+                            ${renderMetricExplanation('actualCash')}
+                        </div>
+                        <div class="fin-command-metric">
+                            <span>Available</span>
+                            <strong>${currentHasFinanceData ? formatCurrency(availableCash) : '—'}</strong>
+                            ${renderMetricExplanation('availableCash')}
+                        </div>
+                        <div class="fin-command-metric">
+                            <span>Protected</span>
+                            <strong>${currentHasFinanceData ? formatCurrency(reservedCash) : '—'}</strong>
+                            ${renderMetricExplanation('protectedCash')}
+                        </div>
+                        <div class="fin-command-metric fin-command-metric--primary ${resultClass}">
+                            <span>30-day result</span>
+                            <strong>${currentHasFinanceData ? formatCurrency(expectedMonthEnd) : '—'}</strong>
+                        </div>
+                        <div class="fin-command-metric fin-command-metric--primary ${runwayClass}">
+                            <span>Runway</span>
+                            <strong>${runwayLabel}${runway != null ? '<small> months</small>' : ''}</strong>
                             ${renderMetricExplanation('runway')}
                         </div>
-                        <div class="fin-cockpit-burn">
-                            <div class="fin-burn-label">Monthly burn</div>
-                            <div class="fin-burn-value">${currentHasFinanceData ? formatCurrency(monthlyBurn) : '—'}</div>
-                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.15rem;">Recurring costs</div>
+                        <div class="fin-command-metric">
+                            <span>Monthly burn</span>
+                            <strong>${currentHasFinanceData ? formatCurrency(monthlyBurn) : '—'}</strong>
                             ${renderMetricExplanation('monthlyBurnRate')}
                         </div>
-                    </div>
-
-                    <hr class="fin-divider">
-
-                    <!-- Cash Breakdown -->
-                    <div class="fin-cockpit-cash">
-                        <div class="fin-cash-header"><span>Total Cash</span><strong>${currentHasFinanceData ? formatCurrency(totalCash) : '—'}</strong></div>
-                        <div class="fin-stacked-bar">
-                            <div class="fin-bar-segment fin-bar-available" style="width: ${availPct}%; transition: width 0.6s ease;"></div>
-                            <div class="fin-bar-segment fin-bar-protected" style="width: ${protectedPct}%; transition: width 0.6s ease;"></div>
-                        </div>
-                        <div class="fin-cash-legend">
-                            <div class="fin-legend-item">
-                                <span class="fin-dot fin-dot-available"></span>
-                                <span class="fin-legend-val">${formatCurrency(availableCash)}</span>
-                                <span class="fin-legend-lbl">Available</span>
-                                ${renderMetricExplanation('availableCash')}
-                            </div>
-                            <div class="fin-legend-item">
-                                <span class="fin-dot fin-dot-protected"></span>
-                                <span class="fin-legend-val">${formatCurrency(reservedCash)}</span>
-                                <span class="fin-legend-lbl">Protected</span>
-                                ${renderMetricExplanation('protectedCash')}
-                            </div>
-                        </div>
-                        ${buckets.length ? `
-                            <div class="fin-reserve-mini-grid">
-                                ${buckets.map((bucket) => `
-                                    <div style="display:flex; justify-content:space-between; gap: 0.5rem;">
-                                        <span>${escapeHtml(bucket.label)}</span>
-                                        <strong style="font-family: var(--font-mono);">${formatCurrency(bucket.amount)}</strong>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        ` : ''}
-                    </div>
-
-                    <hr class="fin-divider">
-
-                    <!-- Cashflow Outlook -->
-                    <div class="fin-cockpit-cashflow">
-                        <div class="fin-cashflow-header">30-Day Outlook</div>
-                        <div class="fin-cashflow-grid">
-                            <div>
-                                <span>Incoming</span>
-                                <strong style="color: rgba(168, 230, 207, 0.95);">${formatCurrency(incoming)}</strong>
-                            </div>
-                            <div>
-                                <span>Obligations</span>
-                                <strong style="color: rgba(241, 185, 167, 0.95);">${formatCurrency(obligations)}</strong>
-                            </div>
-                            <div>
-                                <span>Month-end</span>
-                                <strong class="${expectedMonthEnd < 0 ? 'fin-val-neg' : ''}">${currentHasFinanceData ? formatCurrency(expectedMonthEnd) : '—'}</strong>
-                            </div>
-                        </div>
-                        <div class="fin-cashflow-copy">${monthEndCopy}</div>
                     </div>
                 </div>
             </section>
         `;
     }
 
+    function renderTodaysDecision() {
+        const expectedMonthEnd = overviewExpectedMonthEnd();
+        const actions = buildOverviewActionItems();
+        const overdue = actions.find((item) => item.group === 'Critical' && item.id !== 'month-end-gap');
+        const missingPlan = actions.find((item) => item.group === 'Needs review' && /plan/i.test(item.title + item.reason));
+        const missingInput = actions.find((item) => /income|reserve/i.test(item.title + item.reason));
+        let decision = {
+            title: 'No urgent decision',
+            body: 'The cockpit is steady. A short monthly review will keep it that way.',
+            buttons: [{ label: 'Open monthly review', action: 'FinancialMode.setSection', args: "'review'" }]
+        };
 
-    function renderAttentionQueue() {
-        const items = safeArray(currentSnapshot?.attentionQueue);
-        const reviewDue = isWeeklyReviewDue();
-        
-        const scenarios = currentTreasury?.incomeScenarios || {};
-        const expectedMonthEnd = Number.isFinite(Number(scenarios.expected)) ? Number(scenarios.expected) : (Number(currentSnapshot?.projectedBalance) || 0);
-        
-        const rows = [
-            ...(reviewDue ? [{
-                type: 'Monthly review',
-                title: 'Review not started',
-                action: 'Close month',
-                id: 'monthly-review',
-            }] : []),
-            ...(expectedMonthEnd < 0 ? [{
-                type: 'Due soon',
-                title: `Month-end gap: ${formatCurrency(Math.abs(expectedMonthEnd))}`,
-                action: 'Adjust reserves',
-                id: 'month-end-gap',
-            }] : []),
-            ...items
-        ].slice(0, 10);
-        
+        if (expectedMonthEnd < 0) {
+            decision = {
+                title: `Projected month-end gap: ${formatCurrency(Math.abs(expectedMonthEnd))}`,
+                body: 'Confirm expected income or adjust reserves before reviewing smaller obligations.',
+                buttons: [
+                    { label: 'Review income', action: 'FinancialMode.setSection', args: "'invoices'" },
+                    { label: 'Adjust reserves', action: 'FinancialMode.setSection', args: "'reserves'" },
+                    { label: 'Open forecast', action: 'FinancialMode.setSection', args: "'planning'" }
+                ]
+            };
+        } else if (overdue) {
+            decision = {
+                title: overdue.title,
+                body: overdue.reason,
+                buttons: [{ label: 'Open review', action: 'FinancialMode.setSection', args: "'review'" }]
+            };
+        } else if (missingPlan) {
+            decision = {
+                title: missingPlan.title,
+                body: 'Confirm the payment plan so monthly burn and runway stay accurate.',
+                buttons: [missingPlan.button]
+            };
+        } else if (isWeeklyReviewDue()) {
+            decision = {
+                title: 'Monthly review is ready',
+                body: 'Close the operating loop before making smaller adjustments.',
+                buttons: [{ label: 'Start review', action: 'openEditModal', args: "'weeklyReview'" }]
+            };
+        } else if (missingInput) {
+            decision = {
+                title: missingInput.title,
+                body: missingInput.reason,
+                buttons: [missingInput.button]
+            };
+        }
+
         return `
             <section class="fin-section">
-                <div class="widget ui-card glass fin-card">
+                <div class="widget ui-card glass fin-card fin-today-decision">
                     <div class="fin-section-heading-row">
                         <div>
-                            <div class="widget-title ui-title">Attention Queue</div>
-                            <div class="fin-helper-text">Unresolved items, overdue payments, and missing plans.</div>
+                            <div class="widget-title ui-title">Today’s Financial Decision</div>
+                            <div class="fin-helper-text">One next move, not the whole backlog.</div>
                         </div>
                     </div>
-                    ${rows.length ? `<ul class="fin-decision-list" style="gap:0.75rem;">` + rows.map((item) => `
-                        <li>
-                            <div class="fin-decision-header">
-                                <div>
-                                    <strong>${escapeHtml(item.title)} ${item.amount != null ? formatCurrency(item.amount) : ''}</strong>
-                                    <div class="fin-decision-reason" style="text-transform:uppercase; font-size:0.7rem; font-family:var(--font-mono);">${escapeHtml(item.type)}</div>
-                                </div>
-                            </div>
-                            <div class="fin-decision-actions">
-                                <button class="fin-mini-btn" type="button" data-action="${item.id === 'monthly-review' ? 'openEditModal' : 'FinancialMode.setSection'}" data-action-args="${item.id === 'monthly-review' ? "'weeklyReview'" : "'review'"}">${escapeHtml(item.action || 'Resolve item')}</button>
-                            </div>
-                        </li>
-                    `).join('') + `</ul>` : renderCompactEmpty('Attention queue is clear. Smooth sailing.')}
+                    <div class="fin-decision-focus">
+                        <div>
+                            <strong>${escapeHtml(decision.title)}</strong>
+                            <p>${escapeHtml(decision.body)}</p>
+                        </div>
+                        <div class="fin-decision-focus-actions">
+                            ${decision.buttons.map((button, index) => overviewButton(button.label, button.action, button.args, index === 0 ? 'fin-mini-btn--primary' : '')).join('')}
+                        </div>
+                    </div>
                 </div>
             </section>
         `;
@@ -1701,48 +1759,84 @@ window.FinancialMode = (function () {
         return renderReviewQueueActions(item);
     }
 
+    function renderNextActions() {
+        const rows = buildOverviewActionItems();
+        const groups = ['Critical', 'Needs review', 'Housekeeping'];
+        const grouped = groups.map((group) => ({
+            group,
+            rows: rows.filter((item) => item.group === group)
+        })).filter((entry) => entry.rows.length);
+
+        return `
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card fin-next-actions">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Next Actions</div>
+                            <div class="fin-helper-text">Small steps to keep your treasury accurate.</div>
+                        </div>
+                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Open full action list</button>
+                    </div>
+                    ${grouped.length ? grouped.map((group) => `
+                        <div class="fin-action-group" data-fin-action-group="${escapeHtml(group.group)}">
+                            <div class="fin-action-group-label">${escapeHtml(group.group)}</div>
+                            <div class="fin-action-rows">
+                                ${group.rows.map((item) => `
+                                    <div class="fin-action-row-card" data-fin-action-row>
+                                        <div class="fin-action-row-main">
+                                            <strong>${escapeHtml(item.title)}</strong>
+                                            <span>${escapeHtml(item.reason)}</span>
+                                        </div>
+                                        <div class="fin-action-row-meta">
+                                            ${item.amount != null ? `<strong class="${Number(item.amount) < 0 ? 'fin-val-neg' : ''}">${formatCurrency(item.amount)}</strong>` : '<span class="fin-muted">Review</span>'}
+                                            ${overviewButton(item.button.label, item.button.action, item.button.args)}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `).join('') : renderCompactEmpty('No urgent action. Keep reviewing as you go.')}
+                </div>
+            </section>
+        `;
+    }
+
     function renderNext30Days() {
         const next30 = currentTreasury?.dashboardSummary?.next30Days || {};
-        const pipelineDeals = getActivePipelineDeals();
-        const confirmed = pipelineDeals.filter(d => (d.probability || 0) >= 0.8).reduce((acc, d) => acc + (Number(d.value) || 0), 0);
-        const likely = pipelineDeals.filter(d => (d.probability || 0) >= 0.5 && (d.probability || 0) < 0.8).reduce((acc, d) => acc + (Number(d.value) || 0), 0);
-        const unconfirmed = pipelineDeals.filter(d => (d.probability || 0) < 0.5).reduce((acc, d) => acc + (Number(d.value) || 0), 0);
+        const expectedMonthEnd = overviewExpectedMonthEnd();
+        const confidence = explanationNumber('forecastConfidence', Math.round((Number(currentSnapshot?.confidenceScore) || 0) * 100));
         
         return `
             <section class="fin-section">
                 <div class="widget ui-card glass fin-card">
                     <div class="fin-section-heading-row">
                         <div>
-                            <div class="widget-title ui-title">Near Future</div>
-                            <div class="fin-helper-text">Expected income and confirmed obligations in the next 30 days.</div>
+                            <div class="widget-title ui-title">30-Day Outlook</div>
+                            <div class="fin-helper-text">Incoming money, committed obligations, and projected month-end result.</div>
                         </div>
                     </div>
-                    <div class="fin-confidence-list">
-                        <div class="fin-confidence-row">
-                            <span class="fin-muted">Forecast Confidence</span>
-                            <strong>${explanationValue((currentExplanations && currentExplanations.forecastConfidence) || { key: 'forecastConfidence' }, explanationNumber('forecastConfidence', Math.round((Number(currentSnapshot?.confidenceScore) || 0) * 100)))}</strong>
+                    <div class="fin-outlook-grid">
+                        <div class="fin-status-card">
+                            <span>Incoming</span>
+                            <strong class="fin-text-safe">${formatCurrency(next30.confirmedIncoming)}</strong>
+                            <span>Confirmed in the next 30 days</span>
                         </div>
-                        <div class="fin-confidence-row">
-                            <span class="fin-muted">Expected weighted</span>
-                            <strong class="fin-text-primary">${formatCurrency(next30.expectedWeightedIncoming)}</strong>
+                        <div class="fin-status-card">
+                            <span>Obligations</span>
+                            <strong class="fin-text-med">${formatCurrency(next30.obligationsDue)}</strong>
+                            <span>Due within 30 days</span>
                         </div>
-                        <div class="fin-divider-line"></div>
-                        <div class="fin-confidence-row">
-                            <span class="fin-muted">Confirmed</span>
-                            <strong class="fin-text-safe">${formatCurrency(confirmed)}</strong>
+                        <div class="fin-status-card">
+                            <span>Projected month-end</span>
+                            <strong class="${expectedMonthEnd < 0 ? 'fin-val-neg' : 'fin-text-safe'}">${formatCurrency(expectedMonthEnd)}</strong>
+                            <span>${expectedMonthEnd < 0 ? 'Plan closes short' : 'Plan remains positive'}</span>
                         </div>
-                        <div class="fin-confidence-row">
-                            <span class="fin-muted">Likely</span>
-                            <strong class="fin-text-med">${formatCurrency(likely)}</strong>
+                        <div class="fin-status-card">
+                            <span>Forecast Confidence</span>
+                            <strong>${explanationValue((currentExplanations && currentExplanations.forecastConfidence) || { key: 'forecastConfidence' }, confidence)}</strong>
+                            <span>Inputs and warning quality</span>
+                            ${renderMetricExplanation('forecastConfidence')}
                         </div>
-                        <div class="fin-confidence-row">
-                            <span class="fin-muted">Unconfirmed</span>
-                            <strong class="fin-text-high">${formatCurrency(unconfirmed)}</strong>
-                        </div>
-                    </div>
-                    ${renderMetricExplanation('forecastConfidence')}
-                    <div class="fin-action-row">
-                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'income'">Confirm income</button>
                     </div>
                 </div>
             </section>
@@ -1756,6 +1850,8 @@ window.FinancialMode = (function () {
         const debtBurden = explanationNumber('debtBurden', Number(currentSnapshot?.totalDebt) || 0);
         const confidence = explanationNumber('forecastConfidence', Math.round((Number(currentSnapshot?.confidenceScore) || 0) * 100));
         const protectedShare = actualCash > 0 ? Math.round((protectedCash / actualCash) * 100) : 0;
+        const activeObligations = safeArray(currentData?.recurringExpenses).filter((entry) => entry && entry.active !== false);
+        const obligationsNeedingReview = treasuryArray('overdueObligations').length + treasuryArray('dueSoonObligations').length;
 
         return `
             <section class="fin-section">
@@ -1787,6 +1883,12 @@ window.FinancialMode = (function () {
                             <span>Forecast confidence</span>
                             <strong>${explanationValue((currentExplanations && currentExplanations.forecastConfidence) || { key: 'forecastConfidence' }, confidence)}</strong>
                             <span>Based on missing inputs and warnings</span>
+                        </div>
+                        <div class="fin-status-card">
+                            <span>Obligations</span>
+                            <strong>${pluralize(activeObligations.length, 'active group')}</strong>
+                            <span>${obligationsNeedingReview} need review</span>
+                            <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'fixedCosts'">Open obligations</button>
                         </div>
                     </div>
                 </div>

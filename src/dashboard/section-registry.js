@@ -55,8 +55,9 @@ export function createSectionRenderer(renderers, renderSectionHeading) {
                 renderSectionHeading('Overview', 'Your local-first treasury cockpit.'),
                 renderers.observatoryHeader(),
                 renderers.dashboardCockpit(),
-                renderers.attentionQueue(),
+                renderers.todaysDecision(),
                 renderers.next30Days(),
+                renderers.nextActions(),
                 renderers.strategicPicture(),
                 `</div>`
             ];

@@ -91,12 +91,20 @@
       </div>
 
       <!-- Floating Action Button -->
-      <button class="fin-fab-add" type="button" data-action="openEditModal" data-action-args="'quickAdd'" aria-label="New entry">
+      <button class="fin-fab-add" type="button" data-action="toggleQuickActionMenu" aria-label="New entry" aria-expanded="false" aria-controls="quick-action-menu">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="12" y1="5" x2="12" y2="19"></line>
           <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
       </button>
+      <div class="fin-quick-action-menu" id="quick-action-menu" aria-hidden="true">
+        <button type="button" data-action="openEditModal" data-action-args="'transaction', 'expense'"><strong>Add transaction</strong><span>Income, expense, or transfer</span></button>
+        <button type="button" data-action="openEditModal" data-action-args="'income'"><strong>Add expected income</strong><span>Invoice, retainer, or likely payment</span></button>
+        <button type="button" data-action="openEditModal" data-action-args="'expense'"><strong>Add obligation</strong><span>Recurring cost that affects runway</span></button>
+        <button type="button" data-action="openEditModal" data-action-args="'reserveBucket'"><strong>Add reserve</strong><span>Protect tax, VAT, health, or buffer cash</span></button>
+        <button type="button" data-action="openEditModal" data-action-args="'debtPlan'"><strong>Add payment plan</strong><span>Confirm recurring debt pressure</span></button>
+        <button type="button" data-action="openEditModal" data-action-args="'csvImport'"><strong>Import CSV</strong><span>Bring in local transaction records</span></button>
+      </div>
 
     </div>
 

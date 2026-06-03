@@ -69,6 +69,8 @@ interface DestructiveConfirmation {
   renderAfter?: boolean;
 }
 let destructiveConfirmation: DestructiveConfirmation | null = null;
+const quickActionMenu = document.getElementById('quick-action-menu');
+const quickActionButton = document.querySelector<HTMLButtonElement>('.fin-fab-add');
 const transactionFilters = {
   search: '',
   accountId: '',
@@ -161,6 +163,21 @@ function updateDestructiveConfirmButton(): void {
   const button = document.querySelector<HTMLButtonElement>('#modal-destructive-confirm');
   if (!input || !button || !destructiveConfirmation) return;
   button.disabled = input.value !== destructiveConfirmation.phrase;
+}
+
+function setQuickActionMenuOpen(open: boolean): void {
+  if (!quickActionMenu || !quickActionButton) return;
+  quickActionMenu.classList.toggle('active', open);
+  quickActionMenu.setAttribute('aria-hidden', open ? 'false' : 'true');
+  quickActionButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function toggleQuickActionMenu(): void {
+  setQuickActionMenuOpen(!(quickActionMenu?.classList.contains('active') ?? false));
+}
+
+function closeQuickActionMenu(): void {
+  setQuickActionMenuOpen(false);
 }
 
 function optionList(selected = '', emptyLabel = 'Not mapped'): string {
@@ -907,6 +924,7 @@ function renderModal(type: string, id = ''): string {
 
 function openEditModal(type: string, options: { id?: string } | string = {}): void {
   if (!overlay || !body) return;
+  closeQuickActionMenu();
   if (!overlay.classList.contains('active') && document.activeElement instanceof HTMLElement) {
     modalReturnFocus = document.activeElement;
   }
@@ -1375,6 +1393,8 @@ Object.assign(window, {
   openEditModal,
   requestDestructiveConfirmation: openDestructiveConfirmation,
   closeModal,
+  toggleQuickActionMenu,
+  closeQuickActionMenu,
   saveFinanceModal,
   addTransaction: () => {
     if (addTransactionFromFields('modal-txn')) openEditModal('financeOverview');
@@ -1677,9 +1697,16 @@ Object.assign(window, {
 
 document.addEventListener('click', (event) => {
   const button = (event.target as Element | null)?.closest<HTMLElement>('[data-action]');
-  if (!button) return;
+  const target = event.target as Node | null;
+  if (!button) {
+    if (target && quickActionMenu?.classList.contains('active') && !quickActionMenu.contains(target) && !quickActionButton?.contains(target)) {
+      closeQuickActionMenu();
+    }
+    return;
+  }
   const action = button.dataset.action;
   if (!action) return;
+  if (action !== 'toggleQuickActionMenu' && quickActionMenu?.contains(button)) closeQuickActionMenu();
   event.preventDefault();
   resolveAction(action)?.(...parseArgs(button.dataset.actionArgs || ''));
 });
@@ -1689,6 +1716,10 @@ overlay?.addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && quickActionMenu?.classList.contains('active')) {
+    closeQuickActionMenu();
+    return;
+  }
   if (!overlay?.classList.contains('active')) return;
   if (event.key === 'Escape') {
     closeModal();
