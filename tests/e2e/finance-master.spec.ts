@@ -121,11 +121,14 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Treasury', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Treasury', exact: true })).toBeVisible();
-  await expect(page.getByText('Operating Cash', { exact: true })).toBeVisible();
-  await expect(page.getByText('Reserve Buckets', { exact: true })).toBeVisible();
-  await expect(page.getByText('Savings and Buffer Goals', { exact: true })).toBeVisible();
-  await expect(page.getByText('Essential Costs', { exact: true })).toBeVisible();
-  await expect(page.getByText('Debt & Liabilities', { exact: true })).toBeVisible();
+  await expect(page.getByText('Treasury Pulse', { exact: true })).toBeVisible();
+  await expect(page.getByText('Next Best Move', { exact: true })).toBeVisible();
+  await expect(page.getByText('Money Flow Map', { exact: true })).toBeVisible();
+  await expect(page.getByText('Protected Money', { exact: true })).toBeVisible();
+  await expect(page.getByText('Burn Control', { exact: true })).toBeVisible();
+  await expect(page.getByText('Debt Pressure', { exact: true })).toBeVisible();
+  await expect(page.getByText('Savings & Future Goals', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Account Details/ })).toBeVisible();
 
   await page.getByRole('button', { name: 'Month Close', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Month Close', exact: true })).toBeVisible();
@@ -152,7 +155,25 @@ test('treasury cash accounts and reserve buckets can be edited and persist', asy
   await page.goto('/');
   await page.getByRole('button', { name: 'Treasury', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Treasury', exact: true })).toBeVisible();
+  await expect(page.getByText('Treasury Pulse', { exact: true })).toBeVisible();
+  await expect(page.getByText('Free cash right now', { exact: true })).toBeVisible();
+  await expect(page.getByText('Next Best Move', { exact: true })).toBeVisible();
+  await expect(page.getByText('Money Flow Map', { exact: true })).toBeVisible();
+  await expect(page.getByText('Protected Money', { exact: true })).toBeVisible();
+  await expect(page.getByText('Burn Control', { exact: true })).toBeVisible();
+  await expect(page.getByText('Debt Pressure', { exact: true })).toBeVisible();
+  await expect(page.getByText('Savings & Future Goals', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-fin-collapsible="treasury-burn-flexible"] .fin-collapsible-body')).not.toBeVisible();
+  await page.locator('[data-fin-collapsible="treasury-burn-flexible"]').getByRole('button', { name: /Flexible Costs/ }).click();
+  await expect(page.locator('[data-fin-collapsible="treasury-burn-flexible"] .fin-collapsible-body')).toBeVisible();
+  const storedBurnBefore = await page.evaluate(() => JSON.stringify(window.Store.getFinancialReadModel().recurringExpenses));
+  await page.getByRole('button', { name: /Cut €50/ }).click();
+  await expect(page.getByText(/€50\.00 cut/)).toBeVisible();
+  await expect.poll(() => page.evaluate((before) => (
+    JSON.stringify(window.Store.getFinancialReadModel().recurringExpenses) === before
+  ), storedBurnBefore)).toBe(true);
 
+  await page.locator('[data-fin-collapsible="treasury-accounts"]').getByRole('button', { name: /Account Details/ }).click();
   await page.getByRole('button', { name: 'Add cash account', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Add cash account', exact: true })).toBeVisible();
   await page.getByLabel('Name').fill('Temporary treasury cash');
@@ -185,12 +206,12 @@ test('treasury cash accounts and reserve buckets can be edited and persist', asy
 
   await page.getByRole('button', { name: 'Add reserve bucket', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Add reserve bucket', exact: true })).toBeVisible();
-  await page.getByLabel('Name').fill('Client tax reserve');
-  await page.getByLabel('Target amount').fill('2000');
-  await page.getByLabel('Current amount').fill('350');
-  await page.getByLabel('Purpose').selectOption('tax_reserve');
-  await page.getByLabel('Scope').selectOption('business');
-  await page.getByLabel('Priority').selectOption('critical');
+  await page.locator('#modal-reserve-name').fill('Client tax reserve');
+  await page.locator('#modal-reserve-target').fill('2000');
+  await page.locator('#modal-reserve-current').fill('350');
+  await page.locator('#modal-reserve-purpose').selectOption('tax_reserve');
+  await page.locator('#modal-reserve-scope').selectOption('business');
+  await page.locator('#modal-reserve-priority').selectOption('critical');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
   await expect(page.getByText('Client tax reserve', { exact: true })).toBeVisible();
@@ -702,6 +723,11 @@ test('midnight mode keeps ledger and monthly review surfaces readable', async ({
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
   await expectDarkLocalSurfaces(page, '.fin-monthly-review-panel');
   await expectDarkLocalSurfaces(page, '.fin-review-check-row');
+
+  await page.getByRole('button', { name: 'Treasury', exact: true }).click();
+  await expect(page.getByText('Treasury Pulse', { exact: true })).toBeVisible();
+  await expectDarkLocalSurfaces(page, '.fin-treasury-pulse');
+  await expectDarkLocalSurfaces(page, '.fin-treasury-pulse-grid > div');
   expect(errors).toEqual([]);
 });
 
@@ -812,6 +838,8 @@ test('mobile navigation opens from a hamburger menu and closes after selection',
 
   await menuToggle.click();
   await page.getByRole('button', { name: 'Treasury', exact: true }).click();
+  await expect(page.getByText('Treasury Pulse', { exact: true })).toBeVisible();
+  await expect(page.getByText('Free cash right now', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Treasury', exact: true })).toBeVisible();
   await expect(menuToggle).toHaveAttribute('aria-expanded', 'false');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

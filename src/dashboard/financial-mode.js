@@ -33,6 +33,7 @@ window.FinancialMode = (function () {
     let adviceExpanded = false;
     let ledgerMoreFiltersOpen = false;
     let monthlyReviewError = '';
+    let treasuryBurnCut = 0;
 
     const UI_KEYS = {
         focusMode: 'finance-master.layout.focus-mode',
@@ -573,6 +574,19 @@ window.FinancialMode = (function () {
             if (action === 'clear-ledger-filters') {
                 clearLedgerFilters();
                 ledgerMoreFiltersOpen = false;
+                render();
+                return;
+            }
+
+            if (action === 'set-treasury-burn-cut') {
+                treasuryBurnCut = Math.max(0, Number(actionEl.getAttribute('data-fin-cut') || '0') || 0);
+                render();
+                return;
+            }
+
+            if (action === 'open-treasury-panel') {
+                const sectionId = String(actionEl.getAttribute('data-fin-section') || '').trim();
+                if (sectionId) setSectionCollapsed(sectionId, false);
                 render();
                 return;
             }
@@ -1623,75 +1637,417 @@ window.FinancialMode = (function () {
         `;
     }
 
+    function normalizeMonthlyEquivalent(amount, frequency = 'monthly') {
+        const value = Math.abs(Number(amount) || 0);
+        const raw = String(frequency || 'monthly').toLowerCase().replace(/[\s-]+/g, '_');
+        if (raw === 'weekly' || raw === 'week') return value * 52 / 12;
+        if (raw === 'biweekly' || raw === 'two_weekly' || raw === 'every_two_weeks' || raw === 'fortnightly') return value * 26 / 12;
+        if (raw === 'quarterly' || raw === 'quarter') return value / 3;
+        if (raw === 'yearly' || raw === 'annual' || raw === 'annually') return value / 12;
+        return value;
+    }
+
+    function treasuryDebtMonthlyPayment(debt) {
+        const normalized = Number(debt && debt.minimumPaymentMonthly);
+        if (Number.isFinite(normalized)) return Math.max(0, normalized);
+        return normalizeMonthlyEquivalent(debt && debt.minimumPayment, debt && debt.frequency);
+    }
+
+    function treasuryDebtHasPlan(debt) {
+        return Boolean(
+            (debt && debt.planType === 'custom' && safeArray(debt.installments).length > 0)
+            || treasuryDebtMonthlyPayment(debt) > 0
+            || String(debt && debt.paymentPlanNote || '').trim()
+        );
+    }
+
+    function treasuryReserveGap(buckets) {
+        return safeArray(buckets).reduce((sum, bucket) => {
+            const target = Math.max(0, Number(bucket && bucket.targetAmount) || 0);
+            const current = Math.max(0, Number(bucket && bucket.currentAmount) || 0);
+            return sum + Math.max(0, target - current);
+        }, 0);
+    }
+
+    function sortedTreasuryExpenses(expenses) {
+        const orderMap = {};
+        try {
+            const raw = localStorage.getItem('finance-master.ui.expenseOrder');
+            if (raw) JSON.parse(raw).forEach((id, idx) => { orderMap[id] = idx; });
+        } catch (error) {}
+        return safeArray(expenses).slice().sort((a, b) => {
+            const posA = Object.prototype.hasOwnProperty.call(orderMap, a && a.id) ? orderMap[a.id] : 99999;
+            const posB = Object.prototype.hasOwnProperty.call(orderMap, b && b.id) ? orderMap[b.id] : 99999;
+            return posA - posB;
+        });
+    }
+
+    function treasuryFlowPercent(value, maxValue) {
+        const max = Math.max(1, Math.abs(Number(maxValue) || 0));
+        return Math.max(6, Math.min(100, (Math.abs(Number(value) || 0) / max) * 100));
+    }
+
+    function renderTreasuryCostRows(costs, label) {
+        return safeArray(costs).length ? safeArray(costs).map((expense) => `
+            <div class="fin-treasury-compact-row">
+                <span>
+                    <strong>${escapeHtml(expense.category || 'Recurring cost')}</strong>
+                    <small>Due day ${escapeHtml(String(expense.dueDay || 'not set'))} · ${escapeHtml(expense.scope || 'shared')} · ${escapeHtml(label)}</small>
+                </span>
+                <span>
+                    <strong>${formatCurrency(expense.monthlyAmount)} / mo</strong>
+                    ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'expense', '${escapeActionArg(expense.id)}'`, label: `Edit ${expense.category || 'recurring cost'}` })}
+                </span>
+            </div>
+        `).join('') : renderCompactEmpty(`No ${label.toLowerCase()} costs recorded.`);
+    }
+
+    function renderTreasuryReserveCards(buckets) {
+        return safeArray(buckets).length ? safeArray(buckets).map((bucket) => {
+            const current = Math.max(0, Number(bucket.currentAmount) || 0);
+            const target = Math.max(0, Number(bucket.targetAmount) || 0);
+            const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 100;
+            const status = pct >= 100 ? 'Protected' : (pct >= 50 ? 'Building' : 'Below target');
+            return `
+                <div class="fin-treasury-reserve-card">
+                    <div class="fin-treasury-reserve-head">
+                        <span>
+                            <strong>${escapeHtml(bucket.name || 'Reserve bucket')}</strong>
+                            <small>${escapeHtml(String(bucket.purpose || 'reserve').replace(/_/g, ' '))} · ${escapeHtml(bucket.scope || 'shared')}</small>
+                        </span>
+                        ${renderStatusPill(status)}
+                    </div>
+                    <div class="fin-treasury-reserve-value">
+                        <strong>${formatCurrency(current)}</strong>
+                        <small>of ${formatCurrency(target)}</small>
+                    </div>
+                    <div class="fin-treasury-meter"><span style="width:${pct}%"></span></div>
+                    <div class="fin-treasury-row-actions">
+                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'allocateReserves'">Protect money</button>
+                        ${financeIconButton({ action: 'openEditModal', args: `'reserveBucket', '${escapeActionArg(bucket.id)}'`, label: `Adjust target for ${bucket.name || 'reserve bucket'}` })}
+                    </div>
+                </div>
+            `;
+        }).join('') : renderCompactEmpty('Protect your runway. Create your first reserve bucket, such as taxes or buffer.');
+    }
+
+    function renderTreasuryDebtCards(debts, limit = 3) {
+        const list = safeArray(debts)
+            .filter((debt) => Math.max(0, Number(debt && debt.outstanding) || 0) > 0)
+            .sort((a, b) => treasuryDebtMonthlyPayment(b) - treasuryDebtMonthlyPayment(a))
+            .slice(0, limit);
+        return list.length ? list.map((debt) => {
+            const outstanding = Math.max(0, Number(debt.outstanding) || 0);
+            const totalAdded = Math.max(0, Number(debt.totalAdded) || 0);
+            const paid = Math.max(0, Number(debt.totalPaid) || 0);
+            const pct = totalAdded > 0 ? Math.min(100, Math.round((paid / totalAdded) * 100)) : 0;
+            const monthly = treasuryDebtMonthlyPayment(debt);
+            const hasPlan = treasuryDebtHasPlan(debt);
+            return `
+                <div class="fin-treasury-debt-card">
+                    <div class="fin-treasury-debt-head">
+                        <span>
+                            <strong>${escapeHtml(debt.name || 'Debt item')}</strong>
+                            <small>${debt.dueDate ? `Due ${formatShortDate(debt.dueDate)} · ` : ''}${escapeHtml(debt.scope || 'shared')}</small>
+                        </span>
+                        ${renderStatusPill(hasPlan ? 'Reviewed' : 'Needs review')}
+                    </div>
+                    <div class="fin-treasury-debt-main">
+                        <strong>${formatCurrency(outstanding)}</strong>
+                        <span>${monthly > 0 ? `${formatCurrency(monthly)} / mo pressure` : 'No monthly plan'}</span>
+                    </div>
+                    <div class="fin-treasury-meter fin-treasury-meter--debt"><span style="width:${pct}%"></span></div>
+                    <div class="fin-treasury-debt-foot">
+                        <small>${paid > 0 ? `${formatCurrency(paid)} paid` : 'Repayment not started'}</small>
+                        <small>${debt.estimatedPayoffDate ? `Projected payoff ${formatShortDate(debt.estimatedPayoffDate)}` : 'Payoff timeline needs plan'}</small>
+                    </div>
+                    <div class="fin-treasury-row-actions">
+                        ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'debtPayment', '${escapeActionArg(debt.id)}'`, label: `Record payment for ${debt.name || 'debt item'}`, icon: 'success', tone: 'success' })}
+                        ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'debtPlan', '${escapeActionArg(debt.id)}'`, label: `Edit payment plan for ${debt.name || 'debt item'}` })}
+                        ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'debtAdd', '${escapeActionArg(debt.id)}'`, label: `Edit ${debt.name || 'debt item'}` })}
+                    </div>
+                </div>
+            `;
+        }).join('') : renderCompactEmpty('Debt-free operations.');
+    }
+
     function renderReservesSection() {
         const fiatAccounts = safeArray(currentData?.fiatAccounts);
         const buckets = safeArray(currentData?.reserveBuckets);
+        const debts = safeArray(currentData?.debtAccounts);
+        const expenses = sortedTreasuryExpenses(currentData?.recurringExpenses);
+        const essentialCosts = expenses.filter((expense) => expense && expense.essential);
+        const flexibleCosts = expenses.filter((expense) => !expense || !expense.essential);
+        const essentialTotal = essentialCosts.reduce((sum, expense) => sum + (Number(expense.monthlyAmount) || 0), 0);
+        const flexibleTotal = flexibleCosts.reduce((sum, expense) => sum + (Number(expense.monthlyAmount) || 0), 0);
+        const debtMonthlyPressure = debts.reduce((sum, debt) => sum + treasuryDebtMonthlyPayment(debt), 0);
         const actualCash = treasuryNumber('actualCash', treasuryNumber('totalCash', Number(currentSnapshot?.realBalance) || 0));
         const protectedCash = treasuryNumber('protectedCash', treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0));
         const availableCash = treasuryNumber('availableCash', Number.isFinite(Number(currentSnapshot?.availableCash)) ? Number(currentSnapshot.availableCash) : actualCash - protectedCash);
-        const cashAfterReserves = treasuryNumber('trulyAvailableCash', actualCash - protectedCash);
         const committedObligations = treasuryNumber('committedShortTermObligations', 0);
-        
+        const monthlyBurn = treasuryNumber('totalMonthlyBurn', Number(currentSnapshot?.monthlyBurn) || (essentialTotal + flexibleTotal + debtMonthlyPressure));
+        const runway = Number(currentTreasury?.runwayMonths ?? currentSnapshot?.runwayMonths);
+        const runwayLabel = Number.isFinite(runway) ? `${runway.toFixed(1)} months` : 'Unknown';
+        const activeDebts = debts.filter((debt) => Math.max(0, Number(debt && debt.outstanding) || 0) > 0);
+        const totalDebt = treasuryNumber('debtRemaining', explanationNumber('debtBurden', activeDebts.reduce((sum, debt) => sum + (Number(debt.outstanding) || 0), 0)));
+        const missingPlans = activeDebts.filter((debt) => !treasuryDebtHasPlan(debt));
+        const reserveTarget = buckets.reduce((sum, bucket) => sum + Math.max(0, Number(bucket.targetAmount) || 0), 0);
+        const reserveGap = treasuryReserveGap(buckets);
+        const flowResult = availableCash - essentialTotal - flexibleTotal - debtMonthlyPressure;
+        const adjustedCut = Math.min(Math.max(0, treasuryBurnCut), Math.max(0, flexibleTotal));
+        const adjustedBurn = Math.max(0, monthlyBurn - adjustedCut);
+        const adjustedResult = flowResult + adjustedCut;
+        const adjustedRunway = adjustedBurn > 0 ? availableCash / adjustedBurn : null;
+        const maxFlowValue = Math.max(1, Math.abs(availableCash), essentialTotal, flexibleTotal, debtMonthlyPressure, protectedCash, Math.abs(flowResult));
+        const goals = typeof window.Store.getGoalProgress === 'function'
+            ? window.Store.getGoalProgress(window.Store.getUiSettings().scopeFilter || 'all')
+            : [];
+        let pulseStatus = { label: 'Stable', className: 'is-stable', copy: 'Treasury has breathing room.' };
+        if (availableCash < 0 || flowResult < 0) {
+            pulseStatus = { label: 'Critical shortfall', className: 'is-critical', copy: 'Near-term obligations need coverage before future goals.' };
+        } else if (Number.isFinite(runway) && runway < 2) {
+            pulseStatus = { label: 'Tight runway', className: 'is-watch', copy: 'Cash covers a thin operating window.' };
+        } else if (missingPlans.length) {
+            pulseStatus = { label: 'Needs plan', className: 'is-watch', copy: 'Debt plans need confirmation for reliable burn.' };
+        } else if (reserveGap > 0) {
+            pulseStatus = { label: 'Needs protection', className: 'is-watch', copy: 'Reserve targets are not fully protected yet.' };
+        }
+        let nextMove = {
+            title: 'Keep Treasury reviewed',
+            body: 'Your main numbers are in shape. Keep the monthly operating loop current.',
+            primaryLabel: 'Open Month Close',
+            primaryAction: 'FinancialMode.setSection',
+            primaryArgs: "'review'",
+            secondary: []
+        };
+        if (availableCash < 0 || flowResult < 0) {
+            nextMove = {
+                title: 'Cover near-term obligations before funding savings goals',
+                body: 'Free cash is under pressure. Stabilize the next 30 days before adding to future goals.',
+                primaryLabel: 'Allocate available cash',
+                primaryAction: 'openEditModal',
+                primaryArgs: "'allocateReserves'",
+                secondary: [
+                    { label: 'Review flexible costs', localAction: 'open-treasury-panel', section: 'treasury-burn-flexible' },
+                    ...(activeDebts.length ? [{ label: 'Open debt planner', action: 'FinancialMode.openAddModal', args: `'debtPlan', '${escapeActionArg((missingPlans[0] || activeDebts[0] || {}).id || '')}'` }] : [])
+                ]
+            };
+        } else if (missingPlans.length) {
+            nextMove = {
+                title: 'Confirm debt payment plans',
+                body: 'Monthly pressure is clearer once every liability has a payment plan.',
+                primaryLabel: 'Open debt planner',
+                primaryAction: 'FinancialMode.openAddModal',
+                primaryArgs: `'debtPlan', '${escapeActionArg(missingPlans[0].id)}'`,
+                secondary: [{ label: 'Review debt pressure', localAction: 'open-treasury-panel', section: 'treasury-debt-details' }]
+            };
+        } else if (reserveGap > 0) {
+            nextMove = {
+                title: 'Protect priority reserves',
+                body: 'Some money still needs a job. Fund the most important bucket first.',
+                primaryLabel: 'Add reserve bucket',
+                primaryAction: 'openEditModal',
+                primaryArgs: "'reserveBucket'",
+                secondary: [{ label: 'Allocate cash', action: 'openEditModal', args: "'allocateReserves'" }]
+            };
+        } else if (flexibleTotal > essentialTotal * 0.35 && flexibleTotal > 0) {
+            nextMove = {
+                title: 'Review flexible costs',
+                body: 'A small cut to discretionary burn can extend your breathing room.',
+                primaryLabel: 'Review flexible costs',
+                primaryLocalAction: 'open-treasury-panel',
+                primarySection: 'treasury-burn-flexible',
+                secondary: [{ label: 'Add recurring cost', action: 'FinancialMode.openAddModal', args: "'expense'" }]
+            };
+        }
+        const primaryButton = nextMove.primaryLocalAction
+            ? `<button class="fin-mini-btn fin-mini-btn--primary" type="button" data-fin-action="${escapeHtml(nextMove.primaryLocalAction)}" data-fin-section="${escapeHtml(nextMove.primarySection)}">${escapeHtml(nextMove.primaryLabel)}</button>`
+            : `<button class="fin-mini-btn fin-mini-btn--primary" type="button" data-action="${escapeHtml(nextMove.primaryAction)}" data-action-args="${escapeHtml(nextMove.primaryArgs || '')}">${escapeHtml(nextMove.primaryLabel)}</button>`;
+        const secondaryButtons = safeArray(nextMove.secondary).map((button) => button.localAction
+            ? `<button class="fin-mini-btn" type="button" data-fin-action="${escapeHtml(button.localAction)}" data-fin-section="${escapeHtml(button.section || '')}">${escapeHtml(button.label)}</button>`
+            : `<button class="fin-mini-btn" type="button" data-action="${escapeHtml(button.action)}" data-action-args="${escapeHtml(button.args || '')}">${escapeHtml(button.label)}</button>`
+        ).join('');
+        const flowItems = [
+            { label: 'Cash available', value: availableCash, tone: 'safe' },
+            { label: 'Essential costs', value: -essentialTotal, tone: 'essential' },
+            { label: 'Flexible costs', value: -flexibleTotal, tone: 'flexible' },
+            { label: 'Debt pressure', value: -debtMonthlyPressure, tone: 'debt' },
+            { label: 'Protected reserves', value: protectedCash, tone: 'protected' },
+            { label: flowResult >= 0 ? 'Resulting surplus' : 'Resulting shortfall', value: flowResult, tone: flowResult >= 0 ? 'safe' : 'critical' },
+        ];
+
         return `
             <section class="fin-section">
-                <div class="fin-section-heading-row">
-                    <div>
-                        <div class="widget-title ui-title">Operating Cash</div>
-                        <div class="fin-helper-text">Liquid funds spread across your real-world accounts.</div>
+                <div class="widget ui-card glass fin-card fin-treasury-pulse ${pulseStatus.className}">
+                    <div class="fin-treasury-pulse-main">
+                        <span class="fin-eyebrow">Treasury Pulse</span>
+                        <div class="fin-treasury-free-cash">
+                            <span>Free cash right now</span>
+                            <strong class="${availableCash < 0 ? 'fin-val-neg' : 'fin-val-pos'}">${formatCurrency(availableCash)}</strong>
+                        </div>
+                        <p>${escapeHtml(pulseStatus.copy)}</p>
                     </div>
-                    <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'fiatAccount'">Add cash account</button>
-                </div>
-                ${fiatAccounts.length ? fiatAccounts.map(acc => `
-                    <div class="widget ui-card glass fin-card fin-list-item">
-                        <div class="fin-list-item-main">
-                            <strong>${escapeHtml(acc.name)}</strong>
-                            <div class="fin-list-item-sub">${escapeHtml(acc.scope || 'shared')} · ${acc.reserved ? 'protected cash' : 'available cash'}${acc.bucket ? ` · ${escapeHtml(String(acc.bucket).replace('_', ' '))}` : ''}</div>
-                        </div>
-                        <div class="fin-list-item-actions">
-                            <div class="fin-list-item-val">${formatCurrency(acc.balance)}</div>
-                            ${financeIconButton({ action: 'openEditModal', args: `'fiatAccount', '${escapeActionArg(acc.id)}'`, label: `Edit ${acc.name || 'cash account'}` })}
+                    <div class="fin-treasury-pulse-side">
+                        <div class="fin-treasury-status-chip">${escapeHtml(pulseStatus.label)}</div>
+                        <div class="fin-treasury-pulse-grid">
+                            <div><span>Real cash</span><strong>${formatCurrency(actualCash)}</strong></div>
+                            <div><span>Due in 30 days</span><strong>${formatCurrency(committedObligations)}</strong></div>
+                            <div><span>Protected</span><strong>${formatCurrency(protectedCash)}</strong></div>
+                            <div><span>Runway</span><strong>${escapeHtml(runwayLabel)}</strong></div>
+                            <div><span>Active liabilities</span><strong>${activeDebts.length}</strong></div>
+                            <div><span>Monthly burn</span><strong>${formatCurrency(monthlyBurn)}</strong></div>
                         </div>
                     </div>
-                `).join('') : renderCompactEmpty('Establish your treasury. Add your primary operating account.')}
-                
-                <div class="widget ui-card glass fin-card" style="margin-top: 1rem; padding: 1.5rem;">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <div>
-                            <div style="font-size: 0.8rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary);">Available Cash</div>
-                            <div style="font-size: 2rem; font-family:var(--font-mono); font-weight:600; margin-top:0.25rem;">${formatCurrency(availableCash)}</div>
-                            <div class="fin-helper-text" style="margin-top:0.35rem;">${formatCurrency(cashAfterReserves)} after reserves · ${formatCurrency(committedObligations)} due within 30 days</div>
-                        </div>
-                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'allocateReserves'">Allocate cash</button>
+                    <div class="fin-treasury-next-move">
+                        <span class="fin-eyebrow">Next Best Move</span>
+                        <strong>${escapeHtml(nextMove.title)}</strong>
+                        <p>${escapeHtml(nextMove.body)}</p>
+                        <div class="fin-action-row">${primaryButton}${secondaryButtons}</div>
                     </div>
                 </div>
+            </section>
 
-                <div class="fin-section-heading-row" style="margin-top: 2rem;">
-                    <div>
-                        <div class="widget-title ui-title">Reserve Buckets</div>
-                        <div class="fin-helper-text">Money assigned a job: taxes, VAT, health insurance, and buffer.</div>
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card fin-treasury-flow-card">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Money Flow Map</div>
+                            <div class="fin-helper-text">How free cash meets the pressure already visible in Treasury.</div>
+                        </div>
+                        <span class="fin-status-pill">${flowResult >= 0 ? 'Surplus' : 'Shortfall'}</span>
                     </div>
-                    <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'reserveBucket'">Add reserve bucket</button>
+                    <div class="fin-treasury-flow">
+                        ${flowItems.map((item) => `
+                            <div class="fin-treasury-flow-step is-${escapeHtml(item.tone)}">
+                                <div class="fin-treasury-flow-label"><span>${escapeHtml(item.label)}</span><strong>${item.value >= 0 ? '+' : '-'}${formatCurrency(Math.abs(item.value))}</strong></div>
+                                <div class="fin-treasury-flow-track"><span style="width:${treasuryFlowPercent(item.value, maxFlowValue)}%"></span></div>
+                            </div>
+                        `).join('')}
+                    </div>
                 </div>
-                ${buckets.length ? buckets.map(bucket => {
-                    const pct = bucket.targetAmount > 0 ? Math.min(100, Math.round((bucket.currentAmount / bucket.targetAmount) * 100)) : 100;
-                    return `
-                    <div class="widget ui-card glass fin-card fin-list-item" style="flex-direction:column; align-items:stretch; gap:1rem;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <div class="fin-list-item-main">
-                                <strong>${escapeHtml(bucket.name)}</strong>
-                                <div class="fin-list-item-sub">${escapeHtml(bucket.purpose || 'Reserve').replace('_', ' ')}</div>
-                            </div>
-                            <div class="fin-list-item-actions">
-                                <div class="fin-list-item-val">${formatCurrency(bucket.currentAmount)} <span style="font-size:0.8rem; color:var(--text-secondary); font-weight:normal;">of ${formatCurrency(bucket.targetAmount)}</span></div>
-                                ${financeIconButton({ action: 'openEditModal', args: `'reserveBucket', '${escapeActionArg(bucket.id)}'`, label: `Edit ${bucket.name || 'reserve bucket'}` })}
-                            </div>
+            </section>
+
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card fin-treasury-vault">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Protected Money</div>
+                            <div class="fin-helper-text">Reserve buckets are money with a job. They should feel protected, not spare.</div>
                         </div>
-                        <div class="fin-stacked-bar" style="height: 8px;">
-                            <div class="fin-bar-segment fin-bar-protected" style="width: ${pct}%; background:var(--interactive-primary);"></div>
+                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'reserveBucket'">Add reserve bucket</button>
+                    </div>
+                    <div class="fin-treasury-vault-summary">
+                        <div><span>Total protected</span><strong>${formatCurrency(protectedCash)}</strong></div>
+                        <div><span>Reserve target</span><strong>${formatCurrency(reserveTarget)}</strong></div>
+                        <div><span>Still to protect</span><strong>${formatCurrency(reserveGap)}</strong></div>
+                    </div>
+                    <div class="fin-treasury-reserve-grid">
+                        ${renderTreasuryReserveCards(buckets)}
+                    </div>
+                </div>
+            </section>
+
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card fin-treasury-burn">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Burn Control</div>
+                            <div class="fin-helper-text">Monthly outflow by pressure type. Details stay tucked away until you need them.</div>
+                        </div>
+                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense'">Add recurring cost</button>
+                    </div>
+                    <div class="fin-treasury-burn-grid">
+                        <div><span>Total monthly burn</span><strong>${formatCurrency(monthlyBurn)}</strong></div>
+                        <div><span>Essential</span><strong>${formatCurrency(essentialTotal)}</strong><small>${pluralize(essentialCosts.length, 'item')}</small></div>
+                        <div><span>Flexible</span><strong>${formatCurrency(flexibleTotal)}</strong><small>${pluralize(flexibleCosts.length, 'item')}</small></div>
+                        <div><span>Debt minimums</span><strong>${formatCurrency(debtMonthlyPressure)}</strong><small>${pluralize(activeDebts.length, 'liability', 'liabilities')}</small></div>
+                    </div>
+                    <div class="fin-treasury-simulator" aria-label="Flexible cost reduction simulator">
+                        <div>
+                            <span class="fin-eyebrow">Flexible cost simulator</span>
+                            <strong>${formatCurrency(adjustedBurn)} adjusted burn</strong>
+                            <small>${adjustedCut > 0 ? `${formatCurrency(adjustedCut)} cut · ` : ''}${adjustedResult >= 0 ? 'Adjusted surplus' : 'Adjusted shortfall'} ${formatCurrency(Math.abs(adjustedResult))}${adjustedRunway != null ? ` · ${adjustedRunway.toFixed(1)} months preview` : ''}</small>
+                        </div>
+                        <div class="fin-treasury-simulator-actions">
+                            ${[50, 100, 200].map((amount) => `<button class="fin-mini-btn ${treasuryBurnCut === amount ? 'active' : ''}" type="button" data-fin-action="set-treasury-burn-cut" data-fin-cut="${amount}">Cut ${formatCurrency(amount).replace(/([.,]00)$/, '')}</button>`).join('')}
+                            <button class="fin-mini-btn" type="button" data-fin-action="set-treasury-burn-cut" data-fin-cut="0">Reset</button>
                         </div>
                     </div>
-                `;
-                }).join('') : renderCompactEmpty('Protect your runway. Create your first reserve bucket (e.g., Taxes).')}
+                    ${renderCollapsible('treasury-burn-essential', 'Essential Costs', `${formatCurrency(essentialTotal)} / month · ${pluralize(essentialCosts.length, 'item')}`, renderTreasuryCostRows(essentialCosts, 'Essential'))}
+                    ${renderCollapsible('treasury-burn-flexible', 'Flexible Costs', `${formatCurrency(flexibleTotal)} / month · ${pluralize(flexibleCosts.length, 'item')}`, renderTreasuryCostRows(flexibleCosts, 'Flexible'))}
+                </div>
+            </section>
+
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card fin-treasury-debt">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Debt Pressure</div>
+                            <div class="fin-helper-text">Debt is a monthly pressure system, not just a balance.</div>
+                        </div>
+                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'debtAdd'">Add debt item</button>
+                    </div>
+                    <div class="fin-treasury-pressure-line">
+                        <div><span>Total debt</span><strong>${formatCurrency(totalDebt)}</strong></div>
+                        <div><span>Monthly minimum pressure</span><strong>${formatCurrency(debtMonthlyPressure)}</strong></div>
+                        <div><span>Liabilities</span><strong>${activeDebts.length}</strong></div>
+                        <div><span>Plans missing</span><strong>${missingPlans.length}</strong></div>
+                    </div>
+                    <div class="fin-treasury-debt-grid">${renderTreasuryDebtCards(activeDebts, 3)}</div>
+                    ${renderCollapsible('treasury-debt-details', 'Debt Details', `${formatCurrency(totalDebt)} open · ${formatCurrency(debtMonthlyPressure)} / month`, renderTreasuryDebtCards(activeDebts, 99))}
+                </div>
+            </section>
+
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card fin-treasury-goals">
+                    <div class="fin-goals-heading">
+                        <div>
+                            <div class="widget-title ui-title">Savings & Future Goals</div>
+                            <div class="fin-helper-text">${availableCash < 0 ? 'Pause future goals until the current shortfall is covered.' : 'Future goals sit below immediate Treasury pressure.'}</div>
+                        </div>
+                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'${goals.length ? 'goals' : 'goal'}'">${goals.length ? 'Manage goals' : 'Add goal'}</button>
+                    </div>
+                    ${goals.length ? `
+                        <div class="fin-goals-grid">
+                            ${goals.map((goal) => `
+                                <div class="fin-goal-item">
+                                    <div class="fin-goal-meta">
+                                        <span><strong>${escapeHtml(goal.name)}</strong><small>${escapeHtml(goal.type)} · ${escapeHtml(goal.scope)}${goal.targetDate ? ' · by ' + formatShortDate(goal.targetDate) : ''}</small></span>
+                                        <span>${Math.round(goal.progressPercent)}%</span>
+                                    </div>
+                                    <div class="fin-goal-track"><span style="width:${goal.progressPercent}%"></span></div>
+                                    <div class="fin-goal-values"><span>${formatCurrency(goal.currentAmount)}</span><span>of ${formatCurrency(goal.targetAmount)}</span></div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : renderCompactEmpty('Set one useful future goal after the current Treasury pressure is understood.')}
+                </div>
+            </section>
+
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card fin-treasury-accounts">
+                    ${renderCollapsible('treasury-accounts', 'Account Details', `${formatCurrency(actualCash)} across ${pluralize(fiatAccounts.length, 'cash account')}`, `
+                        <div class="fin-section-heading-row">
+                            <div>
+                                <div class="widget-title ui-title">Account Details</div>
+                                <div class="fin-helper-text">Manage real-world cash accounts without letting rows dominate Treasury.</div>
+                            </div>
+                            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'fiatAccount'">Add cash account</button>
+                        </div>
+                        ${fiatAccounts.length ? fiatAccounts.map((acc) => `
+                            <div class="fin-treasury-compact-row">
+                                <span>
+                                    <strong>${escapeHtml(acc.name)}</strong>
+                                    <small>${escapeHtml(acc.scope || 'shared')} · ${acc.reserved ? 'protected cash' : 'available cash'}${acc.bucket ? ` · ${escapeHtml(String(acc.bucket).replace(/_/g, ' '))}` : ''}</small>
+                                </span>
+                                <span>
+                                    <strong>${formatCurrency(acc.balance)}</strong>
+                                    ${financeIconButton({ action: 'openEditModal', args: `'fiatAccount', '${escapeActionArg(acc.id)}'`, label: `Edit ${acc.name || 'cash account'}` })}
+                                </span>
+                            </div>
+                        `).join('') : renderCompactEmpty('Establish your treasury. Add your primary operating account.')}
+                    `)}
+                </div>
             </section>
         `;
     }
