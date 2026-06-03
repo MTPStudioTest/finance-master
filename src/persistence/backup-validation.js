@@ -39,7 +39,7 @@ function validateSettings(backup, errors) {
     errors.push('Finance settings are incomplete.');
   }
   const ui = backup.uiSettings;
-  if (!isObject(ui) || !['aurora', 'midnight', 'bright'].includes(ui.appearance)
+  if (!isObject(ui) || !['dark-editorial', 'dark-restrained', 'bright-editorial', 'bright-minimal', 'color-field', 'monochrome-focus', 'aurora', 'midnight', 'twilight', 'bright'].includes(ui.appearance)
     || typeof ui.reducedMotion !== 'boolean' || !isScope(ui.scopeFilter, true)
     || !['manual', 'coingecko'].includes(ui.walletPriceSource) || !isObject(ui.scenario)
     || !['marketMajors', 'burnDelta', 'probFloor'].every((key) => Number.isFinite(Number(ui.scenario[key])))) {

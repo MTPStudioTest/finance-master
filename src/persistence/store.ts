@@ -49,7 +49,7 @@ const DEFAULT_FINANCE_SETTINGS: FinanceSettings = {
 };
 
 const DEFAULT_UI_SETTINGS: FinanceUiSettings = {
-  appearance: 'bright',
+  appearance: 'dark-editorial',
   reducedMotion: false,
   scopeFilter: 'all',
   walletPriceSource: 'manual',
@@ -122,8 +122,15 @@ function clamp(value: unknown, min: number, max: number, fallback: number): numb
   return Math.min(max, Math.max(min, parsed));
 }
 
-function appearance(value: unknown, fallback: FinanceUiSettings['appearance'] = 'bright'): FinanceUiSettings['appearance'] {
-  return value === 'midnight' || value === 'bright' || value === 'aurora' ? value : fallback;
+function appearance(value: unknown, fallback: FinanceUiSettings['appearance'] = 'dark-editorial'): FinanceUiSettings['appearance'] {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'dark-editorial' || normalized === 'aurora') return 'dark-editorial';
+  if (normalized === 'dark-restrained' || normalized === 'midnight' || normalized === 'twilight') return 'dark-restrained';
+  if (normalized === 'bright-editorial' || normalized === 'bright') return 'bright-editorial';
+  if (normalized === 'bright-minimal') return 'bright-minimal';
+  if (normalized === 'color-field') return 'color-field';
+  if (normalized === 'monochrome-focus' || normalized === 'monochrome') return 'monochrome-focus';
+  return fallback;
 }
 
 function scope(value: unknown, fallback: FinanceScope = 'shared'): FinanceScope {

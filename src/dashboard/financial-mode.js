@@ -2343,13 +2343,14 @@ window.FinancialMode = (function () {
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="page-settings-appearance">Appearance</label>
+                            <label for="page-settings-appearance">Visual mode</label>
                             <select id="page-settings-appearance">
-                                <option value="bright"${uiSettings.appearance === 'bright' ? ' selected' : ''}>Bright (Default)</option>
-                                <option value="aurora"${uiSettings.appearance === 'aurora' ? ' selected' : ''}>Aurora (Dark)</option>
-                                <option value="midnight"${uiSettings.appearance === 'midnight' ? ' selected' : ''}>Midnight (OLED)</option>
-                                <option value="twilight"${uiSettings.appearance === 'twilight' ? ' selected' : ''}>Twilight (Deep Blue)</option>
-                                <option value="system"${uiSettings.appearance === 'system' ? ' selected' : ''}>Follow System</option>
+                                <option value="dark-editorial"${uiSettings.appearance === 'dark-editorial' ? ' selected' : ''}>Dark Editorial</option>
+                                <option value="dark-restrained"${uiSettings.appearance === 'dark-restrained' ? ' selected' : ''}>Dark Restrained</option>
+                                <option value="bright-editorial"${uiSettings.appearance === 'bright-editorial' ? ' selected' : ''}>Bright Editorial</option>
+                                <option value="bright-minimal"${uiSettings.appearance === 'bright-minimal' ? ' selected' : ''}>Bright Minimal</option>
+                                <option value="color-field"${uiSettings.appearance === 'color-field' ? ' selected' : ''}>Color Field</option>
+                                <option value="monochrome-focus"${uiSettings.appearance === 'monochrome-focus' ? ' selected' : ''}>Monochrome Focus</option>
                             </select>
                         </div>
                         <label class="settings-check">
@@ -4463,7 +4464,7 @@ window.FinancialMode = (function () {
                 });
                 
                 window.Store.saveUiSettings({
-                    appearance: appearanceEl.value || 'bright',
+                    appearance: appearanceEl.value || 'dark-editorial',
                     reducedMotion: reducedMotionEl.checked,
                     scopeFilter: scopeEl.value || 'all',
                 });

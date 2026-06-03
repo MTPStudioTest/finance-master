@@ -71,7 +71,7 @@ declare global {
   }
 
   interface FinanceUiSettings {
-    appearance: 'aurora' | 'midnight' | 'bright';
+    appearance: 'dark-editorial' | 'dark-restrained' | 'bright-editorial' | 'bright-minimal' | 'color-field' | 'monochrome-focus';
     reducedMotion: boolean;
     scopeFilter: FinanceScopeFilter;
     walletPriceSource: 'manual' | 'coingecko';

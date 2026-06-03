@@ -650,13 +650,14 @@ test('income exposes open, settled, and all income views', async ({ page }) => {
   const beforeTransactions = await page.evaluate(() => window.Store.getFinancialReadModel().transactions.length);
   await page.getByRole('button', { name: 'Add expected income', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Add income', exact: true })).toBeVisible();
-  await page.locator('#modal-income-title').fill('Retainer forecast only');
-  await page.locator('#modal-income-amount').fill('600');
-  await page.locator('#modal-income-vat-rate').fill('19');
-  await page.locator('#modal-income-probability').fill('0.9');
-  await page.locator('#modal-income-date').fill('2026-06-10');
-  await page.locator('#modal-income-status').selectOption('expected');
-  await page.locator('#modal-income-type').selectOption('retainer');
+  const incomeModal = page.locator('#modal-body');
+  await incomeModal.getByLabel('Source').fill('Retainer forecast only');
+  await incomeModal.getByLabel('Amount before VAT').fill('600');
+  await incomeModal.getByLabel('VAT on top % (optional)').fill('19');
+  await incomeModal.getByLabel('Probability').fill('0.9');
+  await incomeModal.getByLabel('Expected date').fill('2026-06-10');
+  await incomeModal.getByLabel('Status').selectOption('expected');
+  await incomeModal.getByLabel('Income type').selectOption('retainer');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
   const retainerRow = page.locator('.fin-table tbody tr').filter({ hasText: 'Retainer forecast only' }).first();
@@ -840,7 +841,7 @@ test('local data safety and appearance controls live on pages', async ({ page })
   await expect(resetModal.getByRole('button', { name: 'Reset local data', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
 
-  for (const mode of ['aurora', 'midnight', 'bright']) {
+  for (const mode of ['dark-editorial', 'dark-restrained', 'bright-editorial', 'bright-minimal', 'color-field', 'monochrome-focus']) {
     await openSettingsPage(page);
     const settingsContent = page.locator('#fin-content-area');
     await expect(settingsContent.getByRole('button', { name: 'Add recurring cost', exact: true })).toHaveCount(0);
@@ -848,7 +849,7 @@ test('local data safety and appearance controls live on pages', async ({ page })
     await expect(settingsContent.getByRole('button', { name: 'Add reserve bucket', exact: true })).toHaveCount(0);
     await expect(settingsContent.getByRole('button', { name: 'Add expected income', exact: true })).toHaveCount(0);
     await expect(settingsContent.getByRole('button', { name: /Start review|Open review|Start close|Open Month Close/ })).toHaveCount(0);
-    await page.getByLabel('Appearance').selectOption(mode);
+    await page.getByLabel('Visual mode').selectOption(mode);
     await page.getByRole('button', { name: 'Apply preferences', exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-appearance', mode);
     await page.reload();
@@ -857,13 +858,13 @@ test('local data safety and appearance controls live on pages', async ({ page })
   expect(errors).toEqual([]);
 });
 
-test('midnight mode keeps ledger and monthly review surfaces readable', async ({ page }) => {
+test('dark visual modes keep ledger and monthly review surfaces readable', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
   await openSettingsPage(page);
-  await page.getByLabel('Appearance').selectOption('midnight');
+  await page.getByLabel('Visual mode').selectOption('dark-restrained');
   await page.getByRole('button', { name: 'Apply preferences', exact: true }).click();
-  await expect(page.locator('html')).toHaveAttribute('data-appearance', 'midnight');
+  await expect(page.locator('html')).toHaveAttribute('data-appearance', 'dark-restrained');
 
   await page.getByRole('button', { name: 'Cash Movement', exact: true }).click();
   await expect(page.getByText('Ledger Workspace', { exact: true })).toBeVisible();
