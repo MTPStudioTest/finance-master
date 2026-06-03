@@ -101,6 +101,8 @@ Acceptance criteria:
 
 ## Phase 1C: Ledger Reliability
 
+Status: implemented in the Ledger Reliability slice.
+
 Goal: Make the ledger the source of truth for actual cash movement.
 
 Planned work:

@@ -147,6 +147,15 @@ function financeTimestamp(entityId: string, requestedTimestamp?: unknown): strin
   return new Date(next).toISOString();
 }
 
+function csvCell(value: unknown): string {
+  const text = String(value ?? '');
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function transactionDate(value: unknown): string {
+  return window.FinanceDates?.toDateOnly?.(value) || String(value || '').slice(0, 10);
+}
+
 function reverseMatching(
   id: string,
   types: string[],
@@ -315,6 +324,32 @@ export const Store = {
     return clone(result.appended[0] || null);
   },
 
+  reverseTransaction(id: string, reason = 'ledger.transaction.reverse'): FinanceEvent[] {
+    const transaction = (this.getFinancialReadModel().transactions || [])
+      .find((entry: Record<string, unknown>) => String(entry.id) === String(id || '') || String(entry.transactionEntityId || '') === String(id || ''));
+    if (!transaction) throw new Error('This transaction could not be found.');
+    const transactionEventId = String(transaction.id);
+    const transactionEntityId = String(transaction.transactionEntityId || '');
+    const currency = this.getFinanceSettings().baseCurrency;
+    const timestamp = financeTimestamp(transactionEntityId || transactionEventId);
+    const drafts = this.getActiveFinanceEvents()
+      .filter((event) => String(event.id) === transactionEventId
+        || (!!transactionEntityId && String(event.metadata?.transactionId || '') === transactionEntityId))
+      .map((event) => ({
+        type: 'finance.event_reversed',
+        amount: 0,
+        currency: event.currency || currency,
+        timestamp,
+        related_entity_id: event.id,
+        metadata: {
+          entity_id: transactionEntityId || transactionEventId,
+          reason,
+          reversed_event_id: event.id,
+        },
+      }));
+    return drafts.length ? this.appendFinanceEvents(drafts, { source: 'reverseTransaction' }) : [];
+  },
+
   recordTransaction(input: {
     description: string;
     amount: number;
@@ -376,12 +411,162 @@ export const Store = {
           balance,
           active: true,
           scope: transactionScope,
+          bucket: account.bucket,
+          reserved: account.reserved,
           transactionId,
           source: sharedMetadata.source,
           importBatchId: sharedMetadata.importBatchId,
         },
       },
     ], { source: input.source || 'recordTransaction' });
+  },
+
+  recordLedgerTransaction(input: {
+    type: 'income' | 'expense' | 'adjustment';
+    description: string;
+    amount: number;
+    timestamp: string;
+    accountId: string;
+    categoryId?: string;
+    scope?: FinanceScope;
+    direction?: 'increase' | 'decrease';
+  }): FinanceEvent[] {
+    const ledgerType = String(input.type || '').toLowerCase();
+    const amount = Math.abs(Number(input.amount));
+    if (!['income', 'expense', 'adjustment'].includes(ledgerType)) throw new Error('Choose income, expense, or adjustment.');
+    if (!String(input.description || '').trim()) throw new Error('Add a transaction note.');
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error('Transaction amount must be positive.');
+    if (ledgerType === 'income') {
+      return this.recordTransaction({
+        description: input.description,
+        amount,
+        timestamp: input.timestamp,
+        accountId: input.accountId,
+        categoryId: input.categoryId || 'client-income',
+        scope: input.scope,
+        source: 'manual-ledger',
+      });
+    }
+    if (ledgerType === 'expense') {
+      return this.recordTransaction({
+        description: input.description,
+        amount: -amount,
+        timestamp: input.timestamp,
+        accountId: input.accountId,
+        categoryId: input.categoryId || 'uncategorized',
+        scope: input.scope,
+        source: 'manual-ledger',
+      });
+    }
+    const account = (this.getFinancialReadModel().fiatAccounts || [])
+      .find((entry: Record<string, unknown>) => String(entry.id) === String(input.accountId || ''));
+    if (!account) throw new Error('Choose a cash account before saving this adjustment.');
+    const direction = input.direction === 'decrease' ? 'decrease' : 'increase';
+    const effect = direction === 'decrease' ? -amount : amount;
+    const currency = this.getFinanceSettings().baseCurrency;
+    const timestamp = financeTimestamp(`adjustment-${input.accountId}`, input.timestamp);
+    const transactionId = entityId('adjustment');
+    const transactionScope = scope(input.scope, scope(account.scope));
+    const balance = Math.round(((Number(account.balance) || 0) + effect) * 100) / 100;
+    return this.appendFinanceEvents([
+      {
+        type: 'cash.adjusted',
+        amount,
+        currency,
+        timestamp,
+        related_entity_id: transactionId,
+        metadata: {
+          ledgerType: 'adjustment',
+          direction,
+          description: input.description,
+          accountId: String(account.id),
+          accountName: String(account.name || 'Account'),
+          categoryId: String(input.categoryId || 'adjustment'),
+          scope: transactionScope,
+          source: 'manual-ledger',
+        },
+      },
+      {
+        type: 'asset.account_set',
+        amount: balance,
+        currency,
+        timestamp: financeTimestamp(String(account.id), timestamp),
+        related_entity_id: String(account.id),
+        metadata: {
+          name: account.name,
+          balance,
+          active: true,
+          scope: scope(account.scope),
+          bucket: account.bucket,
+          reserved: account.reserved,
+          transactionId,
+          source: 'manual-ledger',
+        },
+      },
+    ], { source: 'recordLedgerTransaction.adjustment' });
+  },
+
+  recordTransfer(input: {
+    fromAccountId: string;
+    toAccountId: string;
+    amount: number;
+    timestamp: string;
+    categoryId?: string;
+    scope?: FinanceScope;
+    description?: string;
+  }): FinanceEvent[] {
+    const readModel = this.getFinancialReadModel();
+    const from = (readModel.fiatAccounts || []).find((entry: Record<string, unknown>) => String(entry.id) === String(input.fromAccountId || ''));
+    const to = (readModel.fiatAccounts || []).find((entry: Record<string, unknown>) => String(entry.id) === String(input.toAccountId || ''));
+    const amount = Math.abs(Number(input.amount));
+    if (!from || !to) throw new Error('Choose both transfer accounts.');
+    if (String(from.id) === String(to.id)) throw new Error('Transfer accounts must be different.');
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error('Transfer amount must be positive.');
+    const currency = this.getFinanceSettings().baseCurrency;
+    const timestamp = financeTimestamp(`transfer-${from.id}-${to.id}`, input.timestamp);
+    const transferId = entityId('transfer');
+    const transferScope = scope(input.scope, scope(from.scope));
+    const fromBalance = Math.round(((Number(from.balance) || 0) - amount) * 100) / 100;
+    const toBalance = Math.round(((Number(to.balance) || 0) + amount) * 100) / 100;
+    return this.appendFinanceEvents([
+      {
+        type: 'transfer.recorded',
+        amount,
+        currency,
+        timestamp,
+        related_entity_id: transferId,
+        metadata: {
+          ledgerType: 'transfer',
+          direction: 'transfer',
+          description: input.description || `Transfer from ${String(from.name || 'account')} to ${String(to.name || 'account')}`,
+          fromAccountId: String(from.id),
+          fromAccountName: String(from.name || 'From account'),
+          toAccountId: String(to.id),
+          toAccountName: String(to.name || 'To account'),
+          accountId: String(from.id),
+          accountName: String(from.name || 'From account'),
+          categoryId: String(input.categoryId || 'transfer'),
+          scope: transferScope,
+          source: 'manual-ledger',
+        },
+      },
+      {
+        type: 'asset.account_set',
+        amount: fromBalance,
+        currency,
+        timestamp: financeTimestamp(String(from.id), timestamp),
+        related_entity_id: String(from.id),
+        metadata: { name: from.name, balance: fromBalance, active: true, scope: scope(from.scope), bucket: from.bucket, reserved: from.reserved, transactionId: transferId, source: 'manual-ledger' },
+      },
+      {
+        type: 'asset.account_set',
+        amount: toBalance,
+        currency,
+        timestamp: financeTimestamp(String(to.id), timestamp),
+        related_entity_id: String(to.id),
+        metadata: { name: to.name, balance: toBalance, active: true, scope: scope(to.scope), bucket: to.bucket, reserved: to.reserved, transactionId: transferId, source: 'manual-ledger' },
+      },
+    ], { source: 'recordTransfer' });
   },
 
   reviewObligation(input: {
@@ -723,6 +908,8 @@ export const Store = {
           balance,
           active: true,
           scope: scope(destination.scope),
+          bucket: destination.bucket,
+          reserved: destination.reserved,
           invoiceId: id,
           settlementTransfer: true,
         },
@@ -767,6 +954,8 @@ export const Store = {
           balance,
           active: true,
           scope: scope(account.scope),
+          bucket: account.bucket,
+          reserved: account.reserved,
           source: 'weekly-review-reconciliation',
         },
       }];
@@ -879,6 +1068,43 @@ export const Store = {
     imports.batches.push({ id: batchId, importedAt: new Date().toISOString(), sourceFile, fingerprints: acceptedFingerprints });
     setJson(STORAGE_KEYS.imports, imports);
     return { batchId, imported, duplicates };
+  },
+
+  exportTransactionsCsv(): string {
+    const columns = [
+      'date',
+      'description',
+      'amount',
+      'direction',
+      'type',
+      'account',
+      'accountId',
+      'category',
+      'scope',
+      'reviewStatus',
+      'linkedObligationId',
+      'linkedIncomeId',
+      'source',
+    ];
+    const rows = (this.getFinancialReadModel().transactions || []).map((entry: Record<string, unknown>) => {
+      const signed = Number(entry.signedAmount ?? entry.amount) || 0;
+      return [
+        transactionDate(entry.timestamp),
+        entry.description,
+        signed,
+        entry.direction || (signed < 0 ? 'out' : 'in'),
+        entry.ledgerType || entry.type,
+        entry.accountName || entry.fromAccountName || '',
+        entry.accountId || entry.fromAccountId || '',
+        entry.categoryId,
+        entry.scope,
+        entry.reviewStatus,
+        entry.obligationId,
+        entry.linkedIncomeId,
+        entry.source,
+      ].map(csvCell).join(',');
+    });
+    return [columns.join(','), ...rows].join('\n');
   },
 
   undoImportBatch(batchId: string): FinanceEvent[] {

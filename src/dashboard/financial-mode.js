@@ -505,20 +505,25 @@ window.FinancialMode = (function () {
                         <div class="fin-action-row">
                             <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transaction'">Add transaction</button>
                             <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'financeOverview'">Open ledger</button>
+                            <button class="fin-mini-btn" type="button" data-action="exportTransactionsCsv">Export CSV</button>
                         </div>
                     </div>
                     ${transactions.length ? `
                         <table class="fin-table fin-table--compact">
                             <thead><tr><th>Date</th><th>Description</th><th>Category</th><th style="text-align:right">Amount</th></tr></thead>
                             <tbody>
-                                ${transactions.map((entry) => `
+                                ${transactions.map((entry) => {
+                const amount = Number(entry && entry.signedAmount);
+                const signed = Number.isFinite(amount) ? amount : Number(entry && entry.amount) || 0;
+                return `
                                     <tr>
                                         <td>${formatShortDate(entry.timestamp)}</td>
                                         <td>${escapeHtml(entry.description || 'Transaction')}</td>
-                                        <td>${escapeHtml(entry.categoryId || 'uncategorized')}</td>
-                                        <td style="text-align:right" class="${Number(entry.amount) >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${formatCurrency(entry.amount, entry.currency)}</td>
+                                        <td>${escapeHtml(entry.categoryId || 'uncategorized')} · ${escapeHtml(entry.reviewStatus || 'clear')}</td>
+                                        <td style="text-align:right" class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</td>
                                     </tr>
-                                `).join('')}
+                                `;
+            }).join('')}
                             </tbody>
                         </table>
                     ` : renderCompactEmpty('No transactions yet. Add a cash account and start with one real movement.')}
@@ -561,6 +566,7 @@ window.FinancialMode = (function () {
                         ` : renderCompactEmpty('No CSV import batches yet.')}
                         <div class="fin-action-row">
                             <button class="fin-action-btn" type="button" data-action="openEditModal" data-action-args="'csvImport'">Import CSV</button>
+                            <button class="fin-action-btn" type="button" data-action="exportTransactionsCsv">Export transactions CSV</button>
                             <button class="fin-action-btn" type="button" data-action="exportFinanceBackup">Export backup</button>
                             <button class="fin-action-btn" type="button" data-action="openEditModal" data-action-args="'backupRestore'">Restore backup</button>
                         </div>

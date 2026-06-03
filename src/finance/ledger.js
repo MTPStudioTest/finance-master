@@ -123,16 +123,30 @@
             var eventTs = Date.parse(event.timestamp);
             var ageMs = Number.isFinite(eventTs) ? Math.max(0, nowTs - eventTs) : Number.POSITIVE_INFINITY;
 
-            if (event.type === 'income.received' || event.type === 'expense.recorded') {
+            if (event.type === 'income.received' || event.type === 'expense.recorded' || event.type === 'transfer.recorded' || event.type === 'cash.adjusted') {
+                var direction = String(metadata.direction || '').trim();
+                var displayAmount = eventAmount;
+                if (event.type === 'expense.recorded') direction = 'out';
+                if (event.type === 'income.received') direction = 'in';
+                if (event.type === 'transfer.recorded') direction = 'transfer';
+                if (event.type === 'cash.adjusted') direction = direction === 'decrease' ? 'out' : 'in';
+                if (event.type === 'expense.recorded' || (event.type === 'cash.adjusted' && direction === 'out')) displayAmount = -Math.abs(eventAmount);
                 transactions.push({
                     id: event.id,
                     transactionEntityId: relatedId,
                     type: event.type,
+                    ledgerType: String(metadata.ledgerType || (event.type === 'income.received' ? 'income' : event.type === 'expense.recorded' ? 'expense' : event.type === 'transfer.recorded' ? 'transfer' : 'adjustment')),
+                    direction: direction,
                     description: String(metadata.description || event.type),
                     amount: eventAmount,
+                    signedAmount: displayAmount,
                     currency: event.currency,
                     accountId: String(metadata.accountId || '').trim(),
                     accountName: String(metadata.accountName || '').trim(),
+                    fromAccountId: String(metadata.fromAccountId || '').trim(),
+                    fromAccountName: String(metadata.fromAccountName || '').trim(),
+                    toAccountId: String(metadata.toAccountId || '').trim(),
+                    toAccountName: String(metadata.toAccountName || '').trim(),
                     categoryId: String(metadata.categoryId || 'uncategorized'),
                     scope: String(metadata.scope || 'shared'),
                     source: String(metadata.source || 'manual'),
@@ -141,6 +155,7 @@
                     obligationId: String(metadata.obligationId || '').trim(),
                     obligationDueDate: String(metadata.obligationDueDate || '').trim(),
                     obligationTitle: String(metadata.obligationTitle || '').trim(),
+                    linkedIncomeId: String(metadata.invoiceId || metadata.pipelineId || metadata.linkedIncomeId || '').trim(),
                     reviewStatus: String(metadata.reviewStatus || '').trim() || (String(metadata.categoryId || 'uncategorized').toLowerCase() === 'uncategorized' ? 'needs_review' : 'clear'),
                     reviewNotes: '',
                     timestamp: event.timestamp

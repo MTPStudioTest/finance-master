@@ -116,6 +116,7 @@ declare global {
     getReviewState(): import('./finance').FinanceReviewState;
     getUiSettings(): FinanceUiSettings;
     importCsvTransactions(rows: import('./finance').CsvTransactionRow[], options: { accountId: string; sourceFile?: string }): import('./finance').CsvImportSummary;
+    exportTransactionsCsv(): string;
     markPipelineItemPaid(id: string, context?: Record<string, unknown>): FinanceEvent[];
     reviewTransaction(input: {
       id: string;
@@ -158,6 +159,25 @@ declare global {
       obligationDueDate?: string;
       obligationTitle?: string;
     }): FinanceEvent[];
+    recordLedgerTransaction(input: {
+      type: 'income' | 'expense' | 'adjustment';
+      description: string;
+      amount: number;
+      timestamp: string;
+      accountId: string;
+      categoryId?: string;
+      scope?: FinanceScope;
+      direction?: 'increase' | 'decrease';
+    }): FinanceEvent[];
+    recordTransfer(input: {
+      fromAccountId: string;
+      toAccountId: string;
+      amount: number;
+      timestamp: string;
+      categoryId?: string;
+      scope?: FinanceScope;
+      description?: string;
+    }): FinanceEvent[];
     reviewObligation(input: {
       id: string;
       status: 'paid' | 'deferred' | 'needs_review';
@@ -168,6 +188,7 @@ declare global {
       notes?: string;
     }): FinanceEvent[];
     reverseFinanceEvent(id: string, reason?: string): FinanceEvent | null;
+    reverseTransaction(id: string, reason?: string): FinanceEvent[];
     saveGoal(input: {
       id?: string;
       name: string;

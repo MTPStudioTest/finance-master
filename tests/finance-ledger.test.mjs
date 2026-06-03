@@ -575,6 +575,161 @@ test('debt plan events remove missing-plan review items', () => {
   assert.equal(result.treasury.reviewQueue.some((item) => item.kind === 'debt' && item.targetId === 'debt-credit-line'), false);
 });
 
+test('ledger transaction read model supports explicit income, expense, transfer, and adjustment semantics', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-03T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-main-start',
+      type: 'asset.account_set',
+      amount: 1000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating', balance: 1000, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'cash-tax-start',
+      type: 'asset.account_set',
+      amount: 200,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-tax',
+      metadata: { name: 'Tax reserve', balance: 200, scope: 'business', bucket: 'tax_reserve', reserved: true },
+    },
+    {
+      id: 'income-event',
+      type: 'income.received',
+      amount: 500,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:01:00.000Z',
+      related_entity_id: 'txn-income',
+      metadata: { description: 'Client paid', accountId: 'cash-main', accountName: 'Operating', categoryId: 'client-income', scope: 'business', source: 'manual-ledger' },
+    },
+    {
+      id: 'expense-event',
+      type: 'expense.recorded',
+      amount: 120,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:02:00.000Z',
+      related_entity_id: 'txn-expense',
+      metadata: { description: 'Software', accountId: 'cash-main', accountName: 'Operating', categoryId: 'software', scope: 'business', source: 'manual-ledger' },
+    },
+    {
+      id: 'transfer-event',
+      type: 'transfer.recorded',
+      amount: 300,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:03:00.000Z',
+      related_entity_id: 'txn-transfer',
+      metadata: { description: 'Reserve tax', fromAccountId: 'cash-main', fromAccountName: 'Operating', toAccountId: 'cash-tax', toAccountName: 'Tax reserve', accountId: 'cash-main', accountName: 'Operating', categoryId: 'transfer', scope: 'business', source: 'manual-ledger' },
+    },
+    {
+      id: 'adjustment-event',
+      type: 'cash.adjusted',
+      amount: 40,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:04:00.000Z',
+      related_entity_id: 'txn-adjustment',
+      metadata: { description: 'Balance correction', direction: 'decrease', accountId: 'cash-main', accountName: 'Operating', categoryId: 'adjustment', scope: 'business', source: 'manual-ledger' },
+    },
+    {
+      id: 'cash-main-final',
+      type: 'asset.account_set',
+      amount: 1040,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:05:00.000Z',
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating', balance: 1040, scope: 'business', bucket: 'available', transactionId: 'txn-adjustment' },
+    },
+    {
+      id: 'cash-tax-final',
+      type: 'asset.account_set',
+      amount: 500,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:06:00.000Z',
+      related_entity_id: 'cash-tax',
+      metadata: { name: 'Tax reserve', balance: 500, scope: 'business', bucket: 'tax_reserve', reserved: true, transactionId: 'txn-transfer' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(result.readModel.transactions.length, 4);
+  assert.equal(result.readModel.transactions.find((entry) => entry.id === 'income-event').signedAmount, 500);
+  assert.equal(result.readModel.transactions.find((entry) => entry.id === 'expense-event').signedAmount, -120);
+  assert.equal(result.readModel.transactions.find((entry) => entry.id === 'transfer-event').ledgerType, 'transfer');
+  assert.equal(result.readModel.transactions.find((entry) => entry.id === 'adjustment-event').signedAmount, -40);
+  assert.equal(result.treasury.totalCash, 1540);
+  assert.equal(result.treasury.reservedCash, 500);
+});
+
+test('reversing a transaction and linked account set restores prior active balance', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-03T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-start',
+      type: 'asset.account_set',
+      amount: 1000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating', balance: 1000, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'expense-event',
+      type: 'expense.recorded',
+      amount: 100,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:01:00.000Z',
+      related_entity_id: 'txn-expense',
+      metadata: { description: 'Reversed software', accountId: 'cash-main', accountName: 'Operating', categoryId: 'software', scope: 'business', source: 'manual-ledger' },
+    },
+    {
+      id: 'cash-after',
+      type: 'asset.account_set',
+      amount: 900,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:02:00.000Z',
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating', balance: 900, scope: 'business', bucket: 'available', transactionId: 'txn-expense' },
+    },
+    {
+      id: 'reverse-expense',
+      type: 'finance.event_reversed',
+      amount: 0,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:03:00.000Z',
+      related_entity_id: 'expense-event',
+      metadata: { reversed_event_id: 'expense-event' },
+    },
+    {
+      id: 'reverse-balance',
+      type: 'finance.event_reversed',
+      amount: 0,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:03:01.000Z',
+      related_entity_id: 'cash-after',
+      metadata: { reversed_event_id: 'cash-after' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(result.readModel.transactions.length, 0);
+  assert.equal(result.readModel.fiatAccounts[0].balance, 1000);
+  assert.equal(result.treasury.totalCash, 1000);
+});
+
 test('currency formatting respects an explicit currency before base currency', () => {
   assert.equal(resolveCurrencyCode('usd', 'EUR'), 'USD');
   assert.equal(resolveCurrencyCode('', 'EUR'), 'EUR');

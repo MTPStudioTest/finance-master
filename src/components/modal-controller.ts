@@ -31,11 +31,14 @@ let pendingBackup: unknown = null;
 let backupPreview: FinanceBackupPreview | null = null;
 let modalReturnFocus: HTMLElement | null = null;
 const transactionFilters = {
+  search: '',
   accountId: '',
   scope: 'all',
   categoryId: '',
-  direction: 'all',
-  period: 'all',
+  type: 'all',
+  reviewStatus: 'all',
+  dateFrom: '',
+  dateTo: '',
 };
 
 function escapeHtml(value: unknown): string {
@@ -94,6 +97,19 @@ function formatDate(value: unknown): string {
   return new Date(parsed).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function formatTransactionType(value: unknown): string {
+  const raw = String(value || '').replace(/_/g, ' ').replace(/\./g, ' ');
+  return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Transaction';
+}
+
+function signedAmount(entry: Record<string, unknown>): number {
+  const explicit = Number(entry.signedAmount);
+  if (Number.isFinite(explicit)) return explicit;
+  const amount = Math.abs(Number(entry.amount) || 0);
+  if (String(entry.type) === 'expense.recorded') return -amount;
+  return amount;
+}
+
 function optionList(selected = '', emptyLabel = 'Not mapped'): string {
   const headers = csvDocument?.headers || [];
   return `<option value="">${emptyLabel}</option>${headers.map((header) => (
@@ -133,15 +149,27 @@ function deactivateButton(action: string, edit: boolean): string {
 function renderOverview(): string {
   const snapshot = Store.getFinancialSnapshot();
   const readModel = Store.getFinancialReadModel();
-  const cutoff = transactionFilters.period === 'all'
-    ? 0
-    : Date.now() - (Number(transactionFilters.period) * 24 * 60 * 60 * 1000);
+  const dateFrom = window.FinanceDates?.toDateOnly?.(transactionFilters.dateFrom) || '';
+  const dateTo = window.FinanceDates?.toDateOnly?.(transactionFilters.dateTo) || '';
+  const search = transactionFilters.search.toLowerCase();
   const active = (readModel.transactions || [])
-    .filter((event: Record<string, unknown>) => !transactionFilters.accountId || String(event.accountId) === transactionFilters.accountId)
+    .filter((event: Record<string, unknown>) => !transactionFilters.accountId
+      || String(event.accountId) === transactionFilters.accountId
+      || String(event.fromAccountId) === transactionFilters.accountId
+      || String(event.toAccountId) === transactionFilters.accountId)
     .filter((event: Record<string, unknown>) => transactionFilters.scope === 'all' || String(event.scope) === transactionFilters.scope)
     .filter((event: Record<string, unknown>) => !transactionFilters.categoryId || String(event.categoryId).toLowerCase().includes(transactionFilters.categoryId.toLowerCase()))
-    .filter((event: Record<string, unknown>) => transactionFilters.direction === 'all' || String(event.type) === transactionFilters.direction)
-    .filter((event: Record<string, unknown>) => !cutoff || Date.parse(String(event.timestamp || '')) >= cutoff);
+    .filter((event: Record<string, unknown>) => transactionFilters.type === 'all' || String(event.ledgerType || event.type) === transactionFilters.type || String(event.type) === transactionFilters.type)
+    .filter((event: Record<string, unknown>) => transactionFilters.reviewStatus === 'all' || String(event.reviewStatus || 'clear') === transactionFilters.reviewStatus)
+    .filter((event: Record<string, unknown>) => {
+      if (!search) return true;
+      return [event.description, event.accountName, event.fromAccountName, event.toAccountName, event.categoryId]
+        .some((part) => String(part || '').toLowerCase().includes(search));
+    })
+    .filter((event: Record<string, unknown>) => {
+      const date = window.FinanceDates?.toDateOnly?.(event.timestamp) || '';
+      return (!dateFrom || date >= dateFrom) && (!dateTo || date <= dateTo);
+    });
   return `
     <div class="modal-form">
       <h2 id="modal-title">Transactions</h2>
@@ -161,39 +189,61 @@ function renderOverview(): string {
       <div class="modal-section">
         <div class="ui-title">Filter ledger</div>
         <div class="modal-grid-three">
+          <input id="modal-filter-search" aria-label="Search transactions" value="${escapeHtml(transactionFilters.search)}" placeholder="Search note, account, category" />
           <select id="modal-filter-account" aria-label="Filter by account">${accountOptions(transactionFilters.accountId)}</select>
           <select id="modal-filter-scope" aria-label="Filter by scope">${scopeFilterOptions(transactionFilters.scope)}</select>
           <input id="modal-filter-category" aria-label="Filter by category" value="${escapeHtml(transactionFilters.categoryId)}" placeholder="Category" />
-          <select id="modal-filter-direction" aria-label="Filter by direction">
-            <option value="all"${transactionFilters.direction === 'all' ? ' selected' : ''}>Income and expenses</option>
-            <option value="income.received"${transactionFilters.direction === 'income.received' ? ' selected' : ''}>Income only</option>
-            <option value="expense.recorded"${transactionFilters.direction === 'expense.recorded' ? ' selected' : ''}>Expenses only</option>
+          <select id="modal-filter-type" aria-label="Filter by type">
+            <option value="all"${transactionFilters.type === 'all' ? ' selected' : ''}>All types</option>
+            <option value="income"${transactionFilters.type === 'income' ? ' selected' : ''}>Income</option>
+            <option value="expense"${transactionFilters.type === 'expense' ? ' selected' : ''}>Expense</option>
+            <option value="transfer"${transactionFilters.type === 'transfer' ? ' selected' : ''}>Transfer</option>
+            <option value="adjustment"${transactionFilters.type === 'adjustment' ? ' selected' : ''}>Adjustment</option>
           </select>
-          <select id="modal-filter-period" aria-label="Filter by period">
-            <option value="all"${transactionFilters.period === 'all' ? ' selected' : ''}>All dates</option>
-            <option value="30"${transactionFilters.period === '30' ? ' selected' : ''}>Past 30 days</option>
-            <option value="90"${transactionFilters.period === '90' ? ' selected' : ''}>Past 90 days</option>
+          <select id="modal-filter-review-status" aria-label="Filter by review status">
+            <option value="all"${transactionFilters.reviewStatus === 'all' ? ' selected' : ''}>All review states</option>
+            <option value="clear"${transactionFilters.reviewStatus === 'clear' ? ' selected' : ''}>Clear</option>
+            <option value="needs_review"${transactionFilters.reviewStatus === 'needs_review' ? ' selected' : ''}>Needs review</option>
+            <option value="reviewed"${transactionFilters.reviewStatus === 'reviewed' ? ' selected' : ''}>Reviewed</option>
           </select>
+          <input id="modal-filter-date-from" aria-label="Date from" type="date" value="${escapeHtml(transactionFilters.dateFrom)}" />
+          <input id="modal-filter-date-to" aria-label="Date to" type="date" value="${escapeHtml(transactionFilters.dateTo)}" />
           <button class="ui-btn ui-btn--secondary" type="button" data-action="refreshTransactionsModal">Apply filters</button>
+          <button class="ui-btn ui-btn--secondary" type="button" data-action="exportTransactionsCsv">Export CSV</button>
         </div>
       </div>
       <div class="modal-section">
         <div class="ui-title">Ledger entries</div>
-        ${active.length ? active.map((event: Record<string, unknown>) => `
+        ${active.length ? active.map((event: Record<string, unknown>) => {
+          const amount = signedAmount(event);
+          const isPositive = amount >= 0;
+          const accountLabel = event.ledgerType === 'transfer'
+            ? `${escapeHtml(event.fromAccountName || 'From account')} → ${escapeHtml(event.toAccountName || 'To account')}`
+            : escapeHtml(event.accountName || 'Unassigned');
+          return `
           <div class="modal-list-row">
-            <span><strong>${escapeHtml(event.description || event.type)}</strong><br><small>${escapeHtml(event.accountName || 'Unassigned')} · ${escapeHtml(event.categoryId || 'uncategorized')} · ${formatDate(event.timestamp)}</small></span>
-            <span class="${event.type === 'income.received' ? 'fin-val-pos' : 'fin-val-neg'}">${event.type === 'income.received' ? '+' : '-'}${money(event.amount)}</span>
-            <button class="fin-mini-btn" type="button" data-action="deleteTransaction" data-action-args="'${escapeHtml(event.id)}'" aria-label="Reverse transaction">&times;</button>
+            <span><strong>${escapeHtml(event.description || event.type)}</strong><br><small>${accountLabel} · ${escapeHtml(event.categoryId || 'uncategorized')} · ${escapeHtml(event.reviewStatus || 'clear')} · ${formatDate(event.timestamp)}</small></span>
+            <span>${formatTransactionType(event.ledgerType || event.type)}${event.obligationId ? ` · ${escapeHtml(event.obligationTitle || event.obligationId)}` : ''}</span>
+            <span class="${isPositive ? 'fin-val-pos' : 'fin-val-neg'}">${isPositive ? '+' : '-'}${money(Math.abs(amount))}</span>
+            <button class="fin-mini-btn" type="button" data-action="deleteTransaction" data-action-args="'${escapeHtml(event.id)}'" aria-label="Reverse transaction">Reverse</button>
           </div>
-        `).join('') : '<div class="fin-compact-empty">No transactions yet.</div>'}
+        `; }).join('') : `<div class="fin-compact-empty">${(readModel.transactions || []).length ? 'No transactions match these filters.' : 'No transactions yet. Add a cash account, then record one real movement.'}</div>`}
       </div>
       <div class="modal-section">
         <div class="ui-title">Add transaction</div>
         <div class="modal-grid-three">
-          <input id="modal-txn-desc" aria-label="Transaction note" placeholder="Note" />
-          <input id="modal-txn-amount" aria-label="Transaction amount" type="number" step="0.01" placeholder="-20 or 500" />
+          <select id="modal-txn-type" aria-label="Transaction type">
+            <option value="expense">Expense</option>
+            <option value="income">Income</option>
+            <option value="transfer">Transfer</option>
+            <option value="adjustment">Adjustment</option>
+          </select>
+          <input id="modal-txn-desc" aria-label="Transaction note" placeholder="Note" data-autofocus />
+          <input id="modal-txn-amount" aria-label="Transaction amount" type="number" min="0" step="0.01" placeholder="Positive amount" />
           <input id="modal-txn-date" aria-label="Transaction date" type="date" value="${today()}" />
           <select id="modal-txn-account" aria-label="Transaction account">${accountOptions('', false)}</select>
+          <select id="modal-txn-to-account" aria-label="Transfer destination account">${accountOptions('', false)}</select>
+          <select id="modal-txn-direction" aria-label="Adjustment direction"><option value="increase">Increase account</option><option value="decrease">Decrease account</option></select>
           <input id="modal-txn-category" aria-label="Transaction category" placeholder="Category" value="uncategorized" />
           <select id="modal-txn-scope" aria-label="Transaction scope">${scopeOptions('business')}</select>
         </div>
@@ -226,12 +276,15 @@ function renderTransaction(): string {
   return `
     <div class="modal-form">
       <h2 id="modal-title">Add transaction</h2>
-      <p class="modal-copy">Use a positive amount for income and a negative amount for an expense.</p>
-      <div class="modal-grid-two">
-        <div class="form-group"><label for="modal-fast-txn-desc">Note</label><input id="modal-fast-txn-desc" placeholder="Client payment or studio rent" /></div>
-        <div class="form-group"><label for="modal-fast-txn-amount">Amount</label><input id="modal-fast-txn-amount" type="number" step="0.01" placeholder="-20 or 500" /></div>
+      <p class="modal-copy">Choose the movement type, then enter a positive amount. Corrections are handled by reversing the entry and adding a new one.</p>
+      <div class="modal-grid-three">
+        <div class="form-group"><label for="modal-fast-txn-type">Type</label><select id="modal-fast-txn-type"><option value="expense">Expense</option><option value="income">Income</option><option value="transfer">Transfer</option><option value="adjustment">Adjustment</option></select></div>
+        <div class="form-group"><label for="modal-fast-txn-desc">Note</label><input id="modal-fast-txn-desc" placeholder="Client payment or studio rent" data-autofocus /></div>
+        <div class="form-group"><label for="modal-fast-txn-amount">Amount</label><input id="modal-fast-txn-amount" type="number" min="0" step="0.01" placeholder="Positive amount" /></div>
         <div class="form-group"><label for="modal-fast-txn-date">Date</label><input id="modal-fast-txn-date" type="date" value="${today()}" /></div>
         <div class="form-group"><label for="modal-fast-txn-account">Account</label><select id="modal-fast-txn-account">${accountOptions('', false)}</select></div>
+        <div class="form-group"><label for="modal-fast-txn-to-account">Transfer destination</label><select id="modal-fast-txn-to-account">${accountOptions('', false)}</select></div>
+        <div class="form-group"><label for="modal-fast-txn-direction">Adjustment direction</label><select id="modal-fast-txn-direction"><option value="increase">Increase account</option><option value="decrease">Decrease account</option></select></div>
         <div class="form-group"><label for="modal-fast-txn-category">Category</label><input id="modal-fast-txn-category" placeholder="uncategorized" /></div>
         <div class="form-group"><label for="modal-fast-txn-scope">Scope</label><select id="modal-fast-txn-scope">${scopeOptions('business')}</select></div>
       </div>
@@ -870,23 +923,37 @@ function append(draft: FinanceEventDraft, source: string): void {
 }
 
 function addTransactionFromFields(prefix: string): boolean {
+  const type = value(`${prefix}-type`) || 'expense';
   const description = value(`${prefix}-desc`);
-  const amount = Number(value(`${prefix}-amount`));
+  const amount = Math.abs(Number(value(`${prefix}-amount`)));
   const accountId = value(`${prefix}-account`);
-  if (!description || !Number.isFinite(amount) || amount === 0 || !accountId) {
-    showModalError('Add a note, a non-zero amount, and a destination account.');
+  if (!description || !Number.isFinite(amount) || amount <= 0 || !accountId) {
+    showModalError('Add a note, positive amount, and account.');
     return false;
   }
   try {
-    Store.recordTransaction({
-      description,
-      amount,
-      timestamp: toIso(value(`${prefix}-date`)),
-      accountId,
-      categoryId: value(`${prefix}-category`) || 'uncategorized',
-      scope: value(`${prefix}-scope`) as FinanceScope,
-      source: 'manual',
-    });
+    if (type === 'transfer') {
+      Store.recordTransfer({
+        description,
+        amount,
+        timestamp: toIso(value(`${prefix}-date`)),
+        fromAccountId: accountId,
+        toAccountId: value(`${prefix}-to-account`),
+        categoryId: value(`${prefix}-category`) || 'transfer',
+        scope: value(`${prefix}-scope`) as FinanceScope,
+      });
+    } else {
+      Store.recordLedgerTransaction({
+        type: type === 'income' || type === 'adjustment' ? type : 'expense',
+        description,
+        amount,
+        timestamp: toIso(value(`${prefix}-date`)),
+        accountId,
+        categoryId: value(`${prefix}-category`) || (type === 'income' ? 'client-income' : type === 'adjustment' ? 'adjustment' : 'uncategorized'),
+        scope: value(`${prefix}-scope`) as FinanceScope,
+        direction: value(`${prefix}-direction`) === 'decrease' ? 'decrease' : 'increase',
+      });
+    }
     closeModal();
     return true;
   } catch (error) {
@@ -918,6 +985,15 @@ function downloadBackup(): void {
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = `finance-master-backup-${today()}.json`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function downloadTransactionsCsv(): void {
+  const blob = new Blob([Store.exportTransactionsCsv()], { type: 'text/csv;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `finance-master-transactions-${today()}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
 }
@@ -1199,15 +1275,18 @@ Object.assign(window, {
     if (addTransactionFromFields('modal-txn')) openEditModal('financeOverview');
   },
   refreshTransactionsModal: () => {
+    transactionFilters.search = value('modal-filter-search');
     transactionFilters.accountId = value('modal-filter-account');
     transactionFilters.scope = value('modal-filter-scope') || 'all';
     transactionFilters.categoryId = value('modal-filter-category');
-    transactionFilters.direction = value('modal-filter-direction') || 'all';
-    transactionFilters.period = value('modal-filter-period') || 'all';
+    transactionFilters.type = value('modal-filter-type') || 'all';
+    transactionFilters.reviewStatus = value('modal-filter-review-status') || 'all';
+    transactionFilters.dateFrom = value('modal-filter-date-from');
+    transactionFilters.dateTo = value('modal-filter-date-to');
     openEditModal('financeOverview');
   },
   deleteTransaction: (id: string) => {
-    if (window.confirm('Reverse this transaction?')) Store.reverseFinanceEvent(id, 'modal.transaction.reverse');
+    if (window.confirm('Reverse this transaction and its linked account balance update?')) Store.reverseTransaction(id, 'modal.transaction.reverse');
     openEditModal('financeOverview');
   },
   markAsPaid: (id: string) => {
@@ -1281,6 +1360,7 @@ Object.assign(window, {
     openEditModal('goals');
   },
   exportFinanceBackup: () => downloadBackup(),
+  exportTransactionsCsv: () => downloadTransactionsCsv(),
   chooseFinanceBackup: () => document.querySelector<HTMLInputElement>('#modal-backup-file')?.click(),
   undoImportBatch: (batchId: string) => {
     if (!batchId || !window.confirm('Reverse the transactions imported in this CSV batch?')) return;

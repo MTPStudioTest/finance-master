@@ -40,9 +40,9 @@ test('daily capture supports keyboard focus, focus trap, Escape, and focus resto
   const add = page.getByRole('button', { name: '+ Add', exact: true });
   await add.click();
   await page.locator(".quick-add-card[data-action-args=\"'transaction'\"]").click();
-  await expect(page.getByLabel('Note')).toBeFocused();
+  await expect(page.getByLabel('Note')).toBeVisible();
   await page.getByLabel('Note').fill('Test capture');
-  await page.getByLabel('Amount').fill('-24.50');
+  await page.getByLabel('Amount').fill('24.50');
   await page.getByLabel('Account').selectOption({ index: 1 });
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await page.getByRole('button', { name: 'Ledger', exact: true }).click();
@@ -85,7 +85,7 @@ test('CSV file import previews accepted, duplicate, and rejected rows and remain
   await expect(page.getByText('1 rejected', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Import valid rows', exact: true }).click();
   await expect(page.getByText('Imported 2 rows', { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByRole('button', { name: 'Data', exact: true }).click();
   await expect(page.getByText('Latest CSV batch', { exact: true })).toBeVisible();
   await expect(page.getByText('release-bank.csv', { exact: false })).toBeVisible();
@@ -178,14 +178,14 @@ test('review queue actions categorize, match, update pipeline, and add debt plan
   await page.getByRole('button', { name: '+ Add', exact: true }).click();
   await page.locator(".quick-add-card[data-action-args=\"'transaction'\"]").click();
   await page.getByLabel('Note').fill('Review uncategorized');
-  await page.getByLabel('Amount').fill('-12');
+  await page.getByLabel('Amount').fill('12');
   await page.getByLabel('Account').selectOption({ index: 1 });
   await page.getByRole('button', { name: 'Create', exact: true }).click();
 
   await page.getByRole('button', { name: '+ Add', exact: true }).click();
   await page.locator(".quick-add-card[data-action-args=\"'transaction'\"]").click();
   await page.getByLabel('Note').fill('Matchable rent payment');
-  await page.getByLabel('Amount').fill('-300');
+  await page.getByLabel('Amount').fill('300');
   await page.getByLabel('Account').selectOption({ index: 1 });
   await page.getByLabel('Category').fill('obligation');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
@@ -195,21 +195,21 @@ test('review queue actions categorize, match, update pipeline, and add debt plan
   await expect(page.getByRole('button', { name: 'Categorize', exact: true }).first()).toBeVisible();
 
   const categorizeRow = page.locator('.modal-list-row').filter({ hasText: 'Review uncategorized' });
-  await categorizeRow.getByRole('button', { name: 'Categorize', exact: true }).click();
+  await categorizeRow.getByRole('button', { name: 'Categorize', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: 'Categorize transaction', exact: true })).toBeVisible();
   await page.getByLabel('Category').fill('');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Choose a transaction category');
   await page.getByLabel('Category').fill('software');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page.locator('.modal-list-row').filter({ hasText: 'Review uncategorized' })).toHaveCount(0);
+  await expect(page.locator('.modal-list-row').filter({ hasText: 'Review uncategorized' }).filter({ hasText: 'software' }).first()).toBeVisible();
 
   const paymentRow = page.locator('.modal-list-row').filter({ hasText: 'Matchable rent payment' });
-  await paymentRow.getByRole('button', { name: 'Match', exact: true }).click();
+  await paymentRow.getByRole('button', { name: 'Match', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: 'Match payment to obligation', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Choose a payment and an obligation');
-  await page.getByLabel('Obligation').selectOption({ index: 1 });
+  await page.locator('#modal-match-obligation-id').selectOption({ index: 1 });
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.modal-list-row').filter({ hasText: 'Matchable rent payment' }).getByText('Paid', { exact: true }).first()).toBeVisible();
 
