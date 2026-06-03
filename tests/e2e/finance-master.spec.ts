@@ -212,21 +212,24 @@ test('transactions page is the primary ledger workspace', async ({ page }) => {
 test('ledger filters and inline categorization work without a full-ledger modal', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
-  await addExpense(page, 'Ledger page cleanup item', '24.50');
+  await addExpense(page, 'Software reference subscription', '8.50', 'software');
+  await addExpense(page, 'Software cleanup item', '24.50');
   await expect.poll(() => page.evaluate(() => (
     window.localStorage.getItem('finance-master.ledger.v1') || ''
-  ).includes('Ledger page cleanup item'))).toBe(true);
+  ).includes('Software cleanup item'))).toBe(true);
 
   await page.getByRole('button', { name: 'Transactions', exact: true }).click();
-  await page.getByLabel('Search ledger').fill('Ledger page cleanup item');
+  await page.getByLabel('Search ledger').fill('Software cleanup item');
   await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
-  await expect(page.locator('.fin-tab-panel .fin-transaction-row').filter({ hasText: 'Ledger page cleanup item' })).toBeVisible();
+  await expect(page.locator('.fin-tab-panel .fin-transaction-row').filter({ hasText: 'Software cleanup item' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Review', exact: true }).click();
-  const row = page.locator('.fin-transaction-row--review').filter({ hasText: 'Ledger page cleanup item' });
+  const row = page.locator('.fin-transaction-row--review').filter({ hasText: 'Software cleanup item' });
   await row.getByRole('button', { name: 'Edit transaction review', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Categorize transaction', exact: true })).toBeVisible();
-  await page.locator('#modal-body').getByLabel('Category', { exact: true }).fill('software');
+  await expect(page.getByText('Suggested categories', { exact: true })).toBeVisible();
+  await page.locator('#modal-body').getByRole('button', { name: 'software', exact: true }).click();
+  await expect(page.locator('#modal-body').getByLabel('Category', { exact: true })).toHaveValue('software');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('#fin-content-area').getByText('software', { exact: true }).first()).toBeVisible();
   expect(errors).toEqual([]);
@@ -338,7 +341,25 @@ test('CSV import previews accepted, duplicate, and rejected rows and remains rev
   await expect(page.getByText('1 rejected', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Import valid rows', exact: true }).click();
   await expect(page.getByText('Imported 2 rows', { exact: false })).toBeVisible();
+  await expect(page.getByText('Saved mapping: release-bank.csv', { exact: true })).toBeVisible();
   await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
+
+  await openQuickAdd(page);
+  await chooseQuickAction(page, /Import CSV/);
+  await page.locator('#modal-csv-file').setInputFiles({
+    name: 'followup-bank.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from([
+      'date,description,amount,category,scope',
+      '2026-06-04,Followup tools,-32,software,business',
+    ].join('\n')),
+  });
+  await expect(page.getByText('Saved mapping: release-bank.csv', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Destination account')).not.toHaveValue('');
+  await page.getByRole('button', { name: 'Preview import', exact: true }).click();
+  await expect(page.getByText('1 accepted', { exact: true })).toBeVisible();
+  await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
+
   await page.getByRole('button', { name: 'Import & Backup', exact: true }).click();
   await expect(page.getByText('Latest CSV batch', { exact: true })).toBeVisible();
   await expect(page.getByText('release-bank.csv', { exact: false })).toBeVisible();

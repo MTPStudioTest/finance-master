@@ -11,6 +11,7 @@ import type {
   CsvColumnMapping,
   CsvImportPreview,
   FinanceBackupPreview,
+  FinanceImportProfile,
   FinanceScope,
   FinanceScopeFilter,
 } from '../types/finance';
@@ -40,6 +41,7 @@ let csvMapping: CsvColumnMapping = { date: '', description: '' };
 let csvPreview: CsvImportPreview | null = null;
 let csvDefaultCategory = 'uncategorized';
 let csvDefaultScope: FinanceScope = 'business';
+let csvAppliedProfileName = '';
 let pendingBackup: unknown = null;
 let backupPreview: FinanceBackupPreview | null = null;
 let modalReturnFocus: HTMLElement | null = null;
@@ -185,6 +187,56 @@ function optionList(selected = '', emptyLabel = 'Not mapped'): string {
   return `<option value="">${emptyLabel}</option>${headers.map((header) => (
     `<option value="${escapeHtml(header)}"${header === selected ? ' selected' : ''}>${escapeHtml(header)}</option>`
   )).join('')}`;
+}
+
+function actionArg(value: unknown): string {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function csvHeaderSignature(headers: string[]): string {
+  return headers.map((header) => String(header || '').trim().toLowerCase()).filter(Boolean).join('|');
+}
+
+function matchingCsvImportProfiles(): FinanceImportProfile[] {
+  if (!csvDocument) return [];
+  const signature = csvHeaderSignature(csvDocument.headers);
+  if (!signature) return [];
+  const imports = Store.getImportState();
+  return (imports.profiles || []).filter((profile) => csvHeaderSignature(profile.headers || []) === signature);
+}
+
+function applyCsvImportProfile(profile: FinanceImportProfile | undefined): void {
+  if (!profile) return;
+  csvMapping = { ...profile.mapping };
+  csvDefaultCategory = profile.defaultCategory || csvDefaultCategory;
+  csvDefaultScope = profile.defaultScope || csvDefaultScope;
+  if (profile.accountId) csvAccountId = profile.accountId;
+  csvAppliedProfileName = profile.name || 'CSV mapping';
+}
+
+function applyBestCsvImportProfile(): void {
+  const imports = Store.getImportState();
+  const profiles = matchingCsvImportProfiles();
+  const preferred = profiles.find((profile) => profile.id === imports.lastProfileId) || profiles[0];
+  applyCsvImportProfile(preferred);
+}
+
+function saveCurrentCsvImportProfile(): void {
+  if (!csvDocument) return;
+  try {
+    const profile = Store.saveCsvImportProfile({
+      name: csvSourceFile,
+      sourceFile: csvSourceFile,
+      headers: csvDocument.headers,
+      mapping: csvMapping,
+      accountId: csvAccountId,
+      defaultCategory: csvDefaultCategory,
+      defaultScope: csvDefaultScope,
+    });
+    csvAppliedProfileName = profile.name;
+  } catch {
+    // Profile persistence is helpful, but import preview/import should remain usable without it.
+  }
 }
 
 function showModalError(message: string): void {
@@ -464,6 +516,7 @@ function renderCsvImport(): string {
         <div class="modal-section">
           <div class="ui-title">Detected columns · ${csvDelimiterLabel(csvDocument?.delimiter || ',')} separated</div>
           <div class="csv-columns">${csvDocument?.headers.map((header) => `<code>${escapeHtml(header)}</code>`).join('')}</div>
+          ${csvAppliedProfileName ? `<div class="fin-compact-empty">Saved mapping: ${escapeHtml(csvAppliedProfileName)}</div>` : ''}
           <div class="csv-mapping-grid">
             <div class="form-group"><label for="modal-csv-map-date">Date *</label><select id="modal-csv-map-date">${optionList(csvMapping.date, 'Choose date column')}</select></div>
             <div class="form-group"><label for="modal-csv-map-description">Description *</label><select id="modal-csv-map-description">${optionList(csvMapping.description, 'Choose description column')}</select></div>
@@ -786,8 +839,60 @@ function obligationOptions(selected = ''): string {
   `).join('')}`;
 }
 
+function categoryTokens(value: unknown): string[] {
+  return String(value || '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 4);
+}
+
+function addCategorySuggestion(
+  suggestions: Map<string, { category: string; reason: string; score: number }>,
+  category: unknown,
+  reason: string,
+  score: number,
+): void {
+  const normalized = String(category || '').trim();
+  if (!normalized || normalized.toLowerCase() === 'uncategorized') return;
+  const current = suggestions.get(normalized);
+  if (!current || score > current.score) suggestions.set(normalized, { category: normalized, reason, score });
+}
+
+function transactionCategorySuggestions(transaction: Record<string, unknown> | null | undefined): Array<{ category: string; reason: string }> {
+  if (!transaction) return [];
+  const readModel = Store.getFinancialReadModel();
+  const description = String(transaction.description || '').toLowerCase();
+  const descriptionTokens = new Set(categoryTokens(description));
+  const suggestions = new Map<string, { category: string; reason: string; score: number }>();
+
+  (readModel.transactions || []).forEach((entry: Record<string, unknown>) => {
+    if (String(entry.id || '') === String(transaction.id || '')) return;
+    const category = String(entry.categoryId || '');
+    if (!category || category.toLowerCase() === 'uncategorized') return;
+    const entryTokens = categoryTokens(entry.description).filter((token) => descriptionTokens.has(token));
+    if (entryTokens.length) {
+      addCategorySuggestion(suggestions, category, 'Used on similar ledger records', 4 + entryTokens.length);
+    } else if (categoryTokens(category).some((token) => description.includes(token))) {
+      addCategorySuggestion(suggestions, category, 'Category name appears in the description', 3);
+    }
+  });
+
+  (readModel.recurringExpenses || []).forEach((entry: Record<string, unknown>) => {
+    const category = String(entry.category || '');
+    const matched = categoryTokens(category).some((token) => description.includes(token));
+    if (matched) addCategorySuggestion(suggestions, category, 'Matches a recurring obligation', 5);
+  });
+
+  return Array.from(suggestions.values())
+    .sort((left, right) => right.score - left.score || left.category.localeCompare(right.category))
+    .slice(0, 3)
+    .map(({ category, reason }) => ({ category, reason }));
+}
+
 function renderTransactionReview(id = ''): string {
   const transaction = findTransaction(id);
+  const suggestions = transactionCategorySuggestions(transaction);
   return `
     <div class="modal-form">
       <h2 id="modal-title">Categorize transaction</h2>
@@ -797,6 +902,15 @@ function renderTransactionReview(id = ''): string {
         <div class="form-group"><label for="modal-review-transaction-category">Category</label><input id="modal-review-transaction-category" value="${escapeHtml(transaction?.categoryId === 'uncategorized' ? '' : transaction?.categoryId || '')}" placeholder="software, tax, client-income" /></div>
         <div class="form-group"><label for="modal-review-transaction-scope">Scope</label><select id="modal-review-transaction-scope">${scopeOptions(String(transaction?.scope || 'business'))}</select></div>
       </div>
+      ${suggestions.length ? `
+        <div class="csv-validation-list">
+          <strong>Suggested categories</strong>
+          ${suggestions.map((suggestion) => `
+            <button class="fin-mini-btn" type="button" data-action="chooseTransactionCategorySuggestion" data-action-args="'${escapeHtml(actionArg(suggestion.category))}'">${escapeHtml(suggestion.category)}</button>
+            <span>${escapeHtml(suggestion.reason)}</span>
+          `).join('')}
+        </div>
+      ` : ''}
       <div class="form-group"><label for="modal-review-transaction-notes">Review note</label><textarea id="modal-review-transaction-notes" rows="2" placeholder="Optional note for why this is clear"></textarea></div>
       ${formActions('transactionReview')}
     </div>
@@ -1459,6 +1573,13 @@ Object.assign(window, {
       renderAfter: true,
     });
   },
+  chooseTransactionCategorySuggestion: (category: string) => {
+    const input = document.getElementById('modal-review-transaction-category') as HTMLInputElement | null;
+    if (input) {
+      input.value = category;
+      input.focus();
+    }
+  },
   toggleDebtPlanType: (type: string) => {
     const regular = document.getElementById('modal-debt-plan-regular-section');
     const custom = document.getElementById('modal-debt-plan-custom-section');
@@ -1579,12 +1700,15 @@ Object.assign(window, {
       captureCsvFields();
       csvDocument = parseCsvDocument(csvRaw);
       csvMapping = inferCsvColumnMapping(csvDocument.headers);
+      csvAppliedProfileName = '';
+      applyBestCsvImportProfile();
       csvPreview = null;
       csvSummary = '';
       openEditModal('csvImport');
     } catch (error) {
       csvDocument = null;
       csvPreview = null;
+      csvAppliedProfileName = '';
       csvSummary = error instanceof Error ? error.message : 'Could not parse this CSV.';
       openEditModal('csvImport');
     }
@@ -1602,6 +1726,7 @@ Object.assign(window, {
         defaultScope: csvDefaultScope,
         sourceFile: csvSourceFile,
       });
+      saveCurrentCsvImportProfile();
       csvSummary = '';
       openEditModal('csvImport');
     } catch (error) {
@@ -1622,6 +1747,7 @@ Object.assign(window, {
     }
     try {
       const summary = Store.importCsvTransactions(csvPreview.rows, { accountId: csvAccountId, sourceFile: csvPreview.sourceFile });
+      saveCurrentCsvImportProfile();
       csvSummary = `Imported ${summary.imported} row${summary.imported === 1 ? '' : 's'}${summary.duplicates ? ` · skipped ${summary.duplicates} duplicate${summary.duplicates === 1 ? '' : 's'}` : ''}.`;
       csvPreview = null;
       openEditModal('csvImport');
@@ -1759,12 +1885,15 @@ document.addEventListener('change', (event) => {
         csvSourceFile = input.files?.[0]?.name || 'imported-transactions.csv';
         csvDocument = parseCsvDocument(csvRaw);
         csvMapping = inferCsvColumnMapping(csvDocument.headers);
+        csvAppliedProfileName = '';
+        applyBestCsvImportProfile();
         csvPreview = null;
         csvSummary = '';
         openEditModal('csvImport');
       } catch (error) {
         csvDocument = null;
         csvPreview = null;
+        csvAppliedProfileName = '';
         csvSummary = error instanceof Error ? error.message : 'Could not parse this CSV file.';
         openEditModal('csvImport');
       }

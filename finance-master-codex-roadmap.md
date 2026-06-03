@@ -235,6 +235,10 @@ This section records the latest implemented roadmap slices so future work can ad
   - The page uses a two-column desktop layout with transaction list on the left and inspector on the right.
   - On mobile/tablet the inspector stacks without horizontal overflow.
   - The old `clean | work` stored values are preserved; old/stored `audit` values safely fall back to Ledger.
+- Phase 5 transaction/data depth has begun:
+  - CSV imports save the last successful mapping profile for matching headers and reuse it on later imports.
+  - Import profiles stay in local import state and are included in backup/restore validation.
+  - Transaction review shows deterministic category suggestions from existing ledger categories and recurring obligations, but never mutates data until the user confirms the review.
 - Monthly Review has been simplified into an inline dashboard workflow:
   - The monthly close flow now lives directly on the Monthly Review page instead of opening a large modal by default.
   - Cash account reconciliation, review steps, review note, inline validation, and Close month are part of the page.
@@ -271,7 +275,7 @@ The e2e suite covers:
 ### Roadmap adaptation notes
 
 - Phase 3 should be treated as substantially complete for IA and cockpit simplification. Remaining Phase 3 work is polish, density reduction, and consistent icon/action patterns.
-- Phase 5’s Transactions workspace requirements are partially pulled forward and implemented. Future Phase 5 work should focus on import profiles, categorization rules, and transaction detail depth rather than recreating the ledger workspace.
+- Phase 5’s Transactions workspace requirements are partially pulled forward and implemented. Import profiles and category suggestions are now started; future Phase 5 work should focus on deeper transaction evidence, import profile management, and matching depth rather than recreating the ledger workspace.
 - Phase 8’s Monthly Review ritual is partially pulled forward and implemented. Future Phase 8 work should refine the review ritual, monthly summary, reserve review, and review history, not reintroduce the large review modal.
 - Product direction learned from the latest review:
   - Avoid “Audit” as a primary user-facing mode unless a later professional/accountant export surface explicitly needs it.
@@ -286,7 +290,7 @@ The e2e suite covers:
    - Keep Overview compact and do not reintroduce explanation dropdowns there.
    - Keep calculation and data safety untouched unless a test exposes a regression.
 2. **Then continue Phase 5 transaction/data depth**
-   - Import profiles, categorization suggestions, and transaction evidence depth.
+   - Transaction evidence depth, import profile management, and richer matching support.
    - Do not rebuild the Ledger Workspace shell or expose Audit as a primary mode.
 3. **Then continue Phase 8 monthly review depth**
    - Review history, monthly summary, reserve review, and review completion narrative.

@@ -19,6 +19,7 @@ import {
 } from './data-health.js';
 import { inspectRepositoryMigration } from './schema-migration.js';
 import type {
+  CsvColumnMapping,
   CsvImportSummary,
   CsvTransactionRow,
   FinanceDataHealth,
@@ -26,6 +27,7 @@ import type {
   FinanceGoal,
   FinanceGoalProgress,
   FinanceGoalState,
+  FinanceImportProfile,
   FinanceImportState,
   FinancePriceCache,
   FinancePriceQuote,
@@ -75,6 +77,7 @@ const DEFAULT_GOAL_STATE: FinanceGoalState = {
 
 const DEFAULT_IMPORT_STATE: FinanceImportState = {
   batches: [],
+  profiles: [],
 };
 
 const DEFAULT_PRICE_CACHE: FinancePriceCache = {
@@ -130,6 +133,59 @@ function scopeFilter(value: unknown, fallback: FinanceScopeFilter = 'all'): Fina
 
 function entityId(prefix: string): string {
   return `${prefix}-${window.FinanceEvents?.createId?.() || Date.now().toString(36)}`;
+}
+
+function importHeaderSignature(headers: unknown): string {
+  return Array.isArray(headers)
+    ? headers.map((header) => String(header || '').trim().toLowerCase()).filter(Boolean).join('|')
+    : '';
+}
+
+function normalizeCsvMapping(value: unknown): CsvColumnMapping {
+  const mapping = isObject(value) ? value : {};
+  return {
+    date: String(mapping.date || ''),
+    description: String(mapping.description || ''),
+    amount: String(mapping.amount || ''),
+    debit: String(mapping.debit || ''),
+    credit: String(mapping.credit || ''),
+    category: String(mapping.category || ''),
+    scope: String(mapping.scope || ''),
+  };
+}
+
+function normalizeImportState(value: unknown): FinanceImportState {
+  const state = isObject(value) ? value : {};
+  const batches = Array.isArray(state.batches)
+    ? state.batches.filter(isObject).map((batch) => ({
+      id: String(batch.id || ''),
+      importedAt: String(batch.importedAt || ''),
+      sourceFile: String(batch.sourceFile || ''),
+      fingerprints: Array.isArray(batch.fingerprints) ? batch.fingerprints.map(String).filter(Boolean) : [],
+    })).filter((batch) => batch.id && batch.importedAt && batch.sourceFile)
+    : [];
+  const profiles = Array.isArray(state.profiles)
+    ? state.profiles.filter(isObject).map((profile) => {
+      const headers = Array.isArray(profile.headers) ? profile.headers.map(String).filter(Boolean) : [];
+      return {
+        id: String(profile.id || ''),
+        name: String(profile.name || 'CSV mapping'),
+        headers,
+        mapping: normalizeCsvMapping(profile.mapping),
+        accountId: String(profile.accountId || '') || undefined,
+        defaultCategory: String(profile.defaultCategory || 'uncategorized'),
+        defaultScope: scope(profile.defaultScope, 'business'),
+        createdAt: String(profile.createdAt || profile.updatedAt || new Date(0).toISOString()),
+        updatedAt: String(profile.updatedAt || profile.createdAt || new Date(0).toISOString()),
+      };
+    }).filter((profile) => profile.id && importHeaderSignature(profile.headers))
+    : [];
+  const lastProfileId = String(state.lastProfileId || '');
+  return {
+    batches,
+    profiles,
+    ...(lastProfileId ? { lastProfileId } : {}),
+  };
 }
 
 function toTransactionIso(date: string): string {
@@ -1172,7 +1228,41 @@ export const Store = {
   },
 
   getImportState(): FinanceImportState {
-    return getJson(STORAGE_KEYS.imports, DEFAULT_IMPORT_STATE);
+    return normalizeImportState(getJson(STORAGE_KEYS.imports, DEFAULT_IMPORT_STATE));
+  },
+
+  saveCsvImportProfile(input: {
+    name?: string;
+    headers: string[];
+    mapping: CsvColumnMapping;
+    accountId?: string;
+    defaultCategory?: string;
+    defaultScope?: FinanceScope;
+    sourceFile?: string;
+  }): FinanceImportProfile {
+    const headers = Array.isArray(input.headers) ? input.headers.map(String).filter(Boolean) : [];
+    const signature = importHeaderSignature(headers);
+    if (!signature) throw new Error('CSV profile needs detected headers.');
+    const nowIso = new Date().toISOString();
+    const imports = this.getImportState();
+    const existing = imports.profiles.find((profile) => importHeaderSignature(profile.headers) === signature);
+    const profile: FinanceImportProfile = {
+      id: existing?.id || entityId('import-profile'),
+      name: String(input.name || input.sourceFile || existing?.name || 'CSV mapping').trim() || 'CSV mapping',
+      headers,
+      mapping: normalizeCsvMapping(input.mapping),
+      accountId: String(input.accountId || existing?.accountId || '') || undefined,
+      defaultCategory: String(input.defaultCategory || existing?.defaultCategory || 'uncategorized').trim() || 'uncategorized',
+      defaultScope: scope(input.defaultScope, existing?.defaultScope || 'business'),
+      createdAt: existing?.createdAt || nowIso,
+      updatedAt: nowIso,
+    };
+    imports.profiles = existing
+      ? imports.profiles.map((entry) => entry.id === existing.id ? profile : entry)
+      : [profile, ...imports.profiles].slice(0, 8);
+    imports.lastProfileId = profile.id;
+    setJson(STORAGE_KEYS.imports, imports);
+    return clone(profile);
   },
 
   importCsvTransactions(rows: CsvTransactionRow[], options: { accountId: string; sourceFile?: string }): CsvImportSummary {

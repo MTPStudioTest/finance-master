@@ -64,8 +64,22 @@ interface FinanceImportBatch {
   fingerprints: string[];
 }
 
+export interface FinanceImportProfile {
+  id: string;
+  name: string;
+  headers: string[];
+  mapping: CsvColumnMapping;
+  accountId?: string;
+  defaultCategory: string;
+  defaultScope: FinanceScope;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface FinanceImportState {
   batches: FinanceImportBatch[];
+  profiles: FinanceImportProfile[];
+  lastProfileId?: string;
 }
 
 export interface FinancePriceQuote {

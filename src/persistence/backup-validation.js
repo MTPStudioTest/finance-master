@@ -82,6 +82,14 @@ function validateSupportingState(backup, errors, version) {
       || !isTimestamp(batch.importedAt) || !String(batch.sourceFile || '').trim() || !Array.isArray(batch.fingerprints))) {
     errors.push('CSV import history is incomplete.');
   }
+  if (isObject(backup.imports) && Array.isArray(backup.imports.profiles)
+    && backup.imports.profiles.some((profile) => !isObject(profile) || !String(profile.id || '').trim()
+      || !String(profile.name || '').trim() || !Array.isArray(profile.headers)
+      || !isObject(profile.mapping) || !String(profile.mapping.date || '').trim()
+      || !String(profile.mapping.description || '').trim() || !isTimestamp(profile.createdAt)
+      || !isTimestamp(profile.updatedAt))) {
+    errors.push('CSV import profiles are incomplete.');
+  }
   if (!isObject(backup.prices) || !isObject(backup.prices.quotes)) {
     errors.push('Cached wallet prices are incomplete.');
   }

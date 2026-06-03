@@ -200,6 +200,16 @@ declare global {
       linkedAccountIds?: string[];
     }): import('./finance').FinanceGoal;
     deleteGoal(id: string): import('./finance').FinanceGoalState;
+    getImportState(): import('./finance').FinanceImportState;
+    saveCsvImportProfile(input: {
+      name?: string;
+      headers: string[];
+      mapping: import('./finance').CsvColumnMapping;
+      accountId?: string;
+      defaultCategory?: string;
+      defaultScope?: FinanceScope;
+      sourceFile?: string;
+    }): import('./finance').FinanceImportProfile;
     exportBackup(): import('./finance').FinanceBackupV2;
     previewBackup(input: unknown): import('./finance').FinanceBackupPreview;
     recordBackupExport(exportedAt?: string): void;

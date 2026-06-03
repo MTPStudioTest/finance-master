@@ -110,6 +110,26 @@ test('CSV preview requires mappings without mutating parsed data', () => {
   assert.deepEqual(document, before);
 });
 
+test('backup validation accepts complete CSV profiles and rejects incomplete ones', () => {
+  const backup = validBackup();
+  backup.imports.profiles = [{
+    id: 'profile-bank',
+    name: 'Bank CSV',
+    headers: ['date', 'description', 'amount'],
+    mapping: { date: 'date', description: 'description', amount: 'amount' },
+    defaultCategory: 'uncategorized',
+    defaultScope: 'business',
+    createdAt: '2026-06-02T10:00:00.000Z',
+    updatedAt: '2026-06-02T10:00:00.000Z',
+  }];
+  assert.equal(validateFinanceBackup(backup).valid, true);
+
+  backup.imports.profiles = [{ id: 'broken-profile', headers: ['date'] }];
+  const preview = validateFinanceBackup(backup);
+  assert.equal(preview.valid, false);
+  assert(preview.errors.includes('CSV import profiles are incomplete.'));
+});
+
 test('backup preview summarizes a complete FinanceBackupV1 payload', () => {
   const backup = validBackup();
   const preview = validateFinanceBackup(backup);
