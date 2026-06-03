@@ -1,49 +1,34 @@
 export function createSectionRenderer(renderers, renderSectionHeading) {
     const pages = {
         ledger: {
-            title: 'Transactions',
+            title: 'Cash Movement',
             copy: 'Clean daily movement, focused review work, and transaction evidence when you need it.',
             sections: ['ledger']
         },
-        invoices: {
-            title: 'Income',
-            copy: 'Expected, confirmed, overdue, and settled income separated from real cash.',
-            sections: ['invoices']
-        },
         planning: {
             title: 'Cashflow',
-            copy: 'Baseline, expected month, and conservative or optimistic scenarios for the next decisions.',
-            sections: ['scenarioOutcomes', 'cashCalendar', 'pipelineTabs', 'goals', 'projection', 'scenarioLab']
+            copy: 'Expected income, cash calendar, projections, and scenario checks for the next decisions.',
+            sections: ['invoices', 'scenarioOutcomes', 'cashCalendar', 'pipelineTabs', 'projection', 'scenarioLab']
         },
         review: {
-            title: 'Monthly Review',
-            copy: 'Resolve unclear items, reconcile accounts, and close the operating loop.',
-            sections: ['reviewQueue', 'obligationReview', 'paymentReview', 'tensionSignals', 'weeklyReview']
+            title: 'Month Close',
+            copy: 'Reconcile accounts, resolve open items, confirm obligations and income, then close the month.',
+            sections: ['reviewQueue', 'obligationReview', 'tensionSignals', 'weeklyReview']
         },
         reports: {
-            title: 'Reports',
+            title: 'Insights',
             copy: 'Patterns across cash rhythm, reserves, income concentration, and financial health.',
             sections: ['reports']
         },
         data: {
-            title: 'Import & Backup',
-            copy: 'Local imports, backups, import batches, and sample ledger controls.',
-            sections: ['data']
-        },
-        settings: {
-            title: 'Settings',
-            copy: 'System preferences and local display controls.',
-            sections: ['settings']
+            title: 'System',
+            copy: 'Imports, backups, restore, reset, sample data, and app preferences.',
+            sections: ['data', 'settings']
         },
         reserves: {
-            title: 'Reserves',
-            copy: 'Protected cash, reserve buckets, and allocation between available and spoken-for money.',
-            sections: ['reserves']
-        },
-        fixedCosts: {
-            title: 'Obligations',
-            copy: 'Recurring obligations, minimum payments, and debt plans that shape monthly burn.',
-            sections: ['fixedCosts']
+            title: 'Treasury',
+            copy: 'Cash accounts, protected money, reserve targets, obligations, burn, and debt plans.',
+            sections: ['reserves', 'goals', 'fixedCosts']
         }
     };
 

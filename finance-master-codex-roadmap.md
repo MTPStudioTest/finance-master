@@ -215,10 +215,12 @@ This section records the latest implemented roadmap slices so future work can ad
   - Debt payment plans contribute to burn and runway without double-counting linked recurring obligations.
   - Actual cash, protected cash, committed short-term obligations, available cash, legacy cash-after-reserves, monthly burn, runway, forecast confidence, and debt burden are centralized in the finance context.
   - Metric explanations are returned from the compute layer for future surfaces, while the current Overview keeps the cockpit visually minimal without explanation dropdowns.
-- Phase 3 IA simplification is implemented:
-  - Visible navigation now follows the roadmap language: Overview, Cashflow, Transactions, Income, Obligations, Reserves, Monthly Review, Reports, Import & Backup, Settings.
-  - Internal section IDs remain compatible with older stored values.
-  - Settings is limited to app preferences and routes data safety work to Import & Backup.
+- Phase 3 IA simplification has advanced into the seven-board operating system model:
+  - Visible navigation now follows: Overview, Cash Movement, Cashflow, Treasury, Month Close, Insights, System.
+  - Internal section IDs remain compatible with older stored values and aliases such as transactions, income, invoices, obligations, monthly-review, reports, settings, and import.
+  - Cashflow now owns projections, scenarios, cash calendar, and the income pipeline.
+  - Treasury now owns cash accounts, reserves, goals, obligations, monthly burn, and debt/payment plans.
+  - System now owns import/export/backup/restore/reset/sample-data controls plus app preferences.
 
 ### Latest UI simplification slices
 
@@ -244,11 +246,11 @@ This section records the latest implemented roadmap slices so future work can ad
   - Review and inspector flows show deterministic obligation match suggestions that prefill the focused match flow without mutating data until confirmation.
   - CSV import duplicate handling is explicit: duplicates are skipped by default and can be imported anyway by deliberate selection.
   - Import batches now record and display imported count, duplicate policy, rejected count, date range, and income/expense totals for easier review before undo.
-- Monthly Review has been simplified into an inline dashboard workflow:
-  - The monthly close flow now lives directly on the Monthly Review page instead of opening a large modal by default.
+- Month Close has been simplified into an inline dashboard workflow:
+  - The monthly close flow now lives directly on the Month Close page instead of opening a large modal by default.
   - Cash account reconciliation, review steps, review note, inline validation, and Close month are part of the page.
-  - Overview review actions route to the Monthly Review page instead of opening the old modal.
-  - Review queue, expected obligations, and actual payments use one edit icon per row instead of multiple text buttons.
+  - Overview review actions route to the Month Close page instead of opening the old modal.
+  - Open items and expected obligations use one edit icon per row instead of multiple text buttons.
   - The old modal renderer remains in code as a compatibility/fallback path, but it is no longer the intended product path.
 - Cross-section row actions now follow the same quieter pattern in Reserves, Income, Cashflow pipeline rows, recurring costs, and debt cards:
   - Row-level edit/received/archive/plan/payment actions are icon-first with accessible labels.
@@ -272,16 +274,16 @@ The e2e suite covers:
 - compact Quick Add menu
 - Ledger Workspace filters, inspector, Review mode actions, and absence of Audit mode
 - local data repair/reset safety
-- Import & Backup safety
-- Monthly Review inline close workflow
+- System data safety
+- Month Close inline close workflow
 - icon-based review actions for transaction categorization, payment matching, pipeline review, and debt plan confirmation
 - mobile/tablet no-horizontal-overflow checks
 
 ### Roadmap adaptation notes
 
-- Phase 3 should be treated as complete for the current IA, cockpit, dark-mode readability, and icon-action polish baseline.
+- Phase 3 should be treated as complete for the current seven-board IA, cockpit, dark-mode readability, and icon-action polish baseline.
 - Phase 5’s Transactions workspace requirements are partially pulled forward and implemented. Import profiles, duplicate handling, import batch summaries, category suggestions, transaction evidence, and obligation match suggestions are now started; future Phase 5 work should focus on richer income/reserve/debt linking and deeper import batch inspection rather than recreating the ledger workspace.
-- Phase 8’s Monthly Review ritual is partially pulled forward and implemented. Future Phase 8 work should refine the review ritual, monthly summary, reserve review, and review history, not reintroduce the large review modal.
+- Phase 8’s Month Close ritual is partially pulled forward and implemented. Future Phase 8 work should refine the review ritual, monthly summary, reserve review, and review history, not reintroduce the large review modal.
 - Product direction learned from the latest review:
   - Avoid “Audit” as a primary user-facing mode unless a later professional/accountant export surface explicitly needs it.
   - Avoid repeated text-button clusters in operational rows; prefer one clear edit/action icon that opens the focused workflow.
@@ -890,7 +892,7 @@ This is the Overview.
 What do I need to update, review, import, or resolve?
 ```
 
-This includes transactions, income, obligations, reserves, cashflow, monthly review.
+This includes cash movement, cashflow, treasury, and month close.
 
 ### Layer 3 — System and safety
 
@@ -898,7 +900,7 @@ This includes transactions, income, obligations, reserves, cashflow, monthly rev
 How is my data stored, backed up, configured, and protected?
 ```
 
-This includes Import & Backup and Settings.
+This includes System.
 
 ---
 
@@ -908,15 +910,12 @@ Use or evolve toward this structure:
 
 ```txt
 Overview
+Cash Movement
 Cashflow
-Transactions
-Income
-Obligations
-Reserves
-Monthly Review
-Reports
-Import & Backup
-Settings
+Treasury
+Month Close
+Insights
+System
 ```
 
 If current names differ, keep compatibility but improve clarity.

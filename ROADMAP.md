@@ -22,14 +22,15 @@ Every roadmap item must improve one of those answers or make the underlying data
 
 Implemented baseline:
 
-- Grouped app shell: Overview, Transactions, Income, Cashflow, Monthly Review, Reserves, Obligations, Reports, Import & Backup, Settings.
+- Consolidated operating shell: Overview, Cash Movement, Cashflow, Treasury, Month Close, Insights, System.
+- Compatibility aliases keep older section values such as transactions, income, invoices, obligations, monthly-review, reports, settings, and import routed into the new seven-board model.
 - Overview Money Picture cockpit with runway, 30-day projected result, cash structure, and burn pressure.
-- Page-native Transactions Ledger Workspace with compact filters, Ledger / Review modes, a transaction inspector, and no visible Audit mode.
-- Page-native Monthly Review workspace with inline cash reconciliation, review checklist, review note, validation, and Close month.
+- Page-native Cash Movement Ledger Workspace with compact filters, Ledger / Review modes, a transaction inspector, and no visible Audit mode.
+- Page-native Month Close workspace with inline cash reconciliation, open items, review checklist, review note, validation, and Close month.
 - Row actions in Review, Reserves, Income, Cashflow pipeline rows, recurring costs, and debt cards are icon-first where the action is contextual.
 - Initial UI hardening seams for shared dashboard helpers, section composition, and modal helper rendering.
 - Local-first Store/repository architecture with backup support.
-- CSV import preview/import/undo with saved mapping reuse, explicit duplicate handling, batch summaries, and Import & Backup profile management.
+- CSV import preview/import/undo with saved mapping reuse, explicit duplicate handling, batch summaries, and System profile management.
 - Manual transaction capture, ledger review, deterministic category suggestions, deterministic obligation match suggestions, grouped transaction evidence, and transaction reversal.
 - Cash accounts, recurring costs, debt items, income pipeline, goals, and weekly review primitives.
 - Appearance modes: `aurora`, `midnight`, `bright`.
@@ -39,13 +40,13 @@ Known baseline limitations:
 
 - Some workflows are functional but still need depth: debt repayment planning, recurring-cost confirmation, reports, and long-term trend views.
 - The data model is implicit across Store events, read models, and dashboard calculations.
-- Import/export is useful but not yet a polished data operations center.
+- System data operations are consolidated, but import/export still needs more polish and evidence depth.
 - Planning projections need clearer formulas and stronger scenario controls.
 - Mobile layout has smoke coverage, but dense tables still need more deliberate small-screen design.
-- The old Monthly Review modal renderer still exists as a compatibility fallback, but the intended workflow is now page-native.
+- The old Monthly Review modal renderer still exists as a compatibility fallback, but the intended Month Close workflow is now page-native.
 - Transactions has pulled forward part of Phase 5; future ledger work should focus on richer income/reserve/debt linking and deeper import batch inspection rather than rebuilding the workspace shell.
-- Current active slice: Phase 5 transaction workflow depth.
-- Next handoff: continue Phase 5 income/reserve/debt linking depth, then Phase 8 review history/monthly summary/reserve review.
+- Current active slice: IA consolidation into the Finance Master operating system model.
+- Next handoff: validate the seven-board shell, then continue Phase 5 income/reserve/debt linking depth and Phase 8 review history/monthly summary/reserve review.
 
 ## Phase 1A: Hardening The Operating Core
 

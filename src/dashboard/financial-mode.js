@@ -41,18 +41,38 @@ window.FinancialMode = (function () {
         activeSection: 'finance-master.layout.active-section'
     };
 
-    const SECTIONS = ['dashboard', 'ledger', 'invoices', 'planning', 'review', 'reports', 'data', 'settings', 'reserves', 'fixedCosts'];
+    const SECTIONS = ['dashboard', 'ledger', 'planning', 'review', 'reserves', 'reports', 'data'];
     const SECTION_ALIASES = {
+        overview: 'dashboard',
         today: 'dashboard',
         transactions: 'ledger',
-        income: 'invoices',
-        invoices: 'invoices',
+        ledger: 'ledger',
+        'cash-movement': 'ledger',
+        cashmovement: 'ledger',
+        cashMovement: 'ledger',
+        income: 'planning',
+        invoices: 'planning',
         cashflow: 'planning',
         planning: 'planning',
+        review: 'review',
+        'monthly-review': 'review',
+        monthlyreview: 'review',
+        monthlyReview: 'review',
+        'month-close': 'review',
+        monthclose: 'review',
+        monthClose: 'review',
+        treasury: 'reserves',
+        reserves: 'reserves',
+        obligations: 'reserves',
+        fixedcosts: 'reserves',
+        fixedCosts: 'reserves',
+        reports: 'reports',
+        insights: 'reports',
+        system: 'data',
+        data: 'data',
         import: 'data',
-        obligations: 'fixedCosts',
-        fixedcosts: 'fixedCosts',
-        fixedCosts: 'fixedCosts'
+        backup: 'data',
+        settings: 'data'
     };
 
     // Elements
@@ -754,7 +774,7 @@ window.FinancialMode = (function () {
             <div class="fin-ledger-status-strip" aria-label="Ledger status">
                 <div><span>Records</span><strong>${transactions.length}</strong><small>${allTransactions.length} total</small></div>
                 <div><span>Net movement</span><strong class="${netMovement >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${netMovement >= 0 ? '+' : '-'}${formatCurrency(Math.abs(netMovement))}</strong><small>Current filters</small></div>
-                <div><span>Need review</span><strong>${reviewTransactions.length}</strong><small>Classification or evidence</small></div>
+                <div><span>Open items</span><strong>${reviewTransactions.length}</strong><small>Classification or evidence</small></div>
                 <div><span>Matched payments</span><strong>${matchedPayments}</strong><small>Linked obligations</small></div>
             </div>
         `;
@@ -1198,7 +1218,7 @@ window.FinancialMode = (function () {
                 <div class="widget ui-card glass fin-card fin-monthly-review-workspace">
                     <div class="fin-section-heading-row">
                         <div>
-                            <div class="widget-title ui-title">${reviewDue ? 'Monthly review due' : 'Monthly review current'}</div>
+                            <div class="widget-title ui-title">${reviewDue ? 'Month Close due' : 'Month Close closed'}</div>
                             <div class="fin-helper-text">Reconcile cash accounts, inspect the open queue, and leave one operating note.</div>
                             <div class="fin-operating-meta">Last reviewed ${formatShortDate(currentReview && currentReview.lastReviewedAt)}</div>
                         </div>
@@ -1671,10 +1691,7 @@ window.FinancialMode = (function () {
                 <div class="widget ui-card glass fin-card fin-settings-card">
                     <div class="widget-title ui-title">System boundaries</div>
                     <div class="fin-helper-text">
-                        Finance Master stays local-first. Backup, restore, CSV import, sample data, and reset controls live in Import & Backup.
-                    </div>
-                    <div class="fin-settings-actions">
-                        <button class="ui-btn ui-btn--secondary" type="button" data-action="FinancialMode.setSection" data-action-args="'data'">Open Import & Backup</button>
+                        Finance Master stays local-first. Backup, restore, CSV import, sample data, reset controls, and app preferences live on this System board.
                     </div>
                     <div class="fin-integrations-grid">
                         <div class="fin-integration-item">
@@ -2017,8 +2034,8 @@ window.FinancialMode = (function () {
         const type = String(item && item.type || '');
         const id = escapeActionArg(item && item.id || '');
         if (String(item && item.id) === 'month-end-gap') return { label: 'Adjust reserves', action: 'FinancialMode.setSection', args: "'reserves'" };
-        if (String(item && item.id) === 'monthly-review') return { label: 'Start review', action: 'FinancialMode.setSection', args: "'review'" };
-        if (type === 'Overdue') return { label: 'Review income', action: 'FinancialMode.setSection', args: "'invoices'" };
+        if (String(item && item.id) === 'monthly-review') return { label: 'Start close', action: 'FinancialMode.setSection', args: "'review'" };
+        if (type === 'Overdue') return { label: 'Review income', action: 'FinancialMode.setSection', args: "'planning'" };
         if (type === 'Due soon') return { label: 'Review obligation', action: 'FinancialMode.setSection', args: "'review'" };
         if (type === 'Missing forecast input') return { label: 'Add income', action: 'FinancialMode.openAddModal', args: "'income'" };
         if (type === 'Missing plan' && /reserve/i.test(String(item && item.title || ''))) {
@@ -2075,9 +2092,9 @@ window.FinancialMode = (function () {
             }] : []),
             ...(reviewDue ? [{
                 type: 'Needs review',
-                title: 'Monthly review',
+                title: 'Month Close',
                 amount: null,
-                action: 'Start review',
+                action: 'Start close',
                 id: 'monthly-review'
             }] : []),
             ...sourceItems,
@@ -2261,8 +2278,8 @@ window.FinancialMode = (function () {
         const missingInput = actions.find((item) => /income|reserve/i.test(item.title + item.reason));
         let decision = {
             title: 'No urgent decision',
-            body: 'The cockpit is steady. A short monthly review will keep it that way.',
-            buttons: [{ label: 'Open monthly review', action: 'FinancialMode.setSection', args: "'review'" }]
+            body: 'The cockpit is steady. A short month close will keep it that way.',
+            buttons: [{ label: 'Open Month Close', action: 'FinancialMode.setSection', args: "'review'" }]
         };
 
         if (expectedMonthEnd < 0) {
@@ -2270,7 +2287,7 @@ window.FinancialMode = (function () {
                 title: `Projected month-end gap: ${formatCurrency(Math.abs(expectedMonthEnd))}`,
                 body: 'Confirm expected income or adjust reserves before reviewing smaller obligations.',
                 buttons: [
-                    { label: 'Review income', action: 'FinancialMode.setSection', args: "'invoices'" },
+                    { label: 'Review income', action: 'FinancialMode.setSection', args: "'planning'" },
                     { label: 'Adjust reserves', action: 'FinancialMode.setSection', args: "'reserves'" },
                     { label: 'Open forecast', action: 'FinancialMode.setSection', args: "'planning'" }
                 ]
@@ -2279,7 +2296,7 @@ window.FinancialMode = (function () {
             decision = {
                 title: overdue.title,
                 body: overdue.reason,
-                buttons: [{ label: 'Open review', action: 'FinancialMode.setSection', args: "'review'" }]
+                buttons: [{ label: 'Open Month Close', action: 'FinancialMode.setSection', args: "'review'" }]
             };
         } else if (missingPlan) {
             decision = {
@@ -2289,9 +2306,9 @@ window.FinancialMode = (function () {
             };
         } else if (isWeeklyReviewDue()) {
             decision = {
-                title: 'Monthly review is ready',
+                title: 'Month Close is ready',
                 body: 'Close the operating loop before making smaller adjustments.',
-                buttons: [{ label: 'Start review', action: 'FinancialMode.setSection', args: "'review'" }]
+                buttons: [{ label: 'Start close', action: 'FinancialMode.setSection', args: "'review'" }]
             };
         } else if (missingInput) {
             decision = {
@@ -2326,7 +2343,7 @@ window.FinancialMode = (function () {
 
     function renderDashboardAction(item) {
         if (String(item && item.kind) === 'weekly_review') {
-            return `<button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Close monthly review</button>`;
+            return `<button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Close month</button>`;
         }
         return renderReviewQueueActions(item);
     }
@@ -2460,7 +2477,7 @@ window.FinancialMode = (function () {
                             <span>Obligations</span>
                             <strong>${pluralize(activeObligations.length, 'active group')}</strong>
                             <span>${obligationsNeedingReview} need review</span>
-                            <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'fixedCosts'">Open obligations</button>
+                            <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'reserves'">Open Treasury</button>
                         </div>
                     </div>
                 </div>
@@ -2538,7 +2555,7 @@ window.FinancialMode = (function () {
                             <div class="widget-title ui-title">Obligations</div>
                             <div class="fin-helper-text">Costs that are already spoken for. Overdue first, then the next 90 days.</div>
                         </div>
-                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Open Review</button>
+                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Open Month Close</button>
                     </div>
                     <div class="fin-status-grid">
                         <div class="fin-status-card">${renderStatusPill('overdue')}<strong>${overdue.length}</strong><span>${formatCurrency(overdue.reduce((sum, item) => sum + Number(item.amount || 0), 0))}</span></div>
@@ -2552,7 +2569,7 @@ window.FinancialMode = (function () {
                             <span>${renderStatusPill(entry.status)} ${formatCurrency(entry.amount)}</span>
                         </div>
                     `).join('') : renderCompactEmpty('Map out your obligations. Add fixed costs to see what is due next.')}
-                    ${overdue.length + dueSoon.length + upcoming.length > obligations.length ? '<div class="fin-helper-text">Open Review to resolve the full obligation queue.</div>' : ''}
+                    ${overdue.length + dueSoon.length + upcoming.length > obligations.length ? '<div class="fin-helper-text">Open Month Close to resolve the full obligation queue.</div>' : ''}
                 </div>
             </section>
         `;
@@ -2566,9 +2583,10 @@ window.FinancialMode = (function () {
                 <div class="widget ui-card glass fin-card fin-review-list-card">
                     <div class="fin-section-heading-row">
                         <div>
-                            <div class="widget-title ui-title">Review Queue</div>
+                            <div class="widget-title ui-title">Open Items</div>
                             <div class="fin-helper-text">${unresolvedCount} unresolved · Only items that need a classification, decision, or check.</div>
                         </div>
+                        <button class="ui-btn ui-btn--secondary" type="button" data-action="FinancialMode.setSection" data-action-args="'ledger'">Open Cash Movement</button>
                     </div>
                     ${queue.length ? queue.map((item) => renderReviewRow(item, renderReviewQueueActions(item))).join('') : renderCompactEmpty('All items reviewed and reconciled.')}
                 </div>
@@ -2778,16 +2796,16 @@ window.FinancialMode = (function () {
                     <div class="fin-liquidity-copy">${horizonText}</div>
                     <div class="fin-liquidity-actions">
                         <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense'">Review recurring costs</button>
-                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Open monthly review</button>
+                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Open Month Close</button>
                     </div>
                 </div>
                 ${reviewDue ? `
                     <div class="widget ui-card glass fin-card fin-review-prompt">
                         <div>
-                            <div class="widget-title ui-title">Monthly review due</div>
+                            <div class="widget-title ui-title">Month Close due</div>
                             <div class="fin-helper-text">Reconcile cash accounts, scan costs and pipeline, then leave one note for the week ahead.</div>
                         </div>
-                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Start review</button>
+                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Start close</button>
                     </div>
                 ` : ''}
             </section>
@@ -3117,17 +3135,13 @@ window.FinancialMode = (function () {
     }
 
     function renderScenarioLab() {
-        const adviceItems = buildStrategicAdviceItems();
-        const visibleAdvice = adviceExpanded ? adviceItems : adviceItems.slice(0, 2);
-        const showToggle = adviceItems.length > 2;
-
         return `
             <section class="fin-section">
                 <div class="fin-lab-grid">
                     <div class="widget ui-card glass fin-card">
                         <div class="drag-handle">⋮⋮</div>
-                        <div class="widget-title ui-title">Simulator Lab</div>
-                        <div class="fin-helper-text">Stress-test your runway with freelancer-specific scenarios.</div>
+                        <div class="widget-title ui-title">Stress Test</div>
+                        <div class="fin-helper-text">Advanced scenario controls for testing runway pressure.</div>
                         
                         <div class="fin-slider-group" style="margin-top: 1rem;">
                             <label class="settings-check">
@@ -3140,27 +3154,6 @@ window.FinancialMode = (function () {
                             ${renderSlider('Income Probability Floor', 'probFloor', labState.probFloor, 0, 100, '%')}
                             ${renderSlider('Monthly Burn Delta', 'burnDelta', labState.burnDelta, -30, 30, '%')}
                         </div>
-                    </div>
-                    <div class="widget ui-card glass fin-card">
-                        <div class="drag-handle">⋮⋮</div>
-                        <div class="widget-title ui-title">Strategic Advice</div>
-                        <div class="fin-advice-intro">
-                            <span class="fin-advice-icon" aria-hidden="true">
-                                <svg viewBox="0 0 20 20" class="fin-advice-icon-svg">
-                                    <circle cx="10" cy="10" r="6.5"></circle>
-                                    <path d="M10 5.2V10l3.2 2.2"></path>
-                                </svg>
-                            </span>
-                            <span>Based on your current state:</span>
-                        </div>
-                        <ul class="fin-advice-list">
-                            ${visibleAdvice.map((item) => `<li>${item}</li>`).join('')}
-                        </ul>
-                        ${showToggle ? `
-                            <button class="fin-inline-link" type="button" data-fin-action="toggle-advice">
-                                ${adviceExpanded ? 'Show less' : 'Show more'}
-                            </button>
-                        ` : ''}
                         <div id="fin-lab-scenario" class="fin-scenario-line">${renderScenarioSummary()}</div>
                     </div>
                 </div>
