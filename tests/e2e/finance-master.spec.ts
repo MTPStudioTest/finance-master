@@ -420,6 +420,18 @@ test('CSV import previews accepted, duplicate, and rejected rows and remains rev
   await expect(page.getByText('Saved mapping: release-bank.csv', { exact: true })).toBeVisible();
   await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
 
+  await page.getByRole('button', { name: 'Cash Movement', exact: true }).click();
+  await page.getByLabel('Search ledger').fill('Release deposit');
+  await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
+  await page.locator('.fin-transaction-row').filter({ hasText: 'Release deposit' }).getByRole('button', { name: 'Inspect transaction', exact: true }).click();
+  const inspector = page.getByLabel('Transaction inspector');
+  await expect(inspector.getByText('CSV batch', { exact: true })).toBeVisible();
+  await expect(inspector.getByText('2 imported · 1 duplicate (duplicates skipped) · 1 rejected', { exact: true })).toBeVisible();
+  await expect(inspector.getByText('Batch totals', { exact: true })).toBeVisible();
+  await expect(inspector.getByText('€500.00 in · €45.00 out', { exact: true })).toBeVisible();
+  await expect(inspector.getByText('Batch range', { exact: true })).toBeVisible();
+  await expect(inspector.getByText('2026-06-01 to 2026-06-02', { exact: true })).toBeVisible();
+
   await openQuickAdd(page);
   await chooseQuickAction(page, /Import CSV/);
   await page.locator('#modal-csv-file').setInputFiles({
@@ -595,6 +607,16 @@ test('review queue actions categorize, match, update pipeline, and add debt plan
   await page.locator('#modal-match-obligation-id').selectOption({ index: 1 });
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.fin-review-row').filter({ hasText: 'Matchable rent payment' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Cash Movement', exact: true }).click();
+  await page.getByLabel('Search ledger').fill('Matchable rent payment');
+  await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
+  await page.locator('.fin-transaction-row').filter({ hasText: 'Matchable rent payment' }).getByRole('button', { name: 'Inspect transaction', exact: true }).click();
+  const matchedInspector = page.getByLabel('Transaction inspector');
+  await expect(matchedInspector.getByText('Linked obligation', { exact: true })).toBeVisible();
+  await expect(matchedInspector.getByText('Payment link', { exact: true })).toBeVisible();
+  await expect(matchedInspector.getByText('Matched to obligation', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Month Close', exact: true }).click();
 
   const pipelineRow = page.locator('.fin-review-row').filter({ hasText: 'Risky income assumption' }).first();
   await pipelineRow.getByRole('button', { name: 'Edit income review', exact: true }).click();

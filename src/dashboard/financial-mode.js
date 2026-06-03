@@ -1030,14 +1030,43 @@ window.FinancialMode = (function () {
             .slice(0, 2);
     }
 
+    function ledgerImportBatch(entry) {
+        const batchId = String(entry && entry.importBatchId || '').trim();
+        if (!batchId || !window.Store || typeof window.Store.getImportState !== 'function') return null;
+        const state = window.Store.getImportState();
+        return safeArray(state && state.batches).find((batch) => String(batch && batch.id || '') === batchId) || null;
+    }
+
+    function ledgerImportBatchSummary(batch) {
+        if (!batch) return [];
+        const imported = Number(batch.importedCount ?? safeArray(batch.fingerprints).length) || 0;
+        const duplicates = Number(batch.duplicateCount || 0);
+        const duplicateImported = Number(batch.duplicateImportedCount || 0);
+        const rejected = Number(batch.rejectedCount || 0);
+        const policy = batch.duplicatePolicy === 'import' ? 'duplicates imported' : 'duplicates skipped';
+        const totals = `${formatCurrency(Number(batch.incomeTotal || 0))} in · ${formatCurrency(Number(batch.expenseTotal || 0))} out`;
+        const dateRange = batch.dateFrom && batch.dateTo
+            ? (batch.dateFrom === batch.dateTo ? batch.dateFrom : `${batch.dateFrom} to ${batch.dateTo}`)
+            : '';
+        return [
+            ['CSV batch', `${imported} imported · ${duplicates} duplicate${duplicates === 1 ? '' : 's'} (${policy}) · ${rejected} rejected`],
+            ['Batch totals', totals],
+            ['Batch range', dateRange],
+            ['Duplicates included', duplicateImported ? String(duplicateImported) : '']
+        ];
+    }
+
     function ledgerEvidenceItems(entry) {
+        const batch = ledgerImportBatch(entry);
         return [
             ['Source', entry.source || 'local ledger'],
             ['Source file', entry.sourceFile || ''],
             ['Import batch', entry.importBatchId || ''],
+            ...ledgerImportBatchSummary(batch),
             ['Fingerprint', entry.fingerprint || ''],
             ['Linked income', entry.linkedIncomeTitle || entry.linkedIncomeId || ''],
             ['Linked obligation', entry.linkedObligationTitle || entry.obligationTitle || entry.obligationId || ''],
+            ['Payment link', entry.obligationId ? 'Matched to obligation' : ''],
             ['Reversal', entry.reversalOf ? `Reversal of ${entry.reversalOf}` : (entry.reversedBy ? `Reversed by ${entry.reversedBy}` : '')],
             ['Record ID', ledgerTransactionId(entry)],
             ['Transaction entity', entry.transactionEntityId || '']
