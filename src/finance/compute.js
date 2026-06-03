@@ -525,10 +525,29 @@
             .reduce(function (sum, entry) { return sum + ((Number(entry.amount) || 0) * Events.clampProbability(entry.probability)); }, 0);
         var next30ObligationTotal = next30Obligations
             .reduce(function (sum, entry) { return sum + (Number(entry.amount) || 0); }, 0);
+        var confirmedShortTermObligations = next30Obligations
+            .filter(function (entry) { return String(entry && entry.type || '') !== 'debt'; })
+            .reduce(function (sum, entry) { return sum + (Number(entry.amount) || 0); }, 0);
+        var debtPaymentsDueSoon = debtPlansForBurn
+            .reduce(function (sum, debt) {
+                return sum + (Number(debt && debt.minimumPaymentMonthly) || Number(debt && debt.minimumPayment) || 0);
+            }, 0);
         var actualCash = round(totalCash);
         var protectedCash = round(reservedCash);
         var committedShortTermObligations = round(next30ObligationTotal);
         var availableCash = round(actualCash - protectedCash - committedShortTermObligations);
+        var minimumBufferDays = 7;
+        var minimumBuffer = round(totalBurn > 0 ? (totalBurn * minimumBufferDays / 30) : 0);
+        var safeToSpendWarnings = [];
+        if (totalBurn <= 0) safeToSpendWarnings.push('Minimum buffer is unavailable until monthly burn is known.');
+        if (debtAccounts.some(function (debt) {
+            return (Number(debt && debt.outstanding) || 0) > 0
+                && !(Number(debt && debt.minimumPaymentMonthly) > 0)
+                && !(Number(debt && debt.minimumPayment) > 0);
+        })) {
+            safeToSpendWarnings.push('Some debt items still need payment plans.');
+        }
+        var safeToSpend = round(actualCash - protectedCash - confirmedShortTermObligations - debtPaymentsDueSoon - minimumBuffer);
         var debtRemaining = round(debtAccounts.reduce(function (sum, debt) {
             return sum + (Number(debt && debt.outstanding) || 0);
         }, 0));
@@ -544,6 +563,13 @@
                 { label: 'This money is protected', value: protectedCash, operation: 'subtract' },
                 { label: 'Due within 30 days', value: committedShortTermObligations, operation: 'subtract' }
             ]),
+            safeToSpend: metricExplanation('safeToSpend', 'Safe-to-Spend', safeToSpend, [
+                { label: 'Actual cash', value: actualCash, operation: 'add' },
+                { label: 'This money is protected', value: protectedCash, operation: 'subtract' },
+                { label: 'Confirmed obligations due within 30 days', value: confirmedShortTermObligations, operation: 'subtract' },
+                { label: 'Debt payments due soon', value: debtPaymentsDueSoon, operation: 'subtract' },
+                { label: 'Minimum 7-day buffer', value: minimumBuffer, operation: 'subtract' }
+            ], safeToSpendWarnings),
             monthlyBurnRate: metricExplanation('monthlyBurnRate', 'Monthly burn rate', totalBurn, [
                 { label: 'Recurring costs', value: recurringBurn, operation: 'add' },
                 { label: 'Debt payment plans', value: debtBurn, operation: 'add' }
@@ -564,7 +590,12 @@
             reservedCash: protectedCash,
             trulyAvailableCash: trulyAvailable,
             availableCash: availableCash,
+            safeToSpend: safeToSpend,
             committedShortTermObligations: committedShortTermObligations,
+            confirmedShortTermObligations: round(confirmedShortTermObligations),
+            debtPaymentsDueSoon: round(debtPaymentsDueSoon),
+            minimumBuffer: minimumBuffer,
+            minimumBufferDays: minimumBufferDays,
             shortTermObligationWindowDays: 30,
             reserveBuckets: reserveBuckets,
             monthlyPersonalBurn: round(personalBurn),
@@ -822,7 +853,12 @@ var snapshot = {
             protectedCash: treasury.protectedCash,
             trulyAvailableCash: treasury.trulyAvailableCash,
             availableCash: treasury.availableCash,
+            safeToSpend: treasury.safeToSpend,
             committedShortTermObligations: treasury.committedShortTermObligations,
+            confirmedShortTermObligations: treasury.confirmedShortTermObligations,
+            debtPaymentsDueSoon: treasury.debtPaymentsDueSoon,
+            minimumBuffer: treasury.minimumBuffer,
+            minimumBufferDays: treasury.minimumBufferDays,
             monthlyPersonalBurn: treasury.monthlyPersonalBurn,
             monthlyBusinessBurn: treasury.monthlyBusinessBurn,
             totalMonthlyBurn: treasury.totalMonthlyBurn,

@@ -829,57 +829,128 @@ window.FinancialMode = (function () {
             const reviewState = String(entry && entry.reviewStatus || 'clear').toLowerCase();
             const accountLabel = entry.accountName || entry.fromAccountName || entry.toAccountName || 'Account';
             const categoryLabel = entry.categoryId || 'uncategorized';
-            const sourceLabel = entry.sourceFile || entry.source || 'local ledger';
             const evidence = ledgerEvidenceItems(entry);
             const matchSuggestions = ledgerPaymentMatchSuggestions(entry);
             const incomeSuggestions = ledgerIncomeMatchSuggestions(entry);
+            const ledgerType = String(entry && (entry.ledgerType || entry.type) || 'record').replace(/[._-]/g, ' ');
+            const sourceHuman = (() => {
+                const source = String(entry && entry.source || '').trim();
+                if (entry.importBatchId || entry.sourceFile) return 'Imported from CSV';
+                if (source === 'obligation.review') return 'Created from obligation review';
+                if (source === 'pipeline-settlement') return 'Created from income settlement';
+                if (source === 'demo') return 'Sample record';
+                if (source === 'manual' || source === 'manual-ledger') return 'Added manually';
+                return source ? source.replace(/[._-]/g, ' ') : 'Local record';
+            })();
+            const linkedItem = (() => {
+                if (entry.obligationId || entry.linkedObligationTitle || entry.obligationTitle) {
+                    return {
+                        label: 'Linked to',
+                        title: entry.linkedObligationTitle || entry.obligationTitle || entry.obligationId,
+                        copy: 'Payment matched to monthly obligation.',
+                        actionLabel: 'Open obligation',
+                        action: 'openEditModal',
+                        args: `'obligationPayment', '${escapeActionArg(entry.obligationId || id)}'`,
+                    };
+                }
+                if (entry.linkedIncomeTitle || entry.linkedIncomeId) {
+                    return {
+                        label: 'Linked to',
+                        title: entry.linkedIncomeTitle || entry.linkedIncomeId,
+                        copy: 'Payment matched to expected income.',
+                        actionLabel: 'Open income',
+                        action: 'openEditModal',
+                        args: `'income', '${escapeActionArg(entry.linkedIncomeId || id)}'`,
+                    };
+                }
+                if (entry.linkedDebtTitle || entry.linkedDebtId) {
+                    return {
+                        label: 'Linked to',
+                        title: entry.linkedDebtTitle || entry.linkedDebtId,
+                        copy: 'Payment connected to debt pressure.',
+                        actionLabel: 'Open debt',
+                        action: 'openEditModal',
+                        args: `'debt', '${escapeActionArg(entry.linkedDebtId)}'`,
+                    };
+                }
+                const reserveMovement = ledgerReserveMovementLabel(entry);
+                if (reserveMovement) {
+                    return {
+                        label: 'Reserve movement',
+                        title: reserveMovement,
+                        copy: 'This movement affects protected cash.',
+                        actionLabel: 'Open Treasury',
+                        action: 'FinancialMode.setSection',
+                        args: "'reserves'",
+                    };
+                }
+                if (entry.reversalOf || entry.reversedBy) {
+                    return {
+                        label: 'Reversal',
+                        title: entry.reversalOf ? 'This reverses another record' : 'This record was reversed',
+                        copy: entry.reversalOf ? 'A correction was recorded for an earlier transaction.' : 'A later correction reversed this transaction.',
+                    };
+                }
+                return null;
+            })();
+            const explanation = linkedItem
+                ? `${entry.description || 'This record'} ${linkedItem.copy.charAt(0).toLowerCase()}${linkedItem.copy.slice(1)}`
+                : (reviewState === 'needs_review'
+                    ? 'This record needs your eyes before it can support the forecast.'
+                    : 'This record is part of your local cash movement history.');
             const chips = [
-                ledgerNeedsCategory(entry) ? 'Needs category' : '',
-                ledgerNeedsMatch(entry) ? 'Match obligation' : '',
-                reviewState !== 'clear' ? entry.reviewStatus || 'Needs review' : '',
-                entry.linkedIncomeTitle || entry.linkedIncomeId ? 'Linked income' : '',
-                entry.obligationId || entry.linkedObligationTitle ? 'Linked obligation' : '',
-                entry.importBatchId ? 'CSV batch' : '',
-                entry.reversalOf || entry.reversedBy ? 'Reversal' : ''
+                reviewState === 'needs_review' ? 'Needs review' : 'Reviewed',
+                linkedItem ? 'Matched' : '',
+                ledgerType,
+                entry.scope || 'shared',
             ].filter(Boolean);
             const primaryEdit = ledgerNeedsMatch(entry)
                 ? financeIconButton({ action: 'openEditModal', args: `'paymentMatch', '${escapeActionArg(id)}'`, label: 'Edit payment match', icon: 'success', tone: 'success' })
                 : financeIconButton({ action: 'openEditModal', args: `'transactionReview', '${escapeActionArg(id)}'`, label: 'Edit transaction review' });
             const facts = [
-                ['Date', formatShortDate(entry.timestamp)],
-                ['Account', accountLabel],
                 ['Category', categoryLabel],
                 ['Scope', entry.scope || 'shared'],
-                ['Review', entry.reviewStatus || 'clear'],
-                ['Source', sourceLabel]
+                ['Source', sourceHuman],
+                ['Review', reviewState === 'needs_review' ? 'Needs review' : 'Reviewed']
             ];
-            const evidenceHighlights = evidence
-                .filter(([label]) => ['CSV batch', 'Batch totals', 'Batch range', 'Linked income', 'Linked obligation', 'Linked debt', 'Reserve movement', 'Payment link', 'Record ID'].includes(String(label)))
-                .slice(0, 6);
+            const technicalRows = [
+                ...evidence,
+                ['Raw source key', entry.source || ''],
+                ['Internal linked obligation ID', entry.obligationId || ''],
+                ['Internal linked income ID', entry.linkedIncomeId || ''],
+                ['Internal linked debt ID', entry.linkedDebtId || ''],
+                ['Internal reserve ID', entry.linkedReserveId || ''],
+                ['Created timestamp', entry.timestamp || '']
+            ].filter((item, index, list) => String(item[1] || '').trim()
+                && list.findIndex((candidate) => candidate[0] === item[0] && candidate[1] === item[1]) === index);
             return `
                 <div class="fin-transaction-row ${mode === 'review' ? 'fin-transaction-row--review' : ''}" data-fin-transaction-id="${escapeHtml(id)}">
                     <div class="fin-transaction-row-main">
                         <div class="fin-transaction-row-frame">
                             <span>
                                 <strong>${escapeHtml(entry.description || 'Transaction')}</strong>
-                                <small>${escapeHtml([formatShortDate(entry.timestamp), categoryLabel, accountLabel, entry.scope || 'shared'].filter(Boolean).join(' · '))}</small>
+                                <small>${escapeHtml([formatShortDate(entry.timestamp), accountLabel].filter(Boolean).join(' · '))}</small>
                             </span>
                             <span class="fin-transaction-row-primary">
                                 <strong class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</strong>
                                 ${primaryEdit}
                             </span>
                         </div>
-                        <div class="fin-transaction-detail-grid">
+                        <div class="fin-chip-row">${chips.map((chip) => `<span class="fin-status-pill">${escapeHtml(chip)}</span>`).join('')}</div>
+                        <p class="fin-transaction-human-copy">${escapeHtml(explanation)}</p>
+                        ${linkedItem ? `
+                            <div class="fin-transaction-link-card">
+                                <span>${escapeHtml(linkedItem.label)}</span>
+                                <strong>${escapeHtml(linkedItem.title)}</strong>
+                                <small>${escapeHtml(linkedItem.copy)}</small>
+                                ${linkedItem.action ? `<button class="fin-mini-btn" type="button" data-action="${escapeHtml(linkedItem.action)}" data-action-args="${escapeHtml(linkedItem.args || '')}">${escapeHtml(linkedItem.actionLabel || 'Open')}</button>` : ''}
+                            </div>
+                        ` : ''}
+                        <div class="fin-transaction-compact-details">
                             ${facts.map(([label, value]) => `
                                 <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
                             `).join('')}
                         </div>
-                        <div class="fin-chip-row">${chips.map((chip) => `<span class="fin-status-pill">${escapeHtml(chip)}</span>`).join('')}</div>
-                        ${evidenceHighlights.length ? `
-                            <div class="fin-transaction-evidence-grid">
-                                ${evidenceHighlights.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('')}
-                            </div>
-                        ` : ''}
                         ${matchSuggestions.length ? `
                             <div class="fin-transaction-suggestion">
                                 <span class="fin-eyebrow">Suggested match</span>
@@ -892,9 +963,19 @@ window.FinancialMode = (function () {
                                 ${incomeSuggestions.map((suggestion) => `<strong>${escapeHtml(suggestion.title)}</strong><small>${escapeHtml(suggestion.reason)}</small>`).join('')}
                             </div>
                         ` : ''}
-                        <div class="fin-transaction-row-footer">
-                            <small>Record ID ${escapeHtml(id)}</small>
-                            <button class="fin-mini-btn" type="button" data-fin-action="reverse-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">Reverse transaction</button>
+                        <details class="fin-transaction-technical">
+                            <summary>Technical details</summary>
+                            <div>
+                                ${technicalRows.map(([label, value]) => `<p><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></p>`).join('')}
+                            </div>
+                        </details>
+                        <div class="fin-transaction-actions">
+                            <div>
+                                ${ledgerNeedsMatch(entry) ? '' : `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'paymentMatch', '${escapeActionArg(id)}'">Match / link</button>`}
+                            </div>
+                            <div class="fin-transaction-danger-actions">
+                                <button class="fin-mini-btn fin-mini-btn--danger" type="button" data-fin-action="reverse-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">Reverse transaction</button>
+                            </div>
                         </div>
                     </div>
                 </div>

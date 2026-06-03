@@ -555,13 +555,88 @@ test('treasury model separates reserved cash from truly available cash', () => {
   assert.equal(result.treasury.trulyAvailableCash, 5000);
   assert.equal(result.treasury.committedShortTermObligations, 1000);
   assert.equal(result.treasury.availableCash, 4000);
+  assert.equal(result.treasury.safeToSpend, 3766.67);
+  assert.equal(result.treasury.confirmedShortTermObligations, 1000);
+  assert.equal(result.treasury.debtPaymentsDueSoon, 0);
+  assert.equal(result.treasury.minimumBuffer, 233.33);
   assert.equal(result.treasury.totalMonthlyBurn, 1000);
   assert.equal(result.treasury.runwayMonths, 4);
   assert.equal(result.snapshot.realBalance, 6800);
   assert.equal(result.snapshot.trulyAvailableCash, 5000);
   assert.equal(result.snapshot.availableCash, 4000);
+  assert.equal(result.snapshot.safeToSpend, 3766.67);
   assert.equal(result.explanations.availableCash.parts.map((part) => part.label).join('|'), 'Actual cash|This money is protected|Due within 30 days');
+  assert.equal(result.explanations.safeToSpend.parts.map((part) => part.label).join('|'), 'Actual cash|This money is protected|Confirmed obligations due within 30 days|Debt payments due soon|Minimum 7-day buffer');
   assert.equal(result.explanations.runway.parts[0].label, 'Available cash');
+});
+
+test('safe-to-spend excludes expected income and reserves debt pressure plus buffer', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-02T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-main',
+      type: 'asset.account_set',
+      amount: 5000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating cash', balance: 5000, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'cash-vat',
+      type: 'asset.account_set',
+      amount: 1000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-vat',
+      metadata: { name: 'VAT reserve', balance: 1000, scope: 'business', bucket: 'vat_reserve', reserved: true },
+    },
+    {
+      id: 'software-recurring',
+      type: 'expense.recurring_set',
+      amount: 900,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'software-recurring',
+      metadata: { category: 'Studio tools', monthlyAmount: 900, dueDay: 12, frequency: 'monthly', scope: 'business' },
+    },
+    {
+      id: 'debt-card',
+      type: 'debt.added',
+      amount: 1200,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'debt-card',
+      metadata: { name: 'Card balance', outstanding: 1200, minimumPayment: 300, frequency: 'monthly', scope: 'business' },
+    },
+    {
+      id: 'income-expected',
+      type: 'pipeline.created',
+      amount: 10000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'income-expected',
+      metadata: { title: 'Expected launch payment', value: 10000, probability: 0.9, status: 'confirmed', expectedDateISO: '2026-06-15', scope: 'business' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+
+  assert.equal(result.treasury.actualCash, 6000);
+  assert.equal(result.treasury.protectedCash, 1000);
+  assert.equal(result.treasury.availableCash, 4100);
+  assert.equal(result.treasury.safeToSpend, 3520);
+  assert.equal(result.treasury.confirmedShortTermObligations, 900);
+  assert.equal(result.treasury.debtPaymentsDueSoon, 300);
+  assert.equal(result.treasury.minimumBuffer, 280);
+  assert.equal(result.treasury.incomeScenarios.expected, 10100);
+  assert.equal(result.explanations.safeToSpend.value, 3520);
+  assert.equal(result.explanations.safeToSpend.parts.find((part) => part.label === 'Debt payments due soon').value, 300);
 });
 
 test('treasury model classifies income scenarios and review items', () => {

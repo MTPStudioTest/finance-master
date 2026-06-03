@@ -1197,24 +1197,26 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     gap: 8px;
 }
 
-#dashboard-financial #fin-content-area .fin-transaction-detail-grid,
-#dashboard-financial #fin-content-area .fin-transaction-evidence-grid {
+#dashboard-financial #fin-content-area .fin-transaction-human-copy {
+    max-width: 68ch;
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.84rem;
+    line-height: 1.45;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-link-card {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 8px;
+    gap: 3px;
+    padding: 10px 11px;
+    border: 1px solid color-mix(in srgb, var(--fin-stress-low) 34%, transparent);
+    border-radius: var(--ds-radius-sm);
+    background: color-mix(in srgb, var(--fin-stress-low) 8%, transparent);
 }
 
-#dashboard-financial #fin-content-area .fin-transaction-detail-grid > div,
-#dashboard-financial #fin-content-area .fin-transaction-evidence-grid > div {
-    min-width: 0;
-    padding: 8px 9px;
-    border: 1px solid var(--ds-mode-surface-border);
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--ds-mode-surface) 46%, transparent);
-}
-
-#dashboard-financial #fin-content-area .fin-transaction-detail-grid span,
-#dashboard-financial #fin-content-area .fin-transaction-evidence-grid span {
+#dashboard-financial #fin-content-area .fin-transaction-link-card span,
+#dashboard-financial #fin-content-area .fin-transaction-compact-details span,
+#dashboard-financial #fin-content-area .fin-transaction-technical span {
     display: block;
     color: var(--text-tertiary);
     font-family: var(--font-mono);
@@ -1222,6 +1224,49 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     letter-spacing: 0.08em;
     line-height: 1.35;
     text-transform: uppercase;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-link-card .fin-mini-btn {
+    justify-self: start;
+    margin-top: 4px;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-compact-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px 18px;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-compact-details > div {
+    min-width: 0;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-compact-details strong,
+#dashboard-financial #fin-content-area .fin-transaction-technical strong {
+    overflow-wrap: anywhere;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-technical {
+    border-top: 1px solid var(--ds-mode-surface-border);
+    padding-top: 8px;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-technical summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-technical > div {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 8px 14px;
+    margin-top: 10px;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-technical p {
+    min-width: 0;
+    margin: 0;
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-suggestion {
@@ -1233,13 +1278,23 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     background: color-mix(in srgb, var(--fin-stress-low) 10%, transparent);
 }
 
-#dashboard-financial #fin-content-area .fin-transaction-row-footer {
+#dashboard-financial #fin-content-area .fin-transaction-actions {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
     border-top: 1px solid var(--ds-mode-surface-border);
     padding-top: 8px;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-actions > div {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-danger-actions {
+    justify-content: flex-end;
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-row strong,
@@ -3221,7 +3276,7 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     }
 
     #dashboard-financial #fin-content-area .fin-transaction-row-frame,
-    #dashboard-financial #fin-content-area .fin-transaction-row-footer {
+    #dashboard-financial #fin-content-area .fin-transaction-actions {
         align-items: stretch;
         flex-direction: column;
     }
