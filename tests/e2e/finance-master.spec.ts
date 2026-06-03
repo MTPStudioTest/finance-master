@@ -145,8 +145,50 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Insights', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Insights', exact: true })).toBeVisible();
-  await expect(page.getByText('Client Concentration', { exact: true })).toBeVisible();
+  await expect(page.getByText('Financial Diagnosis', { exact: true })).toBeVisible();
+  await expect(page.getByText('Risk Radar', { exact: true })).toBeVisible();
+  await expect(page.getByText('Pattern Memory', { exact: true })).toBeVisible();
+  await expect(page.getByText('Income Dependency', { exact: true })).toBeVisible();
+  await expect(page.getByText('Expense Gravity', { exact: true })).toBeVisible();
+  await expect(page.getByText('Debt Intelligence', { exact: true })).toBeVisible();
+  await expect(page.getByText('Reserve Discipline', { exact: true })).toBeVisible();
+  await expect(page.getByText('Scenario Lab', { exact: true })).toBeVisible();
+  await expect(page.getByText('Recommended Moves', { exact: true })).toBeVisible();
   await expect(page.getByText('Money Picture', { exact: true })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('insights diagnosis and scenario lab stay display-only', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Insights', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Insights', exact: true })).toBeVisible();
+  await expect(page.getByText('Financial Diagnosis', { exact: true })).toBeVisible();
+  await expect(page.getByText('Main risk', { exact: true })).toBeVisible();
+  await expect(page.getByText('Main lever', { exact: true })).toBeVisible();
+  await expect(page.getByText('Main opportunity', { exact: true })).toBeVisible();
+  await expect(page.locator('.fin-insights-risk-row')).toHaveCount(7);
+  await expect(page.getByText('Pattern Memory starts after your first month close', { exact: true })).toBeVisible();
+
+  const storedBefore = await page.evaluate(() => JSON.stringify({
+    recurringExpenses: window.Store.getFinancialReadModel().recurringExpenses,
+    debtAccounts: window.Store.getFinancialReadModel().debtAccounts,
+    reserveBuckets: window.Store.getFinancialReadModel().reserveBuckets,
+    pipelineDeals: window.Store.getFinancialReadModel().pipelineDeals,
+  }));
+  await page.getByRole('button', { name: '€50', exact: true }).click();
+  await page.getByRole('button', { name: '+€1,000', exact: true }).click();
+  await expect(page.getByText('Preview result', { exact: true })).toBeVisible();
+  await expect(page.getByText('Adjusted burn', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate((before) => JSON.stringify({
+    recurringExpenses: window.Store.getFinancialReadModel().recurringExpenses,
+    debtAccounts: window.Store.getFinancialReadModel().debtAccounts,
+    reserveBuckets: window.Store.getFinancialReadModel().reserveBuckets,
+    pipelineDeals: window.Store.getFinancialReadModel().pipelineDeals,
+  }) === before, storedBefore)).toBe(true);
+
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await expect(page.getByText('Recommended Moves', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -728,6 +770,11 @@ test('midnight mode keeps ledger and monthly review surfaces readable', async ({
   await expect(page.getByText('Treasury Pulse', { exact: true })).toBeVisible();
   await expectDarkLocalSurfaces(page, '.fin-treasury-pulse');
   await expectDarkLocalSurfaces(page, '.fin-treasury-pulse-grid > div');
+
+  await page.getByRole('button', { name: 'Insights', exact: true }).click();
+  await expect(page.getByText('Financial Diagnosis', { exact: true })).toBeVisible();
+  await expectDarkLocalSurfaces(page, '.fin-insights-hero');
+  await expectDarkLocalSurfaces(page, '.fin-insights-risk-row');
   expect(errors).toEqual([]);
 });
 
@@ -809,6 +856,11 @@ test('mobile and tablet capture surfaces avoid horizontal overflow', async ({ pa
     await expect(page.getByLabel('Note')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.keyboard.press('Escape');
+    const menuToggle = page.locator('[data-action="FinancialMode.toggleMobileNav"]');
+    if (await menuToggle.isVisible()) await menuToggle.click();
+    await page.getByRole('button', { name: 'Insights', exact: true }).click();
+    await expect(page.getByText('Financial Diagnosis', { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
   expect(errors).toEqual([]);
 });

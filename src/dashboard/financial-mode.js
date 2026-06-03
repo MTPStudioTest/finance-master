@@ -34,6 +34,14 @@ window.FinancialMode = (function () {
     let ledgerMoreFiltersOpen = false;
     let monthlyReviewError = '';
     let treasuryBurnCut = 0;
+    let insightsScenarioState = {
+        flexCut: 0,
+        debtReduction: 0,
+        recurringIncome: 0,
+        protectPct: 0,
+        pauseSavings: false,
+        reserveContribution: 0
+    };
 
     const UI_KEYS = {
         focusMode: 'finance-master.layout.focus-mode',
@@ -580,6 +588,26 @@ window.FinancialMode = (function () {
 
             if (action === 'set-treasury-burn-cut') {
                 treasuryBurnCut = Math.max(0, Number(actionEl.getAttribute('data-fin-cut') || '0') || 0);
+                render();
+                return;
+            }
+
+            if (action === 'set-insights-scenario') {
+                const key = String(actionEl.getAttribute('data-fin-scenario-key') || '').trim();
+                if (key === 'reset') {
+                    insightsScenarioState = {
+                        flexCut: 0,
+                        debtReduction: 0,
+                        recurringIncome: 0,
+                        protectPct: 0,
+                        pauseSavings: false,
+                        reserveContribution: 0
+                    };
+                } else if (key === 'pauseSavings') {
+                    insightsScenarioState.pauseSavings = !insightsScenarioState.pauseSavings;
+                } else if (Object.prototype.hasOwnProperty.call(insightsScenarioState, key)) {
+                    insightsScenarioState[key] = Math.max(0, Number(actionEl.getAttribute('data-fin-scenario-value') || '0') || 0);
+                }
                 render();
                 return;
             }
@@ -2443,127 +2471,548 @@ window.FinancialMode = (function () {
         `;
     }
 
-    function renderReportsSection() {
-        const rhythmData = buildCashflowRhythmData();
-        const totalCash = treasuryNumber('actualCash', treasuryNumber('totalCash', Number(currentSnapshot && currentSnapshot.realBalance) || 0));
-        const reservedCash = treasuryNumber('protectedCash', treasuryNumber('reservedCash', Number(currentSnapshot && currentSnapshot.reservedCash) || 0));
-        const snapshotAvailableCash = Number(currentSnapshot && currentSnapshot.availableCash);
-        const availableCash = treasuryNumber('availableCash', Number.isFinite(snapshotAvailableCash) ? snapshotAvailableCash : totalCash - reservedCash);
-        const reserveShare = totalCash > 0 ? Math.round((reservedCash / totalCash) * 100) : 0;
-        const health = resolveFinancialHeroSignal();
-        
-        // Client Concentration Pattern
-        const incomeSources = {};
-        let totalIncome = 0;
-        safeArray(currentData?.invoices).concat(safeArray(currentData?.pipelineDeals)).forEach(item => {
-            const client = String(item.client || item.title || 'Unknown').trim();
-            const amount = Number(item.amount || item.value) || 0;
-            if (amount > 0) {
-                incomeSources[client] = (incomeSources[client] || 0) + amount;
-                totalIncome += amount;
-            }
-        });
-        const concentration = Object.entries(incomeSources)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 4)
-            .map(([client, amount]) => {
-                const pct = totalIncome > 0 ? Math.round((amount / totalIncome) * 100) : 0;
-                return { client, amount, pct };
-            });
+    function insightsLevelRank(level) {
+        const ranks = { Low: 0, Medium: 1, High: 2, Critical: 3 };
+        return ranks[level] ?? 0;
+    }
 
-        // Expense Patterns
-        const expenseCategories = {};
-        let totalExpense = 0;
-        safeArray(currentData?.transactions).forEach(tx => {
-            if (String(tx.type) === 'expense.recorded' || Number(tx.signedAmount || tx.amount) < 0) {
-                const cat = String(tx.categoryId || 'Uncategorized').trim();
-                const amt = Math.abs(Number(tx.signedAmount || tx.amount) || 0);
-                if (amt > 0) {
-                    expenseCategories[cat] = (expenseCategories[cat] || 0) + amt;
-                    totalExpense += amt;
-                }
-            }
+    function insightsRiskPill(level) {
+        const safe = String(level || 'Low');
+        return `<span class="fin-insights-risk-pill is-${escapeHtml(safe.toLowerCase())}">${escapeHtml(safe)}</span>`;
+    }
+
+    function insightsPercent(value, total) {
+        const number = Number(value);
+        const denominator = Number(total);
+        if (!Number.isFinite(number) || !Number.isFinite(denominator) || denominator <= 0) return 0;
+        return Math.max(0, Math.min(100, Math.round((number / denominator) * 100)));
+    }
+
+    function insightsAddMonths(months) {
+        const value = Number(months);
+        if (!Number.isFinite(value) || value <= 0) return '';
+        const date = new Date();
+        date.setMonth(date.getMonth() + Math.ceil(value));
+        return date.toISOString().slice(0, 10);
+    }
+
+    function insightsDebtPayoffDate(debt, monthlyOverride) {
+        const existing = String(debt && (debt.estimatedPayoffDate || debt.payoffDate || debt.debtFreeDate) || '');
+        if (existing) return existing;
+        const outstanding = Math.max(0, Number(debt && debt.outstanding) || 0);
+        const monthly = Number.isFinite(Number(monthlyOverride)) ? Number(monthlyOverride) : treasuryDebtMonthlyPayment(debt);
+        if (outstanding <= 0) return new Date().toISOString().slice(0, 10);
+        if (monthly <= 0) return '';
+        return insightsAddMonths(Math.ceil(outstanding / monthly));
+    }
+
+    function buildInsightsIncomeDependency() {
+        const grouped = new Map();
+        const add = (source, amount, kind) => {
+            const key = String(source || 'Unknown source').trim() || 'Unknown source';
+            const value = Math.max(0, Number(amount) || 0);
+            if (value <= 0) return;
+            const entry = grouped.get(key) || { source: key, amount: 0, count: 0, kinds: new Set() };
+            entry.amount += value;
+            entry.count += 1;
+            if (kind) entry.kinds.add(kind);
+            grouped.set(key, entry);
+        };
+
+        safeArray(currentData && currentData.invoices).forEach((item) => {
+            const status = String(item && item.status || '').toLowerCase();
+            if (status === 'cancelled' || status === 'lost' || status === 'deleted') return;
+            add(item && (item.client || item.source || item.title), item && item.amount, status === 'paid' ? 'paid' : 'invoice');
         });
-        const topExpenses = Object.entries(expenseCategories)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 4)
-            .map(([cat, amount]) => {
-                const pct = totalExpense > 0 ? Math.round((amount / totalExpense) * 100) : 0;
-                return { cat, amount, pct };
+        safeArray(currentData && currentData.pipelineDeals).forEach((item) => {
+            const status = String(item && item.status || '').toLowerCase();
+            if (status === 'cancelled' || status === 'lost' || status === 'deleted') return;
+            add(item && (item.client || item.source || item.title), item && (item.value || item.amount), status || 'expected');
+        });
+
+        if (!grouped.size) {
+            safeArray(currentData && currentData.transactions).forEach((tx) => {
+                const type = String(tx && (tx.ledgerType || tx.type) || '').toLowerCase();
+                const signed = Number(tx && (tx.signedAmount ?? tx.amount));
+                if (!type.includes('income') && signed <= 0) return;
+                add(tx && (tx.client || tx.source || tx.note || tx.description || tx.categoryId), Math.abs(signed || 0), 'recorded');
             });
+        }
+
+        const total = Array.from(grouped.values()).reduce((sum, row) => sum + row.amount, 0);
+        const rows = Array.from(grouped.values())
+            .sort((a, b) => b.amount - a.amount)
+            .slice(0, 5)
+            .map((row) => ({
+                source: row.source,
+                amount: row.amount,
+                pct: insightsPercent(row.amount, total),
+                count: row.count,
+                kinds: Array.from(row.kinds).slice(0, 3).join(', ')
+            }));
+        const top = rows[0] || null;
+        const risk = top && top.pct >= 80 ? 'Critical' : top && top.pct >= 55 ? 'High' : top && top.pct >= 40 ? 'Medium' : 'Low';
+        const interpretation = top
+            ? `${top.pct}% of tracked income comes from ${top.source}. ${top.pct > 50 ? 'Efficient short-term, fragile long-term.' : 'Dependency is within a healthier range.'}`
+            : 'Income dependency becomes visible once expected or settled income is tracked.';
+        return { total, rows, top, risk, interpretation };
+    }
+
+    function buildInsightsExpenseGravity() {
+        const expenses = sortedTreasuryExpenses(currentData && currentData.recurringExpenses);
+        const essential = expenses.filter((expense) => expense && expense.essential);
+        const flexible = expenses.filter((expense) => !expense || !expense.essential);
+        const essentialTotal = essential.reduce((sum, expense) => sum + (Number(expense.monthlyAmount) || 0), 0);
+        const flexibleTotal = flexible.reduce((sum, expense) => sum + (Number(expense.monthlyAmount) || 0), 0);
+        const debtMonthly = safeArray(currentData && currentData.debtAccounts).reduce((sum, debt) => sum + treasuryDebtMonthlyPayment(debt), 0);
+        const taxReserveGap = safeArray(currentData && currentData.reserveBuckets)
+            .filter((bucket) => /tax|vat/i.test(String((bucket && (bucket.purpose || bucket.name)) || '')))
+            .reduce((sum, bucket) => sum + Math.max(0, (Number(bucket.targetAmount) || 0) - (Number(bucket.currentAmount) || 0)), 0);
+        const biggestFixed = essential[0] || null;
+        const biggestFlexible = flexible[0] || null;
+        const largestPressure = [
+            { label: 'non-negotiable costs', value: essentialTotal },
+            { label: 'adjustable costs', value: flexibleTotal },
+            { label: 'debt payment pressure', value: debtMonthly }
+        ].sort((a, b) => b.value - a.value)[0];
+        return {
+            essential,
+            flexible,
+            essentialTotal,
+            flexibleTotal,
+            debtMonthly,
+            taxReserveGap,
+            biggestFixed,
+            biggestFlexible,
+            potentialImpact: Math.min(Math.max(0, flexibleTotal), 200),
+            interpretation: largestPressure && largestPressure.value > 0
+                ? `${largestPressure.label.charAt(0).toUpperCase()}${largestPressure.label.slice(1)} is the strongest monthly pull right now.`
+                : 'Expense gravity becomes clearer once recurring costs and debt plans are added.'
+        };
+    }
+
+    function buildInsightsDebtIntelligence(expenseGravity) {
+        const debts = safeArray(currentData && currentData.debtAccounts)
+            .filter((debt) => Math.max(0, Number(debt && debt.outstanding) || 0) > 0);
+        const totalDebt = treasuryNumber('debtRemaining', debts.reduce((sum, debt) => sum + (Number(debt.outstanding) || 0), 0));
+        const monthlyPressure = Number(expenseGravity && expenseGravity.debtMonthly) || debts.reduce((sum, debt) => sum + treasuryDebtMonthlyPayment(debt), 0);
+        const largest = debts.slice().sort((a, b) => (Number(b && b.outstanding) || 0) - (Number(a && a.outstanding) || 0))[0] || null;
+        const payoffDate = largest ? insightsDebtPayoffDate(largest) : '';
+        const income30 = Number(currentData && currentData.incomeReceivedLast30Days) || 0;
+        const realistic = monthlyPressure <= Math.max(1, income30 * 0.35);
+        return {
+            debts,
+            totalDebt,
+            monthlyPressure,
+            largest,
+            payoffDate,
+            realistic,
+            interpretation: debts.length
+                ? (realistic ? 'Payment pressure appears manageable against recent income rhythm.' : 'Payment pressure may be heavy for the current income rhythm.')
+                : 'No active debt pressure is visible.'
+        };
+    }
+
+    function buildInsightsReserveDiscipline() {
+        const buckets = safeArray(currentData && currentData.reserveBuckets);
+        const protectedCash = treasuryNumber('protectedCash', Number(currentSnapshot && currentSnapshot.reservedCash) || 0);
+        const target = buckets.reduce((sum, bucket) => sum + Math.max(0, Number(bucket && bucket.targetAmount) || 0), 0);
+        const gap = buckets.reduce((sum, bucket) => sum + Math.max(0, (Number(bucket && bucket.targetAmount) || 0) - (Number(bucket && bucket.currentAmount) || 0)), 0);
+        const coverage = target > 0 ? Math.round((protectedCash / target) * 100) : 0;
+        const taxBucket = buckets.find((bucket) => /tax|vat/i.test(String((bucket && (bucket.purpose || bucket.name)) || '')));
+        const emergencyBucket = buckets.find((bucket) => /emergency|buffer|safety/i.test(String((bucket && (bucket.purpose || bucket.name)) || '')));
+        const availableCash = treasuryNumber('availableCash', Number(currentSnapshot && currentSnapshot.availableCash) || 0);
+        let recommendation = 'Build a €500 micro-buffer before larger savings goals.';
+        if (availableCash < 0) recommendation = 'Pause future savings goals until the current shortfall is covered.';
+        else if (coverage >= 100) recommendation = 'Keep reserve discipline steady and review targets monthly.';
+        return { buckets, protectedCash, target, gap, coverage, taxBucket, emergencyBucket, recommendation };
+    }
+
+    function buildInsightsRiskRadar({ dependency, expenseGravity, debt, reserve }) {
+        const availableCash = treasuryNumber('availableCash', Number(currentSnapshot && currentSnapshot.availableCash) || 0);
+        const committed = treasuryNumber('committedShortTermObligations', 0);
+        const monthlyBurn = treasuryNumber('totalMonthlyBurn', Number(currentSnapshot && currentSnapshot.monthlyBurn) || 0);
+        const historyCount = safeArray(currentReview && currentReview.history).length;
+        const rhythm = buildCashflowRhythmData();
+        const taxGap = Number(expenseGravity && expenseGravity.taxReserveGap) || 0;
+        const risks = [
+            {
+                name: 'Liquidity risk',
+                level: availableCash < 0 ? 'Critical' : availableCash < committed ? 'High' : availableCash < monthlyBurn ? 'Medium' : 'Low',
+                metric: formatCurrency(availableCash),
+                explanation: availableCash < 0 ? 'Available cash is negative after protected cash and upcoming obligations.' : 'Available cash covers the current short-term view.'
+            },
+            {
+                name: 'Debt pressure',
+                level: debt.monthlyPressure > expenseGravity.essentialTotal ? 'High' : debt.monthlyPressure > monthlyBurn * 0.25 ? 'Medium' : 'Low',
+                metric: formatCurrency(debt.monthlyPressure),
+                explanation: debt.monthlyPressure > 0 ? 'Monthly debt plans add recurring pressure to burn.' : 'No active monthly debt pressure is visible.'
+            },
+            {
+                name: 'Income concentration',
+                level: dependency.risk,
+                metric: dependency.top ? `${dependency.top.pct}%` : 'No signal',
+                explanation: dependency.top ? `${dependency.top.source} is the largest tracked source.` : 'Track income sources to detect dependency.'
+            },
+            {
+                name: 'Reserve coverage',
+                level: reserve.target <= 0 || reserve.coverage <= 0 ? 'High' : reserve.coverage < 50 ? 'Medium' : 'Low',
+                metric: reserve.target > 0 ? `${reserve.coverage}%` : 'No target',
+                explanation: reserve.protectedCash > 0 ? 'Some money is protected for future obligations.' : 'No protected reserve cash is visible yet.'
+            },
+            {
+                name: 'Expense flexibility',
+                level: expenseGravity.flexibleTotal <= 0 && monthlyBurn > 0 ? 'High' : expenseGravity.flexibleTotal < monthlyBurn * 0.15 ? 'Medium' : 'Low',
+                metric: formatCurrency(expenseGravity.flexibleTotal),
+                explanation: expenseGravity.flexibleTotal > 0 ? 'There is some adjustable monthly spend.' : 'Most visible burn appears fixed or debt-driven.'
+            },
+            {
+                name: 'Cashflow rhythm',
+                level: historyCount <= 0 && !rhythm.hasData ? 'Medium' : 'Low',
+                metric: historyCount ? `${historyCount} closes` : 'No closes',
+                explanation: historyCount ? 'Month-close history can show pattern changes.' : 'Close one month to unlock trend memory.'
+            },
+            {
+                name: 'Tax exposure',
+                level: taxGap > 0 && !reserve.taxBucket ? 'High' : taxGap > 0 ? 'Medium' : 'Low',
+                metric: taxGap > 0 ? formatCurrency(taxGap) : (reserve.taxBucket ? 'Tracked' : 'No target'),
+                explanation: reserve.taxBucket ? 'A tax or VAT reserve is tracked.' : 'No explicit tax or VAT reserve is visible.'
+            }
+        ];
+        return risks.sort((a, b) => insightsLevelRank(b.level) - insightsLevelRank(a.level));
+    }
+
+    function buildInsightsDiagnosis(risks, dependency, expenseGravity, debt, reserve) {
+        const topRisk = risks[0] || { name: 'Financial clarity', level: 'Low', explanation: 'Nothing major is visible.' };
+        const availableCash = treasuryNumber('availableCash', Number(currentSnapshot && currentSnapshot.availableCash) || 0);
+        const runway = Number((currentTreasury && currentTreasury.runwayMonths) ?? (currentSnapshot && currentSnapshot.runwayMonths));
+        let headline = 'Stable, keep the cadence';
+        if (!currentHasFinanceData) headline = 'Unclear until core inputs exist';
+        else if (!safeArray(currentReview && currentReview.history).length) headline = 'Unclear until month close';
+        else if (availableCash < 0 || topRisk.level === 'Critical') headline = 'Tight, but recoverable';
+        else if (dependency.top && dependency.top.pct >= 55) headline = 'Stable with concentration risk';
+        else if (Number.isFinite(runway) && runway < 4) headline = 'Tight, needs attention';
+
+        const forces = risks
+            .filter((risk) => insightsLevelRank(risk.level) >= 1)
+            .slice(0, 3)
+            .map((risk) => `${risk.name}: ${risk.explanation}`);
+        while (forces.length < 3) {
+            const fallback = buildStrategicAdviceItems()[forces.length] || 'Keep the monthly operating loop current.';
+            forces.push(fallback);
+        }
+
+        let mainLever = 'Keep Month Close current';
+        if (availableCash < 0) mainLever = 'Cover near-term obligations';
+        else if (debt.monthlyPressure > expenseGravity.flexibleTotal && debt.monthlyPressure > 0) mainLever = 'Debt plan + flexible cost reduction';
+        else if (reserve.coverage < 50) mainLever = 'Protect priority reserves';
+        else if (dependency.top && dependency.top.pct >= 55) mainLever = 'Diversify recurring income';
+
+        let opportunity = 'Use Month Close to build pattern memory';
+        if (dependency.top && dependency.top.pct >= 55) opportunity = 'Create one additional recurring income source';
+        else if (expenseGravity.potentialImpact > 0) opportunity = `Trim ${formatCurrency(expenseGravity.potentialImpact)} of flexible burn`;
+        else if (reserve.gap > 0) opportunity = 'Build a first reserve buffer';
+
+        return {
+            headline,
+            forces,
+            mainRisk: topRisk.name,
+            mainLever,
+            opportunity
+        };
+    }
+
+    function buildInsightsPatternMemory() {
+        const history = safeArray(currentReview && currentReview.history).slice(0, 3);
+        if (!history.length) return { history, rows: [] };
+        const latest = history[0] || {};
+        const previous = history[1] || {};
+        const latestSummary = latest.summary || {};
+        const previousSummary = previous.summary || {};
+        const delta = (key) => {
+            const current = Number(latestSummary[key]);
+            const before = Number(previousSummary[key]);
+            if (!Number.isFinite(current)) return null;
+            if (!Number.isFinite(before)) return current;
+            return current - before;
+        };
+        return {
+            history,
+            rows: [
+                { label: 'Cash rhythm', value: delta('netMovement'), copy: 'Net movement since the prior close.' },
+                { label: 'Income reliability', value: delta('incomeReceived'), copy: 'Received income compared with the prior close.' },
+                { label: 'Burn trend', value: delta('expensesPaid'), copy: 'Paid expenses compared with the prior close.' },
+                { label: 'Reserve discipline', value: delta('protectedCash'), copy: 'Protected cash change.' },
+                { label: 'Runway', value: delta('runwayNow'), copy: 'Runway change in months.', plain: true }
+            ]
+        };
+    }
+
+    function buildInsightsScenario({ expenseGravity, debt, reserve }) {
+        const monthlyBurn = treasuryNumber('totalMonthlyBurn', Number(currentSnapshot && currentSnapshot.monthlyBurn) || 0);
+        const availableCash = treasuryNumber('availableCash', Number(currentSnapshot && currentSnapshot.availableCash) || 0);
+        const forecast30 = Number(currentForecast && currentForecast.byHorizon && currentForecast.byHorizon['30'] && currentForecast.byHorizon['30'].expected);
+        const baseSurplus = Number.isFinite(forecast30) ? forecast30 : availableCash;
+        const protectedFutureIncome = Math.max(0, Number(insightsScenarioState.recurringIncome) || 0) * ((Number(insightsScenarioState.protectPct) || 0) / 100);
+        const savingsPauseGain = insightsScenarioState.pauseSavings ? Math.min(Math.max(0, reserve.gap), 250) : 0;
+        const adjustedBurn = Math.max(0, monthlyBurn
+            - Math.min(Number(insightsScenarioState.flexCut) || 0, Math.max(0, expenseGravity.flexibleTotal))
+            - Math.min(Number(insightsScenarioState.debtReduction) || 0, Math.max(0, debt.monthlyPressure))
+            + (Number(insightsScenarioState.reserveContribution) || 0));
+        const adjustedSurplus = baseSurplus
+            + (Number(insightsScenarioState.flexCut) || 0)
+            + (Number(insightsScenarioState.debtReduction) || 0)
+            + (Number(insightsScenarioState.recurringIncome) || 0)
+            + savingsPauseGain
+            - protectedFutureIncome
+            - (Number(insightsScenarioState.reserveContribution) || 0);
+        const adjustedRunway = adjustedBurn > 0 ? availableCash / adjustedBurn : null;
+        const monthlyReserveContribution = Math.max(0, Number(insightsScenarioState.reserveContribution) || 0) + protectedFutureIncome;
+        const monthsToTarget = reserve.gap > 0 && monthlyReserveContribution > 0 ? Math.ceil(reserve.gap / monthlyReserveContribution) : null;
+        const adjustedDebtPayment = Math.max(0, debt.monthlyPressure - (Number(insightsScenarioState.debtReduction) || 0));
+        const debtFreeDate = debt.totalDebt > 0 && adjustedDebtPayment > 0 ? insightsAddMonths(Math.ceil(debt.totalDebt / adjustedDebtPayment)) : '';
+        const health = adjustedSurplus < 0 ? 'Still tight' : adjustedRunway != null && adjustedRunway < 3 ? 'Improving but thin' : 'More stable';
+        return { adjustedBurn, adjustedSurplus, adjustedRunway, monthsToTarget, debtFreeDate, health };
+    }
+
+    function buildInsightsRecommendedMoves({ risks, dependency, debt, reserve, scenario }) {
+        const moves = [];
+        const availableCash = treasuryNumber('availableCash', Number(currentSnapshot && currentSnapshot.availableCash) || 0);
+        if (availableCash < 0 || risks.some((risk) => risk.name === 'Liquidity risk' && insightsLevelRank(risk.level) >= 2)) {
+            moves.push({ title: 'Stabilize the next 30 days', why: 'Available cash is under near-term pressure.', effect: 'Reduces immediate liquidity risk.', label: 'Open Treasury', action: 'FinancialMode.setSection', args: "'reserves'" });
+        }
+        if (debt.monthlyPressure > 0 && insightsLevelRank((risks.find((risk) => risk.name === 'Debt pressure') || {}).level) >= 1) {
+            moves.push({ title: 'Review debt pressure', why: 'Debt plans are part of monthly burn.', effect: `Pressure visible: ${formatCurrency(debt.monthlyPressure)} / month.`, label: 'Open debt planner', action: 'FinancialMode.setSection', args: "'reserves'" });
+        }
+        if (reserve.protectedCash <= 0 || reserve.coverage < 50) {
+            moves.push({ title: 'Build a €500 micro-buffer', why: 'A small protected buffer makes delayed invoices less disruptive.', effect: 'Improves reserve discipline.', label: 'Add reserve bucket', action: 'FinancialMode.openAddModal', args: "'reserveBucket'" });
+        }
+        if (dependency.top && dependency.top.pct >= 55) {
+            moves.push({ title: 'Diversify income over 90 days', why: `${dependency.top.source} carries ${dependency.top.pct}% of tracked income.`, effect: 'Lowers concentration risk.', label: 'Open Cashflow', action: 'FinancialMode.setSection', args: "'planning'" });
+        }
+        if (!safeArray(currentReview && currentReview.history).length) {
+            moves.push({ title: 'Close first operating month', why: 'Pattern detection starts after the first close.', effect: 'Unlocks cash rhythm and trend memory.', label: 'Go to Month Close', action: 'FinancialMode.setSection', args: "'review'" });
+        }
+        if (!moves.length) {
+            moves.push({ title: 'Keep the operating loop current', why: 'The current diagnosis has no urgent imbalance.', effect: scenario.health, label: 'Open Month Close', action: 'FinancialMode.setSection', args: "'review'" });
+        }
+        return moves.slice(0, 5);
+    }
+
+    function renderInsightsMetricRow(label, value, copy, options = {}) {
+        return `
+            <div class="fin-insights-metric-row">
+                <span>${escapeHtml(label)}</span>
+                <strong>${options.plain ? escapeHtml(String(value == null ? '—' : value)) : formatCurrency(value)}</strong>
+                <small>${escapeHtml(copy || '')}</small>
+            </div>
+        `;
+    }
+
+    function renderReportsSection() {
+        const dependency = buildInsightsIncomeDependency();
+        const expenseGravity = buildInsightsExpenseGravity();
+        const debt = buildInsightsDebtIntelligence(expenseGravity);
+        const reserve = buildInsightsReserveDiscipline();
+        const risks = buildInsightsRiskRadar({ dependency, expenseGravity, debt, reserve });
+        const diagnosis = buildInsightsDiagnosis(risks, dependency, expenseGravity, debt, reserve);
+        const memory = buildInsightsPatternMemory();
+        const scenario = buildInsightsScenario({ expenseGravity, debt, reserve });
+        const moves = buildInsightsRecommendedMoves({ risks, dependency, debt, reserve, scenario });
+        const maxGravity = Math.max(1, expenseGravity.essentialTotal, expenseGravity.flexibleTotal, debt.monthlyPressure, expenseGravity.taxReserveGap);
 
         return `
             <section class="fin-section">
-                <div class="fin-operational-row">
-                    <div class="widget ui-card glass fin-card">
-                        <div class="widget-title ui-title">Financial Health</div>
-                        <div class="fin-health-status ${health.tone}">
-                            <span>Status</span>
-                            <strong>${escapeHtml(health.text)}</strong>
-                            <small>${currentMetrics && currentMetrics.stressLevel ? `Stress level ${escapeHtml(currentMetrics.stressLevel)}` : 'Add core inputs for a clearer reading.'}</small>
-                        </div>
-                        <ul class="fin-advice-list">
-                            ${buildStrategicAdviceItems().slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
-                        </ul>
+                <div class="widget ui-card glass fin-card fin-insights-hero">
+                    <div class="fin-insights-hero-main">
+                        <span class="fin-eyebrow">Financial Diagnosis</span>
+                        <strong>${escapeHtml(diagnosis.headline)}</strong>
+                        <p>${escapeHtml((risks[0] && risks[0].explanation) || 'Your local finance picture is ready for review.')}</p>
                     </div>
-                    <div class="widget ui-card glass fin-card">
-                        <div class="widget-title ui-title">Reserve Pattern</div>
-                        <div class="fin-status-grid">
-                            <div class="fin-status-card"><span>Available</span><strong>${formatCurrency(availableCash)}</strong><span>After protected cash and 30-day obligations</span></div>
-                            <div class="fin-status-card"><span>Reserved</span><strong>${formatCurrency(reservedCash)}</strong><span>${reserveShare}% of total cash</span></div>
-                        </div>
-                        ${renderCashflowRhythm(rhythmData)}
+                    <div class="fin-insights-forces">
+                        <span class="fin-eyebrow">Top forces</span>
+                        ${diagnosis.forces.map((force) => `<div class="fin-insights-force">${escapeHtml(force)}</div>`).join('')}
+                    </div>
+                    <div class="fin-insights-hero-summary">
+                        <div><span>Main risk</span><strong>${escapeHtml(diagnosis.mainRisk)}</strong></div>
+                        <div><span>Main lever</span><strong>${escapeHtml(diagnosis.mainLever)}</strong></div>
+                        <div><span>Main opportunity</span><strong>${escapeHtml(diagnosis.opportunity)}</strong></div>
                     </div>
                 </div>
             </section>
-            
+
             <section class="fin-section">
-                <div class="fin-operational-row">
-                    <div class="widget ui-card glass fin-card">
-                        <div class="widget-title ui-title">Client Concentration</div>
-                        <div class="fin-helper-text">Reliance on top income sources. High concentration is a vulnerability.</div>
-                        <div class="fin-table-wrap" style="margin-top: 1rem;">
-                            ${concentration.length ? `
-                                <table class="fin-table fin-table--compact">
-                                    <tbody>
-                                        ${concentration.map(c => `
-                                            <tr>
-                                                <td style="width: 40%;"><strong>${escapeHtml(c.client)}</strong></td>
-                                                <td>
-                                                    <div class="fin-stacked-bar" style="height: 6px; background: rgba(255,255,255,0.05);">
-                                                        <div class="fin-bar-segment" style="width: ${c.pct}%; background: var(--interactive-primary);"></div>
-                                                    </div>
-                                                </td>
-                                                <td style="text-align:right; width: 30%;">${formatCurrency(c.amount)} <small>(${c.pct}%)</small></td>
-                                            </tr>
-                                        `).join('')}
-                                    </tbody>
-                                </table>
-                            ` : renderCompactEmpty('No income data available yet.')}
+                <div class="fin-insights-grid fin-insights-grid--radar">
+                    <div class="widget ui-card glass fin-card fin-insights-radar">
+                        <div class="widget-title ui-title">Risk Radar</div>
+                        <div class="fin-helper-text">Ranked risks from the current local data. Each row explains the why, not just the label.</div>
+                        <div class="fin-insights-risk-list">
+                            ${risks.map((risk) => `
+                                <div class="fin-insights-risk-row">
+                                    <div>
+                                        <strong>${escapeHtml(risk.name)}</strong>
+                                        <span>${escapeHtml(risk.explanation)}</span>
+                                    </div>
+                                    <div>
+                                        ${insightsRiskPill(risk.level)}
+                                        <small>${escapeHtml(risk.metric)}</small>
+                                    </div>
+                                </div>
+                            `).join('')}
                         </div>
                     </div>
-                    <div class="widget ui-card glass fin-card">
-                        <div class="widget-title ui-title">Top Expense Categories</div>
-                        <div class="fin-helper-text">Where the money flows over time.</div>
-                        <div class="fin-table-wrap" style="margin-top: 1rem;">
-                            ${topExpenses.length ? `
-                                <table class="fin-table fin-table--compact">
-                                    <tbody>
-                                        ${topExpenses.map(e => `
-                                            <tr>
-                                                <td style="width: 40%;"><strong>${escapeHtml(e.cat)}</strong></td>
-                                                <td>
-                                                    <div class="fin-stacked-bar" style="height: 6px; background: rgba(255,255,255,0.05);">
-                                                        <div class="fin-bar-segment" style="width: ${e.pct}%; background: var(--negative, #ff4b4b);"></div>
-                                                    </div>
-                                                </td>
-                                                <td style="text-align:right; width: 30%;">${formatCurrency(e.amount)} <small>(${e.pct}%)</small></td>
-                                            </tr>
-                                        `).join('')}
-                                    </tbody>
-                                </table>
-                            ` : renderCompactEmpty('No expense data available yet.')}
+                    <div class="widget ui-card glass fin-card fin-insights-memory">
+                        <div class="widget-title ui-title">Pattern Memory</div>
+                        ${memory.history.length ? `
+                            <div class="fin-helper-text">What changed across recent closes.</div>
+                            <div class="fin-insights-memory-list">
+                                ${memory.rows.map((row) => renderInsightsMetricRow(row.label, row.value, row.copy, { plain: row.plain })).join('')}
+                            </div>
+                        ` : `
+                            <div class="fin-insights-empty-state">
+                                <strong>Pattern Memory starts after your first month close</strong>
+                                <span>Close your first operating month to unlock cash rhythm, burn trend, income reliability, debt velocity, and reserve discipline.</span>
+                                <div class="fin-insights-locked-rows">
+                                    ${['Cash rhythm', 'Burn trend', 'Income reliability', 'Debt velocity', 'Reserve discipline'].map((label) => `<div><span>${escapeHtml(label)}</span><small>Locked</small></div>`).join('')}
+                                </div>
+                                <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Go to Month Close</button>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            </section>
+
+            <section class="fin-section">
+                <div class="fin-insights-grid">
+                    <div class="widget ui-card glass fin-card fin-insights-panel">
+                        <div class="widget-title ui-title">Income Dependency</div>
+                        <div class="fin-helper-text">${escapeHtml(dependency.interpretation)} Healthy target: no single client above 40–50% of recurring income.</div>
+                        ${dependency.rows.length ? `
+                            <div class="fin-insights-source-list">
+                                ${dependency.rows.map((row) => `
+                                    <div class="fin-insights-source-row">
+                                        <div><strong>${escapeHtml(row.source)}</strong><span>${escapeHtml(pluralize(row.count, 'item'))}${row.kinds ? ` · ${escapeHtml(row.kinds)}` : ''}</span></div>
+                                        <div class="fin-insights-bar"><span style="width:${row.pct}%"></span></div>
+                                        <strong>${row.pct}%</strong>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <div class="fin-insights-recommendation">Suggested move: create one additional recurring income stream or convert another client into a retainer.</div>
+                        ` : renderCompactEmpty('Add expected or settled income to reveal dependency risk.')}
+                    </div>
+                    <div class="widget ui-card glass fin-card fin-insights-panel">
+                        <div class="widget-title ui-title">Expense Gravity</div>
+                        <div class="fin-helper-text">${escapeHtml(expenseGravity.interpretation)}</div>
+                        <div class="fin-insights-gravity-list">
+                            ${[
+            ['Non-negotiable gravity', expenseGravity.essentialTotal],
+            ['Adjustable gravity', expenseGravity.flexibleTotal],
+            ['Debt/payment pressure', debt.monthlyPressure],
+            ['Reserve/tax obligations', expenseGravity.taxReserveGap]
+        ].map(([label, value]) => `
+                                <div class="fin-insights-gravity-row">
+                                    <div><span>${escapeHtml(label)}</span><strong>${formatCurrency(value)}</strong></div>
+                                    <div class="fin-insights-bar"><span style="width:${treasuryFlowPercent(value, maxGravity)}%"></span></div>
+                                </div>
+                            `).join('')}
                         </div>
+                        <div class="fin-insights-recommendation">Most realistic lever: ${expenseGravity.potentialImpact > 0 ? `${formatCurrency(expenseGravity.potentialImpact)} flexible burn reduction` : 'confirm debt plans and recurring costs first'}.</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="fin-section">
+                <div class="fin-insights-grid">
+                    <div class="widget ui-card glass fin-card fin-insights-panel fin-insights-debt">
+                        <div class="widget-title ui-title">Debt Intelligence</div>
+                        <div class="fin-helper-text">${escapeHtml(debt.interpretation)}</div>
+                        <div class="fin-insights-stat-grid">
+                            <div><span>Total debt</span><strong>${formatCurrency(debt.totalDebt)}</strong></div>
+                            <div><span>Monthly minimum pressure</span><strong>${formatCurrency(debt.monthlyPressure)}</strong></div>
+                            <div><span>Liabilities</span><strong>${debt.debts.length}</strong></div>
+                            <div><span>Largest debt</span><strong>${escapeHtml(debt.largest && debt.largest.name || 'None')}</strong></div>
+                        </div>
+                        ${debt.largest ? `<div class="fin-insights-recommendation">Projected payoff: ${debt.payoffDate ? formatShortDate(debt.payoffDate) : 'Add a payment plan to estimate this.'}</div>` : ''}
+                    </div>
+                    <div class="widget ui-card glass fin-card fin-insights-panel">
+                        <div class="widget-title ui-title">Reserve Discipline</div>
+                        <div class="fin-helper-text">${escapeHtml(reserve.recommendation)}</div>
+                        <div class="fin-insights-stat-grid">
+                            <div><span>Protected money</span><strong>${formatCurrency(reserve.protectedCash)}</strong></div>
+                            <div><span>Reserve target</span><strong>${formatCurrency(reserve.target)}</strong></div>
+                            <div><span>Coverage</span><strong>${reserve.target > 0 ? `${reserve.coverage}%` : 'No target'}</strong></div>
+                            <div><span>Emergency buffer</span><strong>${reserve.emergencyBucket ? 'Tracked' : 'Missing'}</strong></div>
+                        </div>
+                        <div class="fin-insights-meter"><span style="width:${Math.min(100, reserve.coverage)}%"></span></div>
+                        <div class="fin-insights-recommendation">Tax reserve: ${reserve.taxBucket ? 'tracked' : 'not visible yet'}.</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card fin-insights-scenario">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Scenario Lab</div>
+                            <div class="fin-helper-text">Simple deterministic previews. Nothing here changes stored finance data.</div>
+                        </div>
+                        <button class="fin-mini-btn" type="button" data-fin-action="set-insights-scenario" data-fin-scenario-key="reset">Reset</button>
+                    </div>
+                    <div class="fin-insights-scenario-grid">
+                        <div class="fin-insights-scenario-controls">
+                            <div>
+                                <span>Cut flexible costs</span>
+                                ${[50, 100, 150, 200].map((value) => `<button class="fin-mini-btn ${insightsScenarioState.flexCut === value ? 'active' : ''}" type="button" data-fin-action="set-insights-scenario" data-fin-scenario-key="flexCut" data-fin-scenario-value="${value}">${formatCurrency(value).replace(/([.,]00)$/, '')}</button>`).join('')}
+                            </div>
+                            <div>
+                                <span>Reduce debt pressure</span>
+                                ${[100, 250].map((value) => `<button class="fin-mini-btn ${insightsScenarioState.debtReduction === value ? 'active' : ''}" type="button" data-fin-action="set-insights-scenario" data-fin-scenario-key="debtReduction" data-fin-scenario-value="${value}">${formatCurrency(value).replace(/([.,]00)$/, '')}</button>`).join('')}
+                            </div>
+                            <div>
+                                <span>Add recurring income</span>
+                                ${[1000, 1500].map((value) => `<button class="fin-mini-btn ${insightsScenarioState.recurringIncome === value ? 'active' : ''}" type="button" data-fin-action="set-insights-scenario" data-fin-scenario-key="recurringIncome" data-fin-scenario-value="${value}">+${formatCurrency(value).replace(/([.,]00)$/, '')}</button>`).join('')}
+                            </div>
+                            <div>
+                                <span>Protect future income</span>
+                                ${[10, 20].map((value) => `<button class="fin-mini-btn ${insightsScenarioState.protectPct === value ? 'active' : ''}" type="button" data-fin-action="set-insights-scenario" data-fin-scenario-key="protectPct" data-fin-scenario-value="${value}">${value}%</button>`).join('')}
+                            </div>
+                            <div>
+                                <span>Reserve discipline</span>
+                                <button class="fin-mini-btn ${insightsScenarioState.pauseSavings ? 'active' : ''}" type="button" data-fin-action="set-insights-scenario" data-fin-scenario-key="pauseSavings">Pause savings goal</button>
+                                ${[100, 250].map((value) => `<button class="fin-mini-btn ${insightsScenarioState.reserveContribution === value ? 'active' : ''}" type="button" data-fin-action="set-insights-scenario" data-fin-scenario-key="reserveContribution" data-fin-scenario-value="${value}">+${formatCurrency(value).replace(/([.,]00)$/, '')} reserve</button>`).join('')}
+                            </div>
+                        </div>
+                        <div class="fin-insights-scenario-result">
+                            <span class="fin-eyebrow">Preview result</span>
+                            <strong>${escapeHtml(scenario.health)}</strong>
+                            <div class="fin-insights-stat-grid">
+                                <div><span>Adjusted burn</span><strong>${formatCurrency(scenario.adjustedBurn)}</strong></div>
+                                <div><span>30-day surplus / shortfall</span><strong>${formatCurrency(scenario.adjustedSurplus)}</strong></div>
+                                <div><span>Runway preview</span><strong>${scenario.adjustedRunway != null ? `${scenario.adjustedRunway.toFixed(1)} months` : 'Unknown'}</strong></div>
+                                <div><span>Months to reserve target</span><strong>${scenario.monthsToTarget != null ? scenario.monthsToTarget : '—'}</strong></div>
+                            </div>
+                            <div class="fin-insights-recommendation">Debt-free date preview: ${scenario.debtFreeDate ? formatShortDate(scenario.debtFreeDate) : 'Add or keep a payment plan to estimate this.'}</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card fin-insights-moves">
+                    <div class="widget-title ui-title">Recommended Moves</div>
+                    <div class="fin-helper-text">Prioritized actions that improve the diagnosis fastest.</div>
+                    <div class="fin-insights-move-list">
+                        ${moves.map((move, index) => `
+                            <div class="fin-insights-move-row">
+                                <div class="fin-insights-move-index">${index + 1}</div>
+                                <div>
+                                    <strong>${escapeHtml(move.title)}</strong>
+                                    <span>${escapeHtml(move.why)}</span>
+                                    <small>${escapeHtml(move.effect)}</small>
+                                </div>
+                                <button class="fin-mini-btn" type="button" data-action="${escapeHtml(move.action)}" data-action-args="${escapeHtml(move.args || '')}">${escapeHtml(move.label)}</button>
+                            </div>
+                        `).join('')}
                     </div>
                 </div>
             </section>
