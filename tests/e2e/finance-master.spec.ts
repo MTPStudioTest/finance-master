@@ -327,6 +327,20 @@ test('mobile and tablet capture surfaces avoid horizontal overflow', async ({ pa
   expect(errors).toEqual([]);
 });
 
+test('mobile sidebar stays sticky while scrolling the cockpit', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const sidebar = page.locator('.finance-master-sidebar');
+  await expect(sidebar).toBeVisible();
+  const before = await sidebar.evaluate((element) => element.getBoundingClientRect().top);
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const after = await sidebar.evaluate((element) => element.getBoundingClientRect().top);
+  expect(Math.round(before)).toBe(0);
+  expect(Math.round(after)).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('savings goal progress and weekly reconciliation complete the operating ritual', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');

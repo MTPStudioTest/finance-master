@@ -796,12 +796,32 @@ textarea {
   }
 
   .finance-master-sidebar {
-    position: static;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
     height: auto;
     padding: 0.875rem;
     border-right: 0;
     border-bottom: 1px solid var(--ds-mode-surface-border);
-    background: rgba(255, 255, 255, 0.035);
+    background:
+      linear-gradient(180deg, rgba(238, 246, 241, 0.96), rgba(238, 246, 241, 0.9)),
+      var(--ds-color-bg-base);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+  }
+
+  .finance-master-main {
+    padding-top: 19rem;
+  }
+
+  .finance-master-sidebar-head {
+    display: none;
+  }
+
+  .finance-master-add {
+    min-height: 38px;
   }
 
   .finance-master-nav {
