@@ -99,15 +99,19 @@
     }
 
     function addDays(base, days) {
+        var dateOnly = global.FinanceDates && global.FinanceDates.toDateOnly(base);
+        if (dateOnly && global.FinanceDates && global.FinanceDates.addDaysDateOnly) {
+            return new Date(global.FinanceDates.dateOnlyToNoonIso(global.FinanceDates.addDaysDateOnly(dateOnly, days)));
+        }
         var date = new Date(base);
-        date.setDate(date.getDate() + days);
+        date.setUTCDate(date.getUTCDate() + days);
         return date;
     }
 
     function dateOnly(value) {
-        var ts = Date.parse(String(value || ''));
-        if (!Number.isFinite(ts)) return '';
-        return new Date(ts).toISOString().slice(0, 10);
+        return global.FinanceDates && global.FinanceDates.toDateOnly
+            ? global.FinanceDates.toDateOnly(value)
+            : '';
     }
 
     function startOfMonth(value) {
@@ -131,10 +135,14 @@
     }
 
     function classifyObligationStatus(dueDate, nowTs) {
-        var dueTs = Date.parse(String(dueDate || ''));
-        if (!Number.isFinite(dueTs)) return 'needs_review';
-        if (dueTs < nowTs) return 'overdue';
-        if (dueTs <= addDays(nowTs, 7).getTime()) return 'due_soon';
+        var due = dateOnly(dueDate);
+        var today = dateOnly(nowTs);
+        if (!due || !today) return 'needs_review';
+        if (due < today) return 'overdue';
+        var dueSoonEnd = global.FinanceDates && global.FinanceDates.addDaysDateOnly
+            ? global.FinanceDates.addDaysDateOnly(today, 7)
+            : dateOnly(addDays(nowTs, 7));
+        if (due <= dueSoonEnd) return 'due_soon';
         return 'upcoming';
     }
 
@@ -202,16 +210,25 @@
             .reduce(function (sum, expense) { return sum + (Number(expense && expense.monthlyAmount) || 0); }, 0);
 
         var obligations = [];
+        var todayOnly = dateOnly(nowTs);
+        var todayParts = todayOnly ? todayOnly.split('-').map(Number) : [];
+        var forecastEndOnly = dateOnly(forecastEndTs);
+        var lookbackStartOnly = global.FinanceDates && global.FinanceDates.addDaysDateOnly
+            ? global.FinanceDates.addDaysDateOnly(todayOnly, -30)
+            : dateOnly(addDays(nowTs, -30));
         recurringExpenses.forEach(function (expense) {
             var dueDay = Math.max(1, Math.min(28, Number(expense && expense.dueDay) || 1));
             for (var monthOffset = 0; monthOffset < 4; monthOffset += 1) {
-                var due = new Date(new Date(nowTs).getFullYear(), new Date(nowTs).getMonth() + monthOffset, dueDay, 12, 0, 0, 0);
-                if (due.getTime() > forecastEndTs) continue;
-                if (monthOffset > 0 || due.getTime() >= addDays(nowTs, -30).getTime()) {
-                    var obligationId = String((expense && expense.id) || 'expense') + '-' + due.toISOString().slice(0, 7);
+                var dueMonth = new Date(Date.UTC(todayParts[0] || new Date(nowTs).getUTCFullYear(), (todayParts[1] || (new Date(nowTs).getUTCMonth() + 1)) - 1 + monthOffset, dueDay, 12, 0, 0, 0));
+                var generatedDueDate = global.FinanceDates && global.FinanceDates.dateOnlyFromParts
+                    ? global.FinanceDates.dateOnlyFromParts(dueMonth.getUTCFullYear(), dueMonth.getUTCMonth() + 1, dueMonth.getUTCDate())
+                    : dueMonth.toISOString().slice(0, 10);
+                if (forecastEndOnly && generatedDueDate > forecastEndOnly) continue;
+                if (monthOffset > 0 || !lookbackStartOnly || generatedDueDate >= lookbackStartOnly) {
+                    var obligationId = String((expense && expense.id) || 'expense') + '-' + generatedDueDate.slice(0, 7);
                     var review = obligationReviewMap[obligationId] || null;
-                    var dueDate = due.toISOString().slice(0, 10);
-                    var status = classifyObligationStatus(due.toISOString(), nowTs);
+                    var dueDate = generatedDueDate;
+                    var status = classifyObligationStatus(generatedDueDate, nowTs);
                     if (review && review.status === 'paid') {
                         status = 'paid';
                     } else if (review && review.status === 'deferred' && review.deferredUntil) {
@@ -227,7 +244,7 @@
                         type: 'recurring_cost',
                         amount: round(Number(expense && expense.monthlyAmount) || 0),
                         dueDate: dueDate,
-                        originalDueDate: due.toISOString().slice(0, 10),
+                        originalDueDate: generatedDueDate,
                         status: status,
                         review: review,
                         scope: String((expense && expense.scope) || 'shared')

@@ -2,6 +2,7 @@ import './styles/base.css';
 import './styles/finance-dashboard.css';
 import './components/sag-icons';
 import './components/core-dashboard-hero';
+import './finance/date-utils.js';
 import './finance/events.js';
 import './finance/ledger.js';
 import './finance/invariants.js';

@@ -449,47 +449,23 @@ window.FinancialMode = (function () {
 
     /* --- IA Layer Renderers --- */
 
-    function renderSectionNav(activeSection) {
-        const labels = {
-            dashboard: 'Dashboard',
-            ledger: 'Ledger',
-            planning: 'Planning',
-            review: 'Review',
-            data: 'Data',
-            settings: 'Settings'
-        };
-        return `
-            <section class="fin-section fin-section-nav" aria-label="Finance sections">
-                <div class="fin-section-tabs" role="tablist" aria-label="Finance workspace">
-                    ${SECTIONS.map((section) => `
-                        <button class="fin-tab-btn ${activeSection === section ? 'active' : ''}" type="button" data-action="FinancialMode.setSection" data-action-args="'${section}'" role="tab" aria-selected="${activeSection === section ? 'true' : 'false'}">
-                            ${labels[section]}
-                        </button>
-                    `).join('')}
-                </div>
-            </section>
-        `;
-    }
-
     function renderSection(activeSection, focusMode) {
-        const nav = renderSectionNav(activeSection);
         if (activeSection === 'ledger') {
-            return [nav, renderSectionHeading('Ledger', 'Transactions are the raw material. Filter, add, reverse, and reconcile cash movements.'), renderLedgerSection(), renderOperationsInvestmentsRow()];
+            return [renderSectionHeading('Ledger', 'Transactions are the raw material. Filter, add, reverse, and reconcile cash movements.'), renderLedgerSection(), renderOperationsInvestmentsRow()];
         }
         if (activeSection === 'planning') {
-            return [nav, renderSectionHeading('Planning', 'Pipeline, goals, obligations, debts, cash calendar, and scenario work.'), renderPipelineTabs(), renderGoals(), renderCashCalendar(), renderOperationsInvestmentsRow(), renderProjection(), renderScenarioLab()];
+            return [renderSectionHeading('Planning', 'Pipeline, goals, obligations, debts, cash calendar, and scenario work.'), renderPipelineTabs(), renderGoals(), renderCashCalendar(), renderOperationsInvestmentsRow(), renderProjection(), renderScenarioLab()];
         }
         if (activeSection === 'review') {
-            return [nav, renderSectionHeading('Review', 'Resolve unclear items, reconcile accounts, and keep the operating ritual alive.'), renderReviewQueue(), renderPaymentReviewSection(), renderTensionSignals(), renderWeeklyReviewSection()];
+            return [renderSectionHeading('Review', 'Resolve unclear items, reconcile accounts, and keep the operating ritual alive.'), renderReviewQueue(), renderObligationReviewSection(), renderPaymentReviewSection(), renderTensionSignals(), renderWeeklyReviewSection()];
         }
         if (activeSection === 'data') {
-            return [nav, renderSectionHeading('Data', 'Local imports, backups, import batches, and sample ledger controls.'), renderDataSection()];
+            return [renderSectionHeading('Data', 'Local imports, backups, import batches, and sample ledger controls.'), renderDataSection()];
         }
         if (activeSection === 'settings') {
-            return [nav, renderSectionHeading('Settings', 'Operational preferences, appearance, scope, and postponed integrations.'), renderSettingsSection()];
+            return [renderSectionHeading('Settings', 'Operational preferences, appearance, scope, and postponed integrations.'), renderSettingsSection()];
         }
         return [
-            nav,
             renderObservatoryHeader(),
             renderSetupChecklist(),
             renderTreasurySnapshot(),
@@ -787,7 +763,7 @@ window.FinancialMode = (function () {
         const dueSoon = treasuryArray('dueSoonObligations');
         const upcoming = treasuryArray('upcomingObligations');
         const paid = treasuryArray('paidObligations');
-        const obligations = overdue.concat(dueSoon).concat(upcoming).slice(0, 10);
+        const obligations = overdue.concat(dueSoon).concat(upcoming).slice(0, 5);
         return `
             <section class="fin-section">
                 <div class="widget ui-card glass fin-card">
@@ -796,7 +772,7 @@ window.FinancialMode = (function () {
                             <div class="widget-title ui-title">Obligations</div>
                             <div class="fin-helper-text">Costs that are already spoken for. Overdue first, then the next 90 days.</div>
                         </div>
-                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense'">Add recurring cost</button>
+                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.setSection" data-action-args="'review'">Open Review</button>
                     </div>
                     <div class="fin-status-grid">
                         <div class="fin-status-card">${renderStatusPill('overdue')}<strong>${overdue.length}</strong><span>${formatCurrency(overdue.reduce((sum, item) => sum + Number(item.amount || 0), 0))}</span></div>
@@ -808,13 +784,9 @@ window.FinancialMode = (function () {
                         <div class="modal-list-row">
                             <span><strong>${escapeHtml(entry.title)}</strong><br><small>${entry.dueDate ? formatShortDate(entry.dueDate) : 'No due date'} · ${escapeHtml(entry.scope || 'shared')}</small></span>
                             <span>${renderStatusPill(entry.status)} ${formatCurrency(entry.amount)}</span>
-                            <span class="goal-modal-actions">
-                                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'obligationPayment', '${escapeActionArg(entry.id)}'">Mark paid</button>
-                                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'obligationDefer', '${escapeActionArg(entry.id)}'">Defer</button>
-                                <button class="fin-mini-btn" type="button" data-action="markObligationNeedsReview" data-action-args="'${escapeActionArg(entry.id)}'">Review</button>
-                            </span>
                         </div>
                     `).join('') : renderCompactEmpty('Add recurring costs or debt items to see upcoming obligations.')}
+                    ${overdue.length + dueSoon.length + upcoming.length > obligations.length ? '<div class="fin-helper-text">Open Review to resolve the full obligation queue.</div>' : ''}
                 </div>
             </section>
         `;
@@ -839,6 +811,36 @@ window.FinancialMode = (function () {
                             ${renderStatusPill(item.tone === 'urgent' ? 'overdue' : 'needs_review')}
                         </div>
                     `).join('') : renderCompactEmpty('Nothing needs review right now.')}
+                </div>
+            </section>
+        `;
+    }
+
+    function renderObligationReviewSection() {
+        const obligations = treasuryArray('obligations')
+            .filter((entry) => ['overdue', 'due_soon', 'needs_review'].includes(String(entry && entry.status || '')))
+            .slice(0, 12);
+        return `
+            <section class="fin-section">
+                <div class="widget ui-card glass fin-card">
+                    <div class="fin-section-heading-row">
+                        <div>
+                            <div class="widget-title ui-title">Expected Obligations</div>
+                            <div class="fin-helper-text">Resolve due costs here: pay, defer, or keep them flagged for review.</div>
+                        </div>
+                        <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense'">Add recurring cost</button>
+                    </div>
+                    ${obligations.length ? obligations.map((entry) => `
+                        <div class="modal-list-row">
+                            <span><strong>${escapeHtml(entry.title)}</strong><br><small>${entry.dueDate ? formatShortDate(entry.dueDate) : 'No due date'} · ${escapeHtml(entry.scope || 'shared')}</small></span>
+                            <span>${renderStatusPill(entry.status)} ${formatCurrency(entry.amount)}</span>
+                            <span class="goal-modal-actions">
+                                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'obligationPayment', '${escapeActionArg(entry.id)}'">Mark paid</button>
+                                <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'obligationDefer', '${escapeActionArg(entry.id)}'">Defer</button>
+                                <button class="fin-mini-btn" type="button" data-action="markObligationNeedsReview" data-action-args="'${escapeActionArg(entry.id)}'">Review</button>
+                            </span>
+                        </div>
+                    `).join('') : renderCompactEmpty('No overdue or due-soon obligations need action.')}
                 </div>
             </section>
         `;

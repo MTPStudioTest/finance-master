@@ -103,8 +103,7 @@ function entityId(prefix: string): string {
 }
 
 function toTransactionIso(date: string): string {
-  const parsed = Date.parse(`${date}T12:00:00`);
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : new Date().toISOString();
+  return window.FinanceDates?.dateOnlyToNoonIso?.(date) || new Date().toISOString();
 }
 
 function eventMatchesScope(event: FinanceEvent, filter: FinanceScopeFilter): boolean {

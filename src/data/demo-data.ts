@@ -6,7 +6,9 @@ function offsetIso(days: number, hour = 12): string {
 }
 
 function dateOnly(days: number): string {
-  return offsetIso(days).slice(0, 10);
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
 }
 
 export function createDemoDrafts(currency: string): FinanceEventDraft[] {

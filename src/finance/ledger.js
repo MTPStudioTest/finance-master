@@ -93,10 +93,7 @@
     }
 
     function toIsoDateOnly(value) {
-        if (!value) return '';
-        var ts = Date.parse(value);
-        if (!Number.isFinite(ts)) return '';
-        return new Date(ts).toISOString().slice(0, 10);
+        return Events.toDateOnly ? Events.toDateOnly(value) : (global.FinanceDates ? global.FinanceDates.toDateOnly(value) : '');
     }
 
     function buildReadModel(events, settings) {

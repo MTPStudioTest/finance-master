@@ -56,12 +56,11 @@ function checked(id: string): boolean {
 }
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return window.FinanceDates?.todayDateOnly?.() || new Date().toISOString().slice(0, 10);
 }
 
 function toIso(date = today()): string {
-  const parsed = Date.parse(`${date}T12:00:00`);
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : new Date().toISOString();
+  return window.FinanceDates?.dateOnlyToNoonIso?.(date) || new Date().toISOString();
 }
 
 function financeId(prefix: string): string {

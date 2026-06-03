@@ -18,6 +18,8 @@ async function openSettings(page: Page): Promise<void> {
 test('grouped navigation exposes every finance workspace section', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
+  await expect(page.locator('[data-fin-nav]')).toHaveCount(6);
+  await expect(page.locator('#fin-content-area .fin-section-nav')).toHaveCount(0);
   for (const [button, heading] of [
     ['Dashboard', 'Finance Observatory'],
     ['Ledger', 'Ledger'],
@@ -26,7 +28,7 @@ test('grouped navigation exposes every finance workspace section', async ({ page
     ['Data', 'Data'],
     ['Settings', 'Settings'],
   ] as const) {
-    await page.getByRole('button', { name: button, exact: true }).click();
+    await page.getByRole('banner').getByRole('button', { name: button, exact: true }).click();
     await expect(page.getByRole('heading', { name: heading, exact: true }).or(page.getByText(heading, { exact: true }).first())).toBeVisible();
   }
   expect(errors).toEqual([]);
@@ -48,7 +50,7 @@ test('daily capture supports keyboard focus, focus trap, Escape, and focus resto
   await expect(page.getByLabel('Transactions').getByText('Test capture', { exact: true })).toBeVisible();
   await page.locator('[data-action="closeModal"]').click();
 
-  const review = page.getByRole('button', { name: 'Review', exact: true });
+  const review = page.getByRole('banner').getByRole('button', { name: 'Review', exact: true });
   await review.click();
   const reviewLauncher = page.getByRole('button', { name: /Start review|Open review/ }).first();
   await reviewLauncher.click();
@@ -157,15 +159,13 @@ test('pipeline settlement requires an account and appearance modes persist throu
 test('overdue obligation can be booked as paid and appears in payment review', async ({ page }) => {
   const errors = monitorConsole(page);
   await page.goto('/');
+  await page.getByRole('banner').getByRole('button', { name: 'Review', exact: true }).click();
   const markPaid = page.getByRole('button', { name: 'Mark paid', exact: true }).first();
   await expect(markPaid).toBeVisible();
   await markPaid.click();
   await expect(page.getByRole('heading', { name: 'Mark obligation paid', exact: true })).toBeVisible();
   await page.getByLabel('Paid from account').selectOption({ index: 1 });
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page.getByText('Reviewed payments', { exact: true })).toBeVisible();
-
-  await page.getByRole('banner').getByRole('button', { name: 'Review', exact: true }).click();
   await expect(page.getByText('Actual Payments', { exact: true })).toBeVisible();
   await expect(page.locator('#fin-content-area').getByText('Paid', { exact: true }).first()).toBeVisible();
   expect(errors).toEqual([]);

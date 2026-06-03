@@ -8,6 +8,7 @@ import { formatCurrencyAmount, resolveCurrencyCode } from '../src/finance/format
 
 const ROOT = resolve(import.meta.dirname, '..');
 const SOURCES = [
+  'src/finance/date-utils.js',
   'src/finance/events.js',
   'src/finance/ledger.js',
   'src/finance/invariants.js',
@@ -287,6 +288,33 @@ test('treasury scenarios only include income inside the forecast horizon', () =>
   assert.equal(result.treasury.incomeScenarios.conservative, 1500);
   assert.equal(result.treasury.incomeScenarios.expected, 1500);
   assert.equal(result.treasury.incomeScenarios.optimistic, 1500);
+});
+
+test('date utilities preserve date-only values and recurring due dates exactly', () => {
+  const finance = loadFinance();
+  assert.equal(finance.FinanceDates.toDateOnly('2026-06-05'), '2026-06-05');
+  assert.equal(finance.FinanceDates.dateOnlyToNoonIso('2026-06-05'), '2026-06-05T12:00:00.000Z');
+  assert.equal(finance.FinanceDates.addDaysDateOnly('2026-06-05', 7), '2026-06-12');
+
+  const nowIso = '2026-06-05T22:30:00.000Z';
+  const events = append(finance, [{
+    id: 'health-insurance',
+    type: 'expense.recurring_set',
+    amount: 680,
+    currency: 'EUR',
+    timestamp: nowIso,
+    related_entity_id: 'health-insurance',
+    metadata: { category: 'Health insurance', monthlyAmount: 680, dueDay: 5, frequency: 'monthly', scope: 'personal' },
+  }], nowIso);
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 30,
+    nowIso,
+  });
+
+  const currentMonth = result.treasury.obligations.find((entry) => entry.id === 'health-insurance-2026-06');
+  assert.equal(currentMonth.dueDate, '2026-06-05');
+  assert.equal(currentMonth.status, 'due_soon');
 });
 
 test('reviewed obligation instances can be marked paid and leave overdue queue', () => {
