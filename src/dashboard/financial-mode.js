@@ -212,6 +212,8 @@ window.FinancialMode = (function () {
             type: 'all',
             reviewStatus: 'all',
             source: 'all',
+            importBatchId: 'all',
+            linkState: 'all',
             amountMin: '',
             amountMax: '',
             dateFrom: '',
@@ -554,6 +556,8 @@ window.FinancialMode = (function () {
                     type: String(document.getElementById('fin-ledger-type')?.value || 'all'),
                     reviewStatus: String(document.getElementById('fin-ledger-review')?.value || 'all'),
                     source: String(document.getElementById('fin-ledger-source')?.value || 'all'),
+                    importBatchId: String(document.getElementById('fin-ledger-import-batch')?.value || 'all'),
+                    linkState: String(document.getElementById('fin-ledger-link-state')?.value || 'all'),
                     amountMin: String(document.getElementById('fin-ledger-amount-min')?.value || ''),
                     amountMax: String(document.getElementById('fin-ledger-amount-max')?.value || ''),
                     dateFrom: String(document.getElementById('fin-ledger-date-from')?.value || ''),
@@ -731,10 +735,12 @@ window.FinancialMode = (function () {
         const amountMin = Number(filters.amountMin);
         const amountMax = Number(filters.amountMax);
         const sourceOptions = Array.from(new Set(allTransactions.map((entry) => String(entry && entry.source || '').trim()).filter(Boolean))).sort();
+        const importBatchOptions = Array.from(new Set(allTransactions.map((entry) => String(entry && entry.importBatchId || '').trim()).filter(Boolean))).sort();
         const transactions = allTransactions.filter((entry) => {
             const date = window.FinanceDates?.toDateOnly?.(entry && entry.timestamp) || String(entry && entry.timestamp || '').slice(0, 10);
             const signed = ledgerSignedAmount(entry);
             const absoluteAmount = Math.abs(signed);
+            const linked = ledgerHasLink(entry);
             const accountMatch = filters.accountId === 'all'
                 || String(entry && entry.accountId || '') === String(filters.accountId)
                 || String(entry && entry.fromAccountId || '') === String(filters.accountId)
@@ -743,6 +749,8 @@ window.FinancialMode = (function () {
             const typeMatch = filters.type === 'all' || String(entry && entry.ledgerType || '').toLowerCase() === String(filters.type).toLowerCase();
             const reviewMatch = filters.reviewStatus === 'all' || String(entry && entry.reviewStatus || 'clear') === String(filters.reviewStatus);
             const sourceMatch = !filters.source || filters.source === 'all' || String(entry && entry.source || '') === String(filters.source);
+            const importBatchMatch = !filters.importBatchId || filters.importBatchId === 'all' || String(entry && entry.importBatchId || '') === String(filters.importBatchId);
+            const linkMatch = !filters.linkState || filters.linkState === 'all' || (filters.linkState === 'linked' ? linked : !linked);
             const categoryMatch = !String(filters.categoryId || '').trim()
                 || String(entry && entry.categoryId || '').toLowerCase().includes(String(filters.categoryId).trim().toLowerCase());
             const amountMinMatch = !String(filters.amountMin || '').trim() || !Number.isFinite(amountMin) || absoluteAmount >= amountMin;
@@ -758,7 +766,7 @@ window.FinancialMode = (function () {
                 entry && entry.id,
                 entry && entry.transactionEntityId
             ].some((part) => String(part || '').toLowerCase().includes(search));
-            return accountMatch && scopeMatch && typeMatch && reviewMatch && sourceMatch && categoryMatch && amountMinMatch && amountMaxMatch && dateMatch && searchMatch;
+            return accountMatch && scopeMatch && typeMatch && reviewMatch && sourceMatch && importBatchMatch && linkMatch && categoryMatch && amountMinMatch && amountMaxMatch && dateMatch && searchMatch;
         });
         const view = getLedgerView();
         const reviewTransactions = transactions.filter(isLedgerReviewItem);
@@ -829,6 +837,16 @@ window.FinancialMode = (function () {
                 ${sourceOptions.map((source) => `<option value="${escapeHtml(source)}"${String(filters.source) === source ? ' selected' : ''}>${escapeHtml(source)}</option>`).join('')}
             </select>
         ` : `<input id="fin-ledger-source" aria-label="Filter ledger by source" value="all" type="hidden" />`;
+        const importBatchFilter = importBatchOptions.length ? `
+            <select id="fin-ledger-import-batch" aria-label="Filter ledger by import batch">
+                <option value="all"${filters.importBatchId === 'all' || !filters.importBatchId ? ' selected' : ''}>All import batches</option>
+                ${importBatchOptions.map((batchId) => {
+            const batch = ledgerImportBatch({ importBatchId: batchId });
+            const label = batch && batch.sourceFile ? `${batch.sourceFile} · ${batchId}` : batchId;
+            return `<option value="${escapeHtml(batchId)}"${String(filters.importBatchId) === batchId ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+        }).join('')}
+            </select>
+        ` : `<input id="fin-ledger-import-batch" aria-label="Filter ledger by import batch" value="all" type="hidden" />`;
         const chips = renderLedgerFilterChips(filters);
         const filtersHtml = `
             <div class="fin-ledger-toolbar" aria-label="Ledger filters">
@@ -858,6 +876,12 @@ window.FinancialMode = (function () {
                         <option value="reviewed"${filters.reviewStatus === 'reviewed' ? ' selected' : ''}>Reviewed</option>
                     </select>
                     ${sourceFilter}
+                    ${importBatchFilter}
+                    <select id="fin-ledger-link-state" aria-label="Filter ledger by link state">
+                        <option value="all"${filters.linkState === 'all' ? ' selected' : ''}>All link states</option>
+                        <option value="linked"${filters.linkState === 'linked' ? ' selected' : ''}>Linked records</option>
+                        <option value="unlinked"${filters.linkState === 'unlinked' ? ' selected' : ''}>Unlinked records</option>
+                    </select>
                     <input id="fin-ledger-amount-min" aria-label="Ledger amount minimum" type="number" min="0" step="0.01" value="${escapeHtml(filters.amountMin)}" placeholder="Minimum amount" />
                     <input id="fin-ledger-amount-max" aria-label="Ledger amount maximum" type="number" min="0" step="0.01" value="${escapeHtml(filters.amountMax)}" placeholder="Maximum amount" />
                     <button class="fin-mini-btn" type="button" data-fin-action="clear-ledger-filters">Reset filters</button>
@@ -867,6 +891,8 @@ window.FinancialMode = (function () {
                     <input id="fin-ledger-type" value="${escapeHtml(filters.type)}" type="hidden" />
                     <input id="fin-ledger-review" value="${escapeHtml(filters.reviewStatus)}" type="hidden" />
                     <input id="fin-ledger-source" value="${escapeHtml(filters.source)}" type="hidden" />
+                    <input id="fin-ledger-import-batch" value="${escapeHtml(filters.importBatchId)}" type="hidden" />
+                    <input id="fin-ledger-link-state" value="${escapeHtml(filters.linkState)}" type="hidden" />
                     <input id="fin-ledger-amount-min" value="${escapeHtml(filters.amountMin)}" type="hidden" />
                     <input id="fin-ledger-amount-max" value="${escapeHtml(filters.amountMax)}" type="hidden" />
                 `}
@@ -947,6 +973,16 @@ window.FinancialMode = (function () {
         return String(entry && entry.type) === 'expense.recorded'
             && !String(entry && entry.receiptUrl || '').trim()
             && String(entry && entry.categoryId || '').toLowerCase() !== 'transfer';
+    }
+
+    function ledgerHasLink(entry) {
+        return Boolean(
+            String(entry && entry.obligationId || '').trim()
+            || String(entry && entry.linkedIncomeId || '').trim()
+            || String(entry && entry.linkedReserveId || '').trim()
+            || String(entry && entry.reversalOf || '').trim()
+            || String(entry && entry.reversedBy || '').trim()
+        );
     }
 
     function isLedgerReviewItem(entry) {
@@ -1030,6 +1066,52 @@ window.FinancialMode = (function () {
             .slice(0, 2);
     }
 
+    function ledgerIncomeMatchSuggestions(entry) {
+        if (!entry || String(entry.type) !== 'income.received' || String(entry.linkedIncomeId || '').trim()) return [];
+        const amount = Math.abs(Number(entry.amount) || Number(entry.signedAmount) || 0);
+        const txTokens = new Set(ledgerTokens(entry.description));
+        return safeArray(currentData && currentData.pipelineDeals)
+            .filter((item) => {
+                const status = String(item && item.status || '').toLowerCase();
+                return status !== 'paid' && status !== 'closed' && status !== 'lost' && status !== 'cancelled' && status !== 'deleted';
+            })
+            .map((item) => {
+                const itemAmount = Math.abs(Number(item && item.value) || 0);
+                const amountDelta = Math.abs(itemAmount - amount);
+                const dayDelta = ledgerDaysBetween(entry.timestamp, item && item.expectedDateISO);
+                const tokenMatch = ledgerTokens(`${item && item.title || ''} ${item && item.client || ''}`).filter((token) => txTokens.has(token)).length;
+                let score = 0;
+                const reasons = [];
+                if (amountDelta < 0.01) {
+                    score += 6;
+                    reasons.push('same amount');
+                } else if (amountDelta <= Math.max(10, amount * 0.05)) {
+                    score += 3;
+                    reasons.push('similar amount');
+                }
+                if (dayDelta <= 7) {
+                    score += 3;
+                    reasons.push('near expected date');
+                } else if (dayDelta <= 21) {
+                    score += 1;
+                    reasons.push('close date');
+                }
+                if (tokenMatch) {
+                    score += tokenMatch * 2;
+                    reasons.push('matching description');
+                }
+                return {
+                    id: String(item && item.id || ''),
+                    title: String(item && item.title || 'Expected income'),
+                    reason: reasons.join(' + ') || 'possible income match',
+                    score
+                };
+            })
+            .filter((item) => item.id && item.score > 0)
+            .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title))
+            .slice(0, 2);
+    }
+
     function ledgerImportBatch(entry) {
         const batchId = String(entry && entry.importBatchId || '').trim();
         if (!batchId || !window.Store || typeof window.Store.getImportState !== 'function') return null;
@@ -1056,8 +1138,23 @@ window.FinancialMode = (function () {
         ];
     }
 
+    function ledgerReserveMovementLabel(entry) {
+        if (!entry) return '';
+        const linkedReserve = String(entry.linkedReserveId || '').trim();
+        if (linkedReserve) return `Linked reserve ${linkedReserve}`;
+        const type = String(entry.ledgerType || entry.type || '').toLowerCase();
+        if (type !== 'transfer') return '';
+        const accounts = safeArray(currentData && currentData.fiatAccounts);
+        const from = accounts.find((account) => String(account && account.id || '') === String(entry.fromAccountId || ''));
+        const to = accounts.find((account) => String(account && account.id || '') === String(entry.toAccountId || ''));
+        const protectedSide = [from, to].filter((account) => account && (account.reserved || String(account.bucket || '') !== 'available'));
+        if (!protectedSide.length) return '';
+        return protectedSide.map((account) => `${account.name || 'Protected account'} (${account.bucket || 'reserve'})`).join(' · ');
+    }
+
     function ledgerEvidenceItems(entry) {
         const batch = ledgerImportBatch(entry);
+        const reserveMovement = ledgerReserveMovementLabel(entry);
         return [
             ['Source', entry.source || 'local ledger'],
             ['Source file', entry.sourceFile || ''],
@@ -1066,6 +1163,7 @@ window.FinancialMode = (function () {
             ['Fingerprint', entry.fingerprint || ''],
             ['Linked income', entry.linkedIncomeTitle || entry.linkedIncomeId || ''],
             ['Linked obligation', entry.linkedObligationTitle || entry.obligationTitle || entry.obligationId || ''],
+            ['Reserve movement', reserveMovement],
             ['Payment link', entry.obligationId ? 'Matched to obligation' : ''],
             ['Reversal', entry.reversalOf ? `Reversal of ${entry.reversalOf}` : (entry.reversedBy ? `Reversed by ${entry.reversedBy}` : '')],
             ['Record ID', ledgerTransactionId(entry)],
@@ -1084,6 +1182,8 @@ window.FinancialMode = (function () {
         if (filters.type && filters.type !== 'all') labels.push(`Type: ${filters.type}`);
         if (filters.reviewStatus && filters.reviewStatus !== 'all') labels.push(`Review: ${String(filters.reviewStatus).replace(/_/g, ' ')}`);
         if (filters.source && filters.source !== 'all') labels.push(`Source: ${filters.source}`);
+        if (filters.importBatchId && filters.importBatchId !== 'all') labels.push(`Import batch: ${filters.importBatchId}`);
+        if (filters.linkState && filters.linkState !== 'all') labels.push(filters.linkState === 'linked' ? 'Linked records' : 'Unlinked records');
         if (String(filters.amountMin || '').trim()) labels.push(`Min ${filters.amountMin}`);
         if (String(filters.amountMax || '').trim()) labels.push(`Max ${filters.amountMax}`);
         if (!labels.length) return '';
@@ -1111,6 +1211,7 @@ window.FinancialMode = (function () {
         const matched = Boolean(String(entry && entry.obligationId || '').trim());
         const evidence = ledgerEvidenceItems(entry);
         const matchSuggestions = ledgerPaymentMatchSuggestions(entry);
+        const incomeSuggestions = ledgerIncomeMatchSuggestions(entry);
         const details = [
             ['Type', entry.ledgerType || entry.type || 'transaction'],
             ['Date', formatShortDate(entry.timestamp)],
@@ -1148,6 +1249,18 @@ window.FinancialMode = (function () {
                         <span class="fin-eyebrow">Suggested match</span>
                         ${matchSuggestions.map((suggestion) => `
                             <div><strong>${escapeHtml(suggestion.title)}</strong><small>${escapeHtml(suggestion.reason)}</small></div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+                ${incomeSuggestions.length ? `
+                    <div class="fin-inspector-suggestions">
+                        <span class="fin-eyebrow">Suggested income match</span>
+                        ${incomeSuggestions.map((suggestion) => `
+                            <div>
+                                <strong>${escapeHtml(suggestion.title)}</strong>
+                                <small>${escapeHtml(suggestion.reason)}</small>
+                                ${financeIconButton({ action: 'openEditModal', args: `'pipelineReview', '${escapeActionArg(suggestion.id)}'`, label: 'Review expected income match', icon: 'success', tone: 'success' })}
+                            </div>
                         `).join('')}
                     </div>
                 ` : ''}
