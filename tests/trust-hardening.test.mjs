@@ -28,7 +28,14 @@ import {
   normalizeReviewState,
 } from '../src/finance/goals.js';
 import { buildMonthCloseSummary } from '../src/finance/month-close.js';
-import { buildFinanceForecast } from '../src/finance/forecast.js';
+import {
+  buildDangerZoneForecast,
+  buildFinanceForecast,
+  buildFinancialWeather,
+  buildReserveHealth,
+  buildRoadmapFinanceMetrics,
+  buildTopSignals,
+} from '../src/finance/forecast.js';
 
 function validBackup() {
   return {
@@ -432,4 +439,40 @@ test('finance forecast builds deterministic horizon scenarios from canonical inp
   assert.equal(forecast.byHorizon['60'].components.expectedIncome, 1980);
   assert.equal(Object.keys(forecast.byHorizon).join('|'), '7|30|60|90|180');
   assert.equal(forecast.warnings.some((warning) => warning.includes('Forecast confidence is low')), true);
+});
+
+test('roadmap finance metrics derive weather, signals, reserve health, and danger zone from canonical inputs', () => {
+  const input = {
+    nowIso: '2026-06-01T10:00:00.000Z',
+    readModel: {
+      pipelineDeals: [
+        { id: 'confirmed', title: 'Confirmed work', value: 1000, status: 'confirmed', probability: 0.9, expectedDateISO: '2026-06-05' },
+        { id: 'proposal', title: 'Proposal', value: 2000, status: 'proposal', probability: 0.4, expectedDateISO: '2026-07-01' },
+      ],
+      reserveBuckets: [{ id: 'tax', targetAmount: 1000, currentAmount: 250 }],
+      debtAccounts: [{ id: 'card', outstanding: 1200, minimumPaymentMonthly: 0 }],
+    },
+    snapshot: { availableCash: 600, safeToSpend: 100, monthlyBurn: 1200, confidenceScore: 0.5, attentionQueue: [{ id: 'txn' }] },
+    treasury: { availableCash: 600, safeToSpend: 100, totalMonthlyBurn: 1200, minimumBuffer: 280, reviewQueue: [{ id: 'txn' }] },
+  };
+
+  const forecast = buildFinanceForecast(input);
+  const reserveHealth = buildReserveHealth(input);
+  const dangerZone = buildDangerZoneForecast(forecast);
+  const weather = buildFinancialWeather({ ...input, forecast, reserveHealth });
+  const signals = buildTopSignals({ ...input, forecast, reserveHealth });
+  const metrics = buildRoadmapFinanceMetrics(input);
+
+  assert.equal(reserveHealth.status, 'thin');
+  assert.equal(reserveHealth.coveragePercent, 25);
+  assert.equal(reserveHealth.gap, 750);
+  assert.equal(dangerZone.status, 'shortfall');
+  assert.equal(dangerZone.lowestAmount, -5700);
+  assert.equal(dangerZone.horizonDays, 180);
+  assert.equal(weather.state, 'Stormy');
+  assert.equal(signals[0].title, 'Forecast shortfall');
+  assert.equal(signals.some((signal) => signal.title === 'Debt payment plan missing'), true);
+  assert.equal(metrics.reserveHealth.status, 'thin');
+  assert.equal(metrics.financialWeather.state, 'Stormy');
+  assert.equal(metrics.topSignals.length <= 5, true);
 });

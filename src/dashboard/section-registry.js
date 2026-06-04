@@ -1,29 +1,34 @@
 export function createSectionRenderer(renderers, renderSectionHeading) {
     const pages = {
-        ledger: {
+        flow: {
             title: 'Flow',
-            copy: 'The working inbox for money movement: records, expected income, matching, and review work.',
-            sections: ['ledger']
+            copy: 'The timeline and forecast view for upcoming income, obligations, burn, and cash pressure.',
+            sections: ['cashCalendar', 'scenarioOutcomes', 'projection', 'invoices', 'pipelineTabs']
         },
-        review: {
-            title: 'Logbook',
-            copy: 'Saved checkpoints, review notes, account checks, and the history that unlocks pattern memory.',
-            sections: ['reviewQueue', 'obligationReview', 'tensionSignals', 'weeklyReview']
+        plan: {
+            title: 'Plan',
+            copy: 'The structural money map: accounts, reserves, baseline costs, debts, payment plans, goals, and project cash.',
+            sections: ['reserves']
         },
-        reports: {
-            title: 'Signals',
-            copy: 'Interpretation, diagnosis, risks, patterns, and decision simulations from current local data.',
+        radar: {
+            title: 'Radar',
+            copy: 'Actionable risks, opportunities, concentration, reserve health, and scenario suggestions.',
             sections: ['reports']
         },
-        data: {
-            title: 'Settings',
-            copy: 'Data safety, imports, backups, restore, reset, local app health, and app-level preferences.',
-            sections: ['data', 'settings']
+        review: {
+            title: 'Review',
+            copy: 'A lightweight maintenance loop for keeping the financial picture trustworthy without turning it into homework.',
+            sections: ['reviewQueue', 'obligationReview', 'paymentReview', 'tensionSignals', 'weeklyReview']
         },
-        reserves: {
-            title: 'Map',
-            copy: 'Accounts, reserves, obligations, recurring burn, debts, payment plans, goals, and allocation structure.',
-            sections: ['reserves']
+        logbook: {
+            title: 'Logbook',
+            copy: 'The raw record utility for transactions, imported rows, matching evidence, cleanup, and detail inspection.',
+            sections: ['ledger']
+        },
+        settings: {
+            title: 'Settings',
+            copy: 'App behavior, local data and privacy, backup/restore, defaults, and display preferences.',
+            sections: ['data', 'settings']
         }
     };
 
@@ -35,6 +40,10 @@ export function createSectionRenderer(renderers, renderSectionHeading) {
                 renderSectionHeading('Pulse', 'The live financial cockpit for Safe-to-Spend, runway, pressure, and the next move.'),
                 renderers.observatoryHeader(),
                 renderers.dashboardCockpit(),
+                renderers.todaysDecision(),
+                renderers.next30Days(),
+                renderers.nextActions(),
+                renderers.strategicPicture(),
                 `</div>`
             ];
         }

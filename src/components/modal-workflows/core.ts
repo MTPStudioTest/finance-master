@@ -78,7 +78,7 @@ export function renderTransaction(defaultType = 'expense', deps: TransactionRend
           <select id="modal-fast-txn-scope">${scopeOptions('business')}</select>
         </div>
         <div class="form-group fg-project">
-          <label for="modal-fast-txn-project">Project map</label>
+          <label for="modal-fast-txn-project">Project plan</label>
           <select id="modal-fast-txn-project">${deps.projectOptions()}</select>
         </div>
         <div class="form-group fg-note">

@@ -234,3 +234,184 @@ export function buildFinanceForecast({
     lowestExpected: Number.isFinite(lowestExpected) ? round(lowestExpected) : null,
   };
 }
+
+export function buildReserveHealth({ readModel = {}, treasury = {} } = {}) {
+  const buckets = safeArray(readModel && readModel.reserveBuckets).filter((bucket) => bucket && bucket.active !== false);
+  const targetAmount = round(buckets.reduce((sum, bucket) => sum + Math.max(0, Number(bucket && bucket.targetAmount) || 0), 0));
+  const currentAmount = round(buckets.reduce((sum, bucket) => sum + Math.max(0, Number(bucket && bucket.currentAmount) || 0), 0));
+  const protectedCash = round(Number((treasury && treasury.protectedCash) ?? (treasury && treasury.reservedCash) ?? currentAmount) || 0);
+  const gap = round(Math.max(0, targetAmount - currentAmount));
+  const coveragePercent = targetAmount > 0 ? Math.min(100, Math.round((currentAmount / targetAmount) * 100)) : (protectedCash > 0 ? 100 : 0);
+  const status = targetAmount <= 0
+    ? (protectedCash > 0 ? 'funded' : 'unconfigured')
+    : gap <= 0
+      ? 'funded'
+      : coveragePercent >= 50
+        ? 'partial'
+        : 'thin';
+  return {
+    status,
+    targetAmount,
+    currentAmount,
+    protectedCash,
+    gap,
+    coveragePercent,
+    bucketCount: buckets.length,
+  };
+}
+
+export function buildDangerZoneForecast(forecast = {}) {
+  const horizons = safeArray(forecast && forecast.horizons);
+  if (!horizons.length) {
+    return {
+      status: 'unknown',
+      lowestAmount: null,
+      lowestDate: '',
+      horizonDays: null,
+      cause: 'Add forecast inputs to reveal future tight spots.',
+      suggestedAction: 'Add expected income and recurring obligations.',
+    };
+  }
+  const lowest = horizons.reduce((winner, entry) => {
+    if (!winner) return entry;
+    return Number(entry && entry.expected) < Number(winner && winner.expected) ? entry : winner;
+  }, null);
+  const lowestAmount = round(Number(lowest && lowest.expected) || 0);
+  const warning = safeArray(forecast && forecast.warnings)[0] || '';
+  const components = (lowest && lowest.components) || {};
+  const outgoing = Number(components.recurringObligations || components.outgoingCash || 0);
+  const incoming = Number(components.expectedIncome || components.incomingCash || 0);
+  const cause = warning
+    || (outgoing > incoming
+      ? 'Recurring obligations exceed expected income in this window.'
+      : 'Lowest projected balance comes from the current forecast mix.');
+  const suggestedAction = lowestAmount < 0
+    ? 'Pull confirmed income forward or reduce near-term obligations.'
+    : outgoing > incoming
+      ? 'Review upcoming obligations and expected income timing.'
+      : 'Keep Flow current and watch the next forecast low.';
+  return {
+    status: lowestAmount < 0 ? 'shortfall' : lowestAmount < Math.max(250, outgoing * 0.1) ? 'tight' : 'clear',
+    lowestAmount,
+    lowestDate: String(lowest && lowest.horizonEnd || ''),
+    horizonDays: Number(lowest && lowest.days) || null,
+    cause,
+    suggestedAction,
+  };
+}
+
+export function buildFinancialWeather({ snapshot = {}, treasury = {}, forecast = {}, reserveHealth = null } = {}) {
+  const reserve = reserveHealth || buildReserveHealth({ readModel: {}, treasury });
+  const safeToSpend = Number((treasury && treasury.safeToSpend) ?? (snapshot && snapshot.safeToSpend));
+  const availableCash = Number((treasury && treasury.availableCash) ?? (snapshot && snapshot.availableCash));
+  const runway = Number((treasury && treasury.runwayMonths) ?? (snapshot && snapshot.runwayMonths));
+  const warnings = safeArray(forecast && forecast.warnings);
+  const danger = buildDangerZoneForecast(forecast);
+  let state = 'Clear';
+  let reason = 'Cash, runway, and reserves are in a usable range.';
+  let suggestedAction = 'Keep the weekly review cadence.';
+
+  if ((Number.isFinite(safeToSpend) && safeToSpend < 0) || (Number.isFinite(availableCash) && availableCash < 0) || danger.status === 'shortfall') {
+    state = 'Stormy';
+    reason = danger.status === 'shortfall' ? danger.cause : 'Available cash is below committed pressure.';
+    suggestedAction = danger.status === 'shortfall' ? danger.suggestedAction : 'Cover near-term obligations before optional spending.';
+  } else if ((Number.isFinite(runway) && runway < 2) || warnings.some((warning) => /debt|confidence|overdue/i.test(String(warning)))) {
+    state = 'Tight';
+    reason = Number.isFinite(runway) && runway < 2 ? 'Runway is under two months.' : warnings[0];
+    suggestedAction = 'Review income timing, debt plans, and recurring burn.';
+  } else if ((Number.isFinite(safeToSpend) && safeToSpend < Math.max(250, Number(treasury && treasury.minimumBuffer) || 0)) || reserve.status === 'thin' || danger.status === 'tight') {
+    state = 'Watchful';
+    reason = reserve.status === 'thin' ? 'Reserve coverage is below target.' : 'The forecast has a tight low point.';
+    suggestedAction = 'Review reserves and the next cashflow low.';
+  } else if (warnings.length || reserve.status === 'partial') {
+    state = 'Stable';
+    reason = warnings[0] || 'Core cash is steady, with one planning gap to watch.';
+    suggestedAction = 'Keep Plan and Flow current.';
+  }
+
+  return {
+    state,
+    reason,
+    suggestedAction,
+  };
+}
+
+export function buildTopSignals({ readModel = {}, snapshot = {}, treasury = {}, forecast = {}, reserveHealth = null } = {}) {
+  const reserve = reserveHealth || buildReserveHealth({ readModel, treasury });
+  const danger = buildDangerZoneForecast(forecast);
+  const signals = [];
+  const addSignal = (signal) => {
+    if (!signal || !signal.title) return;
+    signals.push({
+      title: String(signal.title),
+      severity: signal.severity || 'info',
+      reason: String(signal.reason || ''),
+      recommendedAction: String(signal.recommendedAction || 'Review this item.'),
+      source: signal.source || 'Pulse',
+    });
+  };
+
+  if (danger.status === 'shortfall' || danger.status === 'tight') {
+    addSignal({
+      title: danger.status === 'shortfall' ? 'Forecast shortfall' : 'Tight forecast low',
+      severity: danger.status === 'shortfall' ? 'critical' : 'warning',
+      reason: danger.cause,
+      recommendedAction: danger.suggestedAction,
+      source: 'Flow',
+    });
+  }
+  if (reserve.status === 'thin' || reserve.status === 'partial' || reserve.status === 'unconfigured') {
+    addSignal({
+      title: reserve.status === 'unconfigured' ? 'Reserve plan missing' : 'Reserve target gap',
+      severity: reserve.status === 'thin' ? 'warning' : 'info',
+      reason: reserve.status === 'unconfigured'
+        ? 'No active reserve target is configured.'
+        : `${reserve.coveragePercent}% of reserve targets are funded.`,
+      recommendedAction: 'Review reserve targets in Plan.',
+      source: 'Plan',
+    });
+  }
+  if (safeArray(readModel && readModel.debtAccounts).some((debt) => (Number(debt && debt.outstanding) || 0) > 0 && !(Number(debt && debt.minimumPaymentMonthly) > 0))) {
+    addSignal({
+      title: 'Debt payment plan missing',
+      severity: 'warning',
+      reason: 'A debt item has outstanding balance without a normalized payment plan.',
+      recommendedAction: 'Add a payment plan so burn and runway stay accurate.',
+      source: 'Plan',
+    });
+  }
+  const openReviewCount = safeArray(treasury && treasury.reviewQueue).length || safeArray(snapshot && snapshot.attentionQueue).length;
+  if (openReviewCount > 0) {
+    addSignal({
+      title: 'Open review items',
+      severity: openReviewCount >= 5 ? 'warning' : 'info',
+      reason: `${openReviewCount} item${openReviewCount === 1 ? '' : 's'} need classification, matching, or a decision.`,
+      recommendedAction: 'Clear the most important items in Review.',
+      source: 'Review',
+    });
+  }
+  if (!signals.length) {
+    addSignal({
+      title: 'No major signal',
+      severity: 'info',
+      reason: 'The current local data does not show an urgent imbalance.',
+      recommendedAction: 'Keep the weekly review cadence.',
+      source: 'Radar',
+    });
+  }
+
+  const rank = { critical: 3, warning: 2, info: 1 };
+  return signals.sort((left, right) => (rank[right.severity] || 0) - (rank[left.severity] || 0)).slice(0, 5);
+}
+
+export function buildRoadmapFinanceMetrics({ readModel = {}, snapshot = {}, treasury = {}, nowIso = new Date().toISOString() } = {}) {
+  const forecast = buildFinanceForecast({ readModel, snapshot, treasury, nowIso });
+  const reserveHealth = buildReserveHealth({ readModel, treasury });
+  return {
+    forecast,
+    reserveHealth,
+    dangerZone: buildDangerZoneForecast(forecast),
+    financialWeather: buildFinancialWeather({ snapshot, treasury, forecast, reserveHealth }),
+    topSignals: buildTopSignals({ readModel, snapshot, treasury, forecast, reserveHealth }),
+  };
+}
