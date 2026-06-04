@@ -1906,7 +1906,7 @@ Object.assign(window, {
       targetId: id,
       title: 'Archive project plan',
       copy: 'This hides the project plan from active profile choices while keeping all tagged finance history intact.',
-      phrase: 'ARCHIVE PROJECT MAP',
+      phrase: 'ARCHIVE PROJECT PLAN',
       buttonLabel: 'Archive project',
       renderAfter: true,
     });

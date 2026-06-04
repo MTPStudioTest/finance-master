@@ -164,12 +164,13 @@ Modal rendering is centralized in `src/components/modal-controller.ts`, with sma
 ### Phase 10 Logbook
 
 - Goal: make Logbook the raw record and import evidence workspace for transactions, imported rows, filters, matching, and cleanup.
-- Files likely affected: `src/dashboard/financial-mode.js`, `tests/e2e/finance-master.spec.ts`.
-- Implementation steps: preserve ledger utility, remove checkpoint/forecast responsibilities from Logbook, and update stale ledger-workspace tests from Flow/Map/Signals labels to Logbook/Plan/Radar labels.
-- Tests: e2e checks for transaction log, record filters, import evidence, matching actions, and absence of Pulse/Flow/Plan summaries.
+- Files affected: `src/dashboard/financial-mode.js`, `src/styles/finance-dashboard.css`, `tests/e2e/finance-master.spec.ts`.
+- Implementation steps: preserved ledger utility, added Logbook utility cards, added a focused record detail drawer, moved stale ledger-workspace tests from Flow to Logbook, and kept checkpoint/review responsibilities on Review.
+- Tests: e2e checks for transaction log, record filters, import evidence, matching actions, record detail inspection, and absence of Flow/Plan summaries.
 - Acceptance criteria: Logbook answers “what happened and what evidence supports it?” without becoming Review or Flow.
-- Risks / notes: many older e2e tests still encode the previous navigation names and should be migrated here.
+- Risks / notes: the ledger renderer remains inside the large dashboard controller and should be extracted only after the current IA is stable.
+- Status: completed in this slice. Logbook now owns raw records, import/add-entry utilities, category cleanup cues, recurring detection cues, filters, matching actions, and record detail inspection.
 
 ## Immediate Next Chunk
 
-The next safest implementation chunk is Phase 10: reshape Logbook around raw records/import evidence and migrate stale ledger-workspace tests to the new navigation.
+The next safest implementation chunk is Phase 11: clean Settings so it is limited to app preferences, local data/privacy, backup/restore safety, and display behavior. Import/add-entry affordances should continue moving toward Logbook, while structural finance setup stays in Plan.

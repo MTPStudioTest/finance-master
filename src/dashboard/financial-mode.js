@@ -628,6 +628,12 @@ window.FinancialMode = (function () {
                 return;
             }
 
+            if (action === 'clear-selected-ledger-transaction') {
+                setSelectedLedgerTransactionId('');
+                render();
+                return;
+            }
+
             if (action === 'toggle-ledger-more-filters') {
                 ledgerMoreFiltersOpen = !ledgerMoreFiltersOpen;
                 render();
@@ -871,6 +877,9 @@ window.FinancialMode = (function () {
         const missingReceipts = transactions.filter((entry) => ledgerNeedsReceiptCheck(entry));
         const matchedPayments = matchedTransactions.length;
         const netMovement = transactions.reduce((sum, entry) => sum + ledgerSignedAmount(entry), 0);
+        const selectedTransactionId = getSelectedLedgerTransactionId();
+        const selectedTransaction = allTransactions.find((entry) => ledgerTransactionId(entry) === selectedTransactionId) || null;
+        const recurringCandidates = buildLedgerRecurringCandidates(allTransactions);
         const statusStrip = `
             <div class="fin-ledger-status-strip" aria-label="Record status">
                 <div><span>Records</span><strong>${transactions.length}</strong><small>${allTransactions.length} total</small></div>
@@ -956,10 +965,11 @@ window.FinancialMode = (function () {
             const rowClasses = [
                 'fin-transaction-row',
                 mode === 'review' ? 'fin-transaction-row--review' : '',
-                linkedItem ? 'fin-transaction-row--linked' : ''
+                linkedItem ? 'fin-transaction-row--linked' : '',
+                id === selectedTransactionId ? 'active' : ''
             ].filter(Boolean).join(' ');
             return `
-                <div class="${rowClasses}" data-fin-transaction-id="${escapeHtml(id)}">
+                <div class="${rowClasses}" data-fin-action="select-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}" role="button" tabindex="0" aria-label="Open record detail">
                     <div class="fin-transaction-row-main">
                         <div class="fin-transaction-row-frame">
                             <span>
@@ -1103,6 +1113,31 @@ window.FinancialMode = (function () {
                 ${chips}
             </div>
         `;
+        const utilityStrip = `
+            <div class="fin-logbook-utility-grid" aria-label="Logbook utilities">
+                <div class="fin-logbook-utility-card">
+                    <span class="fin-eyebrow">Import / Add Entry</span>
+                    <strong>${allTransactions.length} records</strong>
+                    <p>Bring in CSV evidence or add one local transaction.</p>
+                    <div class="fin-action-row fin-action-row--inline">
+                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'csvImport'">Import CSV</button>
+                        <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transaction', 'expense'">Add transaction</button>
+                    </div>
+                </div>
+                <div class="fin-logbook-utility-card">
+                    <span class="fin-eyebrow">Category Cleanup</span>
+                    <strong>${uncategorized.length} need category</strong>
+                    <p>${unmatchedPayments.length} unmatched payments · ${missingReceipts.length} receipt checks.</p>
+                    <button class="fin-mini-btn" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="work">Review records</button>
+                </div>
+                <div class="fin-logbook-utility-card">
+                    <span class="fin-eyebrow">Recurring Detection</span>
+                    <strong>${recurringCandidates.length} candidates</strong>
+                    <p>${recurringCandidates[0] ? `${escapeHtml(recurringCandidates[0].label)} appears ${recurringCandidates[0].count} times.` : 'Repeated expenses will appear here once enough records exist.'}</p>
+                    <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'expense'">Add recurring cost</button>
+                </div>
+            </div>
+        `;
         let panelHtml = '';
         if (view === 'work') {
             panelHtml = `
@@ -1139,6 +1174,7 @@ window.FinancialMode = (function () {
                             <button class="fin-mini-btn fin-mini-btn--primary" type="button" data-action="openEditModal" data-action-args="'transaction', 'expense'">Add transaction</button>
                         </div>
                     </div>
+                    ${utilityStrip}
                     ${statusStrip}
                     ${filtersHtml}
                     <div class="fin-tabs" role="tablist" aria-label="Logbook zones">
@@ -1151,9 +1187,76 @@ window.FinancialMode = (function () {
                         <div class="fin-tab-panel">
                             ${panelHtml}
                         </div>
+                        ${renderLedgerDetailDrawer(selectedTransaction)}
                     </div>
                 </div>
             </section>
+        `;
+    }
+
+    function buildLedgerRecurringCandidates(transactions) {
+        const grouped = new Map();
+        safeArray(transactions).forEach((entry) => {
+            const signed = ledgerSignedAmount(entry);
+            if (signed >= 0) return;
+            const label = String(entry && (entry.description || entry.source || entry.categoryId) || '').trim();
+            if (!label) return;
+            const key = label.toLowerCase().replace(/\s+\d{1,2}[./-]\d{1,2}.*/, '').replace(/\s+/g, ' ');
+            const row = grouped.get(key) || { label, count: 0, total: 0, latest: '' };
+            row.count += 1;
+            row.total += Math.abs(signed);
+            const date = window.FinanceDates?.toDateOnly?.(entry && entry.timestamp) || String(entry && entry.timestamp || '').slice(0, 10);
+            if (date > row.latest) row.latest = date;
+            grouped.set(key, row);
+        });
+        return Array.from(grouped.values())
+            .filter((row) => row.count >= 2)
+            .sort((a, b) => b.count - a.count || b.total - a.total)
+            .slice(0, 4);
+    }
+
+    function renderLedgerDetailDrawer(entry) {
+        if (!entry) {
+            return `
+                <aside class="fin-ledger-detail-drawer" aria-label="Record detail drawer">
+                    <span class="fin-eyebrow">Record Detail Drawer</span>
+                    ${renderCompactEmpty('Select a record to inspect evidence, links, import data, and cleanup actions.')}
+                </aside>
+            `;
+        }
+        const id = ledgerTransactionId(entry);
+        const signed = ledgerSignedAmount(entry);
+        const batch = ledgerImportBatch(entry);
+        const fields = [
+            ['Date', formatShortDate(entry.timestamp)],
+            ['Amount', `${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}`],
+            ['Type', String(entry.ledgerType || entry.type || 'record').replace(/[._-]/g, ' ')],
+            ['Category', entry.categoryId || 'Uncategorized'],
+            ['Account', entry.accountName || entry.fromAccountName || entry.toAccountName || 'Account'],
+            ['Review state', entry.reviewStatus || 'clear'],
+            ['Source', entry.source || 'Manual'],
+            ['Import batch', batch ? `${batch.sourceFile || 'CSV import'} · ${entry.importBatchId}` : 'None'],
+            ['Record ID', id],
+        ];
+        return `
+            <aside class="fin-ledger-detail-drawer" aria-label="Record detail drawer">
+                <div class="fin-section-heading-row">
+                    <div>
+                        <span class="fin-eyebrow">Record Detail Drawer</span>
+                        <strong>${escapeHtml(entry.description || 'Transaction')}</strong>
+                    </div>
+                    <button class="fin-mini-btn" type="button" data-fin-action="clear-selected-ledger-transaction">Close</button>
+                </div>
+                <div class="fin-ledger-detail-grid">
+                    ${fields.map(([label, value]) => `
+                        <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
+                    `).join('')}
+                </div>
+                <div class="fin-action-row fin-action-row--inline">
+                    <button class="fin-mini-btn fin-mini-btn--primary" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${escapeActionArg(id)}'">Review record</button>
+                    <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'paymentMatch', '${escapeActionArg(id)}'">Match / link</button>
+                </div>
+            </aside>
         `;
     }
 
