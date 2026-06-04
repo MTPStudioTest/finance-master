@@ -488,10 +488,17 @@ test('transactions page is the primary ledger workspace', async ({ page }) => {
   await expect(seedRow).toContainText('This record needs your eyes before it can support the forecast.');
   await expect(seedRow.getByText('Category', { exact: true })).not.toBeVisible();
   await expect(seedRow.getByText('Record ID', { exact: true })).not.toBeVisible();
-  await seedRow.getByText('Technical details', { exact: true }).click();
-  await expect(seedRow.getByText('Category', { exact: true })).toBeVisible();
-  await expect(seedRow.getByText('Added manually', { exact: true })).toBeVisible();
   await expect(seedRow.getByRole('button', { name: 'Edit transaction review', exact: true })).toBeVisible();
+  await seedRow.getByRole('button', { name: 'Edit transaction review', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Review transaction', exact: true })).toBeVisible();
+  await page.locator('#modal-body').getByText('Technical details', { exact: true }).click();
+  const modalDetails = page.locator('#modal-body .modal-technical-details');
+  await expect(modalDetails.getByText('Category', { exact: true })).toBeVisible();
+  await expect(modalDetails.getByText('Added manually', { exact: true })).toBeVisible();
+  await expect(modalDetails.getByText('Record ID', { exact: true })).toBeVisible();
+  await expect(page.locator('#modal-body').getByText('Card settings', { exact: true })).toBeVisible();
+  await expect(page.locator('#modal-body').getByRole('button', { name: 'Reverse transaction', exact: true })).toBeVisible();
+  await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
 
   await page.getByRole('button', { name: 'More filters', exact: true }).click();
   await expect(page.getByLabel('Filter records by type')).toBeVisible();
@@ -504,10 +511,8 @@ test('transactions page is the primary ledger workspace', async ({ page }) => {
   await expect(page.locator('.fin-review-summary-line')).toContainText('need category');
   await expect(page.locator('.fin-review-summary-line')).toContainText('filtered records');
   await expect(page.getByRole('button', { name: 'Edit transaction review', exact: true }).first()).toBeVisible();
-  const reviewCardSettings = page.locator('.fin-transaction-row--review').first().getByText('Card settings', { exact: true });
-  await expect(reviewCardSettings).toBeVisible();
-  await reviewCardSettings.click();
-  await expect(page.locator('.fin-transaction-row--review').first().locator('.fin-transaction-danger-actions').getByRole('button', { name: 'Reverse transaction', exact: true })).toBeVisible();
+  await expect(page.locator('.fin-transaction-row--review').first().getByText('Card settings', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.fin-transaction-row--review').first().getByRole('button', { name: 'Reverse transaction', exact: true })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -537,8 +542,10 @@ test('ledger filters and inline categorization work without a full-ledger modal'
   await page.getByLabel('Search records').fill('Software cleanup item');
   await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
   const updatedRow = page.locator('.fin-tab-panel .fin-transaction-row').filter({ hasText: 'Software cleanup item' });
-  await updatedRow.getByText('Technical details', { exact: true }).click();
-  await expect(updatedRow.getByText('software', { exact: true }).first()).toBeVisible();
+  await updatedRow.getByRole('button', { name: 'Edit transaction review', exact: true }).click();
+  await page.locator('#modal-body').getByText('Technical details', { exact: true }).click();
+  await expect(page.locator('#modal-body').getByText('software', { exact: true }).first()).toBeVisible();
+  await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
   expect(errors).toEqual([]);
 });
 
@@ -777,14 +784,16 @@ test('CSV import previews accepted, duplicate, and rejected rows and remains rev
   await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
   const releaseRow = page.locator('.fin-transaction-row').filter({ hasText: 'Release deposit' });
   await expect(releaseRow.getByText('CSV batch', { exact: true })).not.toBeVisible();
-  await releaseRow.getByText('Technical details', { exact: true }).click();
-  await expect(releaseRow.getByText('Imported from CSV', { exact: true })).toBeVisible();
-  await expect(releaseRow.getByText('CSV batch', { exact: true })).toBeVisible();
-  await expect(releaseRow.getByText('2 imported · 1 duplicate (duplicates skipped) · 1 rejected', { exact: true })).toBeVisible();
-  await expect(releaseRow.getByText('Batch totals', { exact: true })).toBeVisible();
-  await expect(releaseRow.getByText('€500.00 in · €45.00 out', { exact: true })).toBeVisible();
-  await expect(releaseRow.getByText('Batch range', { exact: true })).toBeVisible();
-  await expect(releaseRow.getByText('2026-06-01 to 2026-06-02', { exact: true })).toBeVisible();
+  await releaseRow.getByRole('button', { name: 'Edit transaction review', exact: true }).click();
+  await page.locator('#modal-body').getByText('Technical details', { exact: true }).click();
+  await expect(page.locator('#modal-body').getByText('Imported from CSV', { exact: true })).toBeVisible();
+  await expect(page.locator('#modal-body').getByText('CSV batch', { exact: true })).toBeVisible();
+  await expect(page.locator('#modal-body').getByText('2 imported · 1 duplicate (duplicates skipped) · 1 rejected', { exact: true })).toBeVisible();
+  await expect(page.locator('#modal-body').getByText('Batch totals', { exact: true })).toBeVisible();
+  await expect(page.locator('#modal-body').getByText('€500.00 in · €45.00 out', { exact: true })).toBeVisible();
+  await expect(page.locator('#modal-body').getByText('Batch range', { exact: true })).toBeVisible();
+  await expect(page.locator('#modal-body').getByText('2026-06-01 to 2026-06-02', { exact: true })).toBeVisible();
+  await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByRole('button', { name: 'Clear all', exact: true }).click();
   const releaseBatchId = await page.evaluate(() => (
     window.Store.getImportState().batches.find((batch: any) => String(batch.sourceFile) === 'release-bank.csv')?.id || ''
@@ -987,10 +996,14 @@ test('review queue actions categorize, match, update pipeline, and add debt plan
   await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
   const matchedRow = page.locator('.fin-transaction-row').filter({ hasText: 'Matchable rent payment' });
   await expect(matchedRow.locator('.fin-transaction-link-line').getByText('Linked to', { exact: true })).toBeVisible();
-  await expect(matchedRow.getByRole('button', { name: 'Match / link', exact: true })).toBeVisible();
+  await expect(matchedRow.getByRole('button', { name: 'Match / link', exact: true })).toHaveCount(0);
   await expect(matchedRow.getByText('Payment matched to monthly obligation.', { exact: true })).not.toBeVisible();
   await expect(matchedRow.getByText('Record ID', { exact: true })).not.toBeVisible();
-  await expect(matchedRow.getByText('Technical details', { exact: true })).toBeVisible();
+  await expect(matchedRow.getByText('Technical details', { exact: true })).toHaveCount(0);
+  await matchedRow.getByRole('button', { name: 'Edit transaction review', exact: true }).click();
+  await page.locator('#modal-body').getByText('Technical details', { exact: true }).click();
+  await expect(page.locator('#modal-body').getByText('Linked obligation', { exact: true })).toBeVisible();
+  await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByRole('button', { name: 'More filters', exact: true }).click();
   await page.getByLabel('Filter records by link state').selectOption('linked');
   await page.getByRole('button', { name: 'Apply filters', exact: true }).click();

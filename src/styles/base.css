@@ -701,6 +701,83 @@ body.finance-nav-open .finance-master-menu-toggle span:nth-child(3) {
   font-size: 0.74rem;
 }
 
+.modal-technical-details {
+  border: 1px solid var(--ui-card-border);
+  border-radius: var(--ui-control-radius);
+  padding: 0.7rem 0.8rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.modal-technical-details summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.modal-technical-details > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem 0.85rem;
+  margin-top: 0.75rem;
+}
+
+.modal-technical-details p {
+  min-width: 0;
+  margin: 0;
+}
+
+.modal-technical-details span {
+  display: block;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.modal-technical-details strong {
+  display: block;
+  margin-top: 0.18rem;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.modal-danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  border: 1px solid rgba(241, 185, 167, 0.22);
+  border-radius: var(--ui-control-radius);
+  padding: 0.75rem 0.8rem;
+  background: rgba(241, 185, 167, 0.045);
+}
+
+.modal-danger-zone span {
+  min-width: 0;
+}
+
+.modal-danger-zone strong,
+.modal-danger-zone small {
+  display: block;
+}
+
+.modal-danger-zone strong {
+  color: var(--text-primary);
+  font-size: 0.84rem;
+}
+
+.modal-danger-zone small {
+  margin-top: 0.2rem;
+  color: var(--text-tertiary);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
 .modal-error {
   border: 1px solid rgba(241, 185, 167, 0.42);
   border-radius: var(--ui-control-radius);
@@ -1197,10 +1274,16 @@ textarea:focus {
 
   .modal-grid-two,
   .modal-grid-three,
+  .modal-technical-details > div,
   .csv-source-grid,
   .csv-mapping-grid,
   .backup-preview-card {
     grid-template-columns: 1fr;
+  }
+
+  .modal-danger-zone {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .modal-overlay {

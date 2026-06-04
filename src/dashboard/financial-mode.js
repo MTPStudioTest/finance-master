@@ -674,24 +674,6 @@ window.FinancialMode = (function () {
                 return;
             }
 
-            if (action === 'reverse-ledger-transaction') {
-                const id = String(actionEl.getAttribute('data-fin-transaction-id') || '').trim();
-                if (!id) return;
-                if (typeof window.requestDestructiveConfirmation === 'function') {
-                    window.requestDestructiveConfirmation({
-                        action: 'reverseTransaction',
-                        targetId: id,
-                        source: 'ledger.page.reverse',
-                        title: 'Reverse transaction',
-                        copy: 'This reverses the transaction and its linked account balance update.',
-                        phrase: 'REVERSE TRANSACTION',
-                        buttonLabel: 'Reverse transaction',
-                        renderAfter: true
-                    });
-                }
-                return;
-            }
-
             if (action === 'rename-import-profile') {
                 const id = String(actionEl.getAttribute('data-fin-profile-id') || '').trim();
                 const input = Array.from(elements.content.querySelectorAll('[data-fin-profile-name]'))
@@ -871,20 +853,9 @@ window.FinancialMode = (function () {
             const signed = ledgerSignedAmount(entry);
             const reviewState = String(entry && entry.reviewStatus || 'clear').toLowerCase();
             const accountLabel = entry.accountName || entry.fromAccountName || entry.toAccountName || 'Account';
-            const categoryLabel = entry.categoryId || 'uncategorized';
-            const evidence = ledgerEvidenceItems(entry);
             const matchSuggestions = ledgerPaymentMatchSuggestions(entry);
             const incomeSuggestions = ledgerIncomeMatchSuggestions(entry);
             const ledgerType = String(entry && (entry.ledgerType || entry.type) || 'record').replace(/[._-]/g, ' ');
-            const sourceHuman = (() => {
-                const source = String(entry && entry.source || '').trim();
-                if (entry.importBatchId || entry.sourceFile) return 'Imported from CSV';
-                if (source === 'obligation.review') return 'Created from obligation review';
-                if (source === 'pipeline-settlement') return 'Created from income settlement';
-                if (source === 'demo') return 'Sample record';
-                if (source === 'manual' || source === 'manual-ledger') return 'Added manually';
-                return source ? source.replace(/[._-]/g, ' ') : 'Local record';
-            })();
             const linkedItem = (() => {
                 if (entry.obligationId || entry.linkedObligationTitle || entry.obligationTitle) {
                     return {
@@ -950,26 +921,12 @@ window.FinancialMode = (function () {
             const primaryEdit = ledgerNeedsMatch(entry)
                 ? financeIconButton({ action: 'openEditModal', args: `'paymentMatch', '${escapeActionArg(id)}'`, label: 'Edit payment match', icon: 'link', tone: 'success' })
                 : financeIconButton({ action: 'openEditModal', args: `'transactionReview', '${escapeActionArg(id)}'`, label: 'Edit transaction review' });
-            const matchLinkButton = ledgerNeedsMatch(entry) ? '' : financeIconButton({ action: 'openEditModal', args: `'paymentMatch', '${escapeActionArg(id)}'`, label: 'Match / link', icon: 'link', tone: linkedItem ? 'success' : 'muted' });
+            const matchLinkButton = ledgerNeedsMatch(entry) || linkedItem ? '' : financeIconButton({ action: 'openEditModal', args: `'paymentMatch', '${escapeActionArg(id)}'`, label: 'Match / link', icon: 'link', tone: 'muted' });
             const rowClasses = [
                 'fin-transaction-row',
                 mode === 'review' ? 'fin-transaction-row--review' : '',
                 linkedItem ? 'fin-transaction-row--linked' : ''
             ].filter(Boolean).join(' ');
-            const technicalRows = [
-                ['Category', categoryLabel],
-                ['Scope', entry.scope || 'shared'],
-                ['Source', sourceHuman],
-                ['Review', reviewState === 'needs_review' ? 'Needs review' : 'Reviewed'],
-                ...evidence,
-                ['Raw source key', entry.source || ''],
-                ['Internal linked obligation ID', entry.obligationId || ''],
-                ['Internal linked income ID', entry.linkedIncomeId || ''],
-                ['Internal linked debt ID', entry.linkedDebtId || ''],
-                ['Internal reserve ID', entry.linkedReserveId || ''],
-                ['Created timestamp', entry.timestamp || '']
-            ].filter((item, index, list) => String(item[1] || '').trim()
-                && list.findIndex((candidate) => candidate[0] === item[0] && candidate[1] === item[1]) === index);
             return `
                 <div class="${rowClasses}" data-fin-transaction-id="${escapeHtml(id)}">
                     <div class="fin-transaction-row-main">
@@ -1007,18 +964,6 @@ window.FinancialMode = (function () {
                                 ${incomeSuggestions.map((suggestion) => `<strong>${escapeHtml(suggestion.title)}</strong><small>${escapeHtml(suggestion.reason)}</small>`).join('')}
                             </div>
                         ` : ''}
-                        <details class="fin-transaction-technical">
-                            <summary>Technical details</summary>
-                            <div>
-                                ${technicalRows.map(([label, value]) => `<p><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></p>`).join('')}
-                            </div>
-                        </details>
-                        <details class="fin-transaction-card-settings">
-                            <summary>Card settings</summary>
-                            <div class="fin-transaction-danger-actions">
-                                <button class="fin-mini-btn fin-mini-btn--danger" type="button" data-fin-action="reverse-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">Reverse transaction</button>
-                            </div>
-                        </details>
                     </div>
                 </div>
             `;
@@ -1356,27 +1301,6 @@ window.FinancialMode = (function () {
         return safeArray(state && state.batches).find((batch) => String(batch && batch.id || '') === batchId) || null;
     }
 
-    function ledgerImportBatchSummary(batch) {
-        if (!batch) return [];
-        const imported = Number(batch.importedCount ?? safeArray(batch.fingerprints).length) || 0;
-        const duplicates = Number(batch.duplicateCount || 0);
-        const duplicateImported = Number(batch.duplicateImportedCount || 0);
-        const rejected = Number(batch.rejectedCount || 0);
-        const activeRows = safeArray(currentData && currentData.transactions).filter((entry) => String(entry && entry.importBatchId || '') === String(batch.id || '')).length;
-        const policy = batch.duplicatePolicy === 'import' ? 'duplicates imported' : 'duplicates skipped';
-        const totals = `${formatCurrency(Number(batch.incomeTotal || 0))} in · ${formatCurrency(Number(batch.expenseTotal || 0))} out`;
-        const dateRange = batch.dateFrom && batch.dateTo
-            ? (batch.dateFrom === batch.dateTo ? batch.dateFrom : `${batch.dateFrom} to ${batch.dateTo}`)
-            : '';
-        return [
-            ['CSV batch', `${imported} imported · ${duplicates} duplicate${duplicates === 1 ? '' : 's'} (${policy}) · ${rejected} rejected`],
-            ['Batch totals', totals],
-            ['Batch range', dateRange],
-            ['Undo state', activeRows > 0 ? `${activeRows} active record${activeRows === 1 ? '' : 's'}` : 'Undo applied'],
-            ['Duplicates included', duplicateImported ? String(duplicateImported) : '']
-        ];
-    }
-
     function ledgerReserveMovementLabel(entry) {
         if (!entry) return '';
         const linkedReserve = String(entry.linkedReserveId || '').trim();
@@ -1389,26 +1313,6 @@ window.FinancialMode = (function () {
         const protectedSide = [from, to].filter((account) => account && (account.reserved || String(account.bucket || '') !== 'available'));
         if (!protectedSide.length) return '';
         return protectedSide.map((account) => `${account.name || 'Protected account'} (${account.bucket || 'reserve'})`).join(' · ');
-    }
-
-    function ledgerEvidenceItems(entry) {
-        const batch = ledgerImportBatch(entry);
-        const reserveMovement = ledgerReserveMovementLabel(entry);
-        return [
-            ['Source', entry.source || 'local ledger'],
-            ['Source file', entry.sourceFile || ''],
-            ['Import batch', entry.importBatchId || ''],
-            ...ledgerImportBatchSummary(batch),
-            ['Fingerprint', entry.fingerprint || ''],
-            ['Linked income', entry.linkedIncomeTitle || entry.linkedIncomeId || ''],
-            ['Linked obligation', entry.linkedObligationTitle || entry.obligationTitle || entry.obligationId || ''],
-            ['Linked debt', entry.linkedDebtTitle || entry.linkedDebtId || ''],
-            ['Reserve movement', reserveMovement],
-            ['Payment link', entry.obligationId ? 'Matched to obligation' : ''],
-            ['Reversal', entry.reversalOf ? `Reversal of ${entry.reversalOf}` : (entry.reversedBy ? `Reversed by ${entry.reversedBy}` : '')],
-            ['Record ID', ledgerTransactionId(entry)],
-            ['Transaction entity', entry.transactionEntityId || '']
-        ].filter((item) => String(item[1] || '').trim());
     }
 
     function renderLedgerFilterChips(filters) {

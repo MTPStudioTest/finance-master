@@ -1,5 +1,4 @@
-import './styles/base.css';
-import './styles/finance-dashboard.css';
+import './styles/master.css';
 import './components/sag-icons';
 import './finance/date-utils.js';
 import './finance/events.js';

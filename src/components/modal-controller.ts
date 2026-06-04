@@ -349,7 +349,7 @@ function renderOverview(): string {
             <span><strong>${escapeHtml(event.description || event.type)}</strong><br><small>${accountLabel} · ${escapeHtml(event.categoryId || 'uncategorized')} · ${escapeHtml(event.reviewStatus || 'clear')} · ${formatDate(event.timestamp)}</small></span>
             <span>${formatTransactionType(event.ledgerType || event.type)}${event.obligationId ? ` · ${escapeHtml(event.obligationTitle || event.obligationId)}` : ''}</span>
             <span class="${isPositive ? 'fin-val-pos' : 'fin-val-neg'}">${isPositive ? '+' : '-'}${money(Math.abs(amount))}</span>
-            <button class="fin-mini-btn" type="button" data-action="deleteTransaction" data-action-args="'${escapeHtml(event.id)}'" aria-label="Reverse transaction">Reverse</button>
+            <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'transactionReview', '${escapeHtml(actionArg(event.id))}'">Review</button>
           </div>
         `; }).join('') : `<div class="fin-compact-empty">${(readModel.transactions || []).length ? 'No transactions match these filters.' : 'No transactions yet. Add a cash account, then record one real movement.'}</div>`}
       </div>
@@ -912,6 +912,69 @@ function findTransaction(id: string): Record<string, unknown> | null {
     .find((entry: Record<string, unknown>) => String(entry.id) === String(id || '') || String(entry.transactionEntityId || '') === String(id || '')) || null;
 }
 
+function transactionSourceLabel(transaction: Record<string, unknown> | null): string {
+  const source = String(transaction?.source || '').trim();
+  if (transaction?.importBatchId || transaction?.sourceFile) return 'Imported from CSV';
+  if (source === 'obligation.review') return 'Created from obligation review';
+  if (source === 'pipeline-settlement') return 'Created from income settlement';
+  if (source === 'demo') return 'Sample record';
+  if (source === 'manual' || source === 'manual-ledger') return 'Added manually';
+  return source ? source.replace(/[._-]/g, ' ') : 'Local record';
+}
+
+function transactionImportBatch(transaction: Record<string, unknown> | null): Record<string, unknown> | null {
+  const batchId = String(transaction?.importBatchId || '').trim();
+  if (!batchId) return null;
+  const batches = ((Store.getImportState().batches || []) as unknown) as Record<string, unknown>[];
+  return batches.find((batch) => String(batch.id || '') === batchId) || null;
+}
+
+function transactionImportBatchSummary(batch: Record<string, unknown> | null): [string, string][] {
+  if (!batch) return [];
+  const imported = Number(batch.importedCount ?? (Array.isArray(batch.fingerprints) ? batch.fingerprints.length : 0)) || 0;
+  const duplicates = Number(batch.duplicateCount || 0);
+  const duplicateImported = Number(batch.duplicateImportedCount || 0);
+  const rejected = Number(batch.rejectedCount || 0);
+  const activeRows = (Store.getFinancialReadModel().transactions || [])
+    .filter((entry: Record<string, unknown>) => String(entry.importBatchId || '') === String(batch.id || '')).length;
+  const policy = batch.duplicatePolicy === 'import' ? 'duplicates imported' : 'duplicates skipped';
+  const totals = `${money(batch.incomeTotal || 0)} in · ${money(batch.expenseTotal || 0)} out`;
+  const dateFrom = String(batch.dateFrom || '');
+  const dateTo = String(batch.dateTo || '');
+  const dateRange = dateFrom && dateTo ? (dateFrom === dateTo ? dateFrom : `${dateFrom} to ${dateTo}`) : '';
+  return [
+    ['CSV batch', `${imported} imported · ${duplicates} duplicate${duplicates === 1 ? '' : 's'} (${policy}) · ${rejected} rejected`],
+    ['Batch totals', totals],
+    ['Batch range', dateRange],
+    ['Undo state', activeRows > 0 ? `${activeRows} active record${activeRows === 1 ? '' : 's'}` : 'Undo applied'],
+    ['Duplicates included', duplicateImported ? String(duplicateImported) : ''],
+  ];
+}
+
+function transactionTechnicalRows(transaction: Record<string, unknown> | null): [string, string][] {
+  const batch = transactionImportBatch(transaction);
+  const rows: [string, string][] = [
+    ['Category', String(transaction?.categoryId || 'uncategorized')],
+    ['Scope', String(transaction?.scope || 'shared')],
+    ['Source', transactionSourceLabel(transaction)],
+    ['Review', String(transaction?.reviewStatus || 'clear').replace(/[._-]/g, ' ')],
+    ['Source file', String(transaction?.sourceFile || '')],
+    ['Import batch', String(transaction?.importBatchId || '')],
+    ...transactionImportBatchSummary(batch),
+    ['Fingerprint', String(transaction?.fingerprint || '')],
+    ['Linked income', String(transaction?.linkedIncomeTitle || transaction?.linkedIncomeId || '')],
+    ['Linked obligation', String(transaction?.linkedObligationTitle || transaction?.obligationTitle || transaction?.obligationId || '')],
+    ['Linked debt', String(transaction?.linkedDebtTitle || transaction?.linkedDebtId || '')],
+    ['Linked reserve', String(transaction?.linkedReserveId || '')],
+    ['Reversal', transaction?.reversalOf ? `Reversal of ${String(transaction.reversalOf)}` : (transaction?.reversedBy ? `Reversed by ${String(transaction.reversedBy)}` : '')],
+    ['Record ID', String(transaction?.id || '')],
+    ['Transaction entity', String(transaction?.transactionEntityId || '')],
+    ['Created timestamp', String(transaction?.timestamp || '')],
+  ];
+  return rows.filter((row, index, list) => row[1].trim()
+    && list.findIndex((candidate) => candidate[0] === row[0] && candidate[1] === row[1]) === index);
+}
+
 function obligationOptions(selected = ''): string {
   const obligations = ((Store.computeFinanceContext(true).treasury || {}).obligations || [])
     .filter((entry: Record<string, unknown>) => String(entry.status || '') !== 'paid' && String(entry.type || '') !== 'debt');
@@ -1031,6 +1094,7 @@ function renderTransactionReview(id = ''): string {
     .filter((entry: Record<string, unknown>) => String(entry.id || '') === currentIncomeId || !['paid', 'cancelled', 'lost', 'deleted'].includes(String(entry.status || '').toLowerCase()));
   const reserveBuckets = Store.getFinancialReadModel().reserveBuckets || [];
   const debtAccounts = Store.getFinancialReadModel().debtAccounts || [];
+  const technicalRows = transactionTechnicalRows(transaction);
   return `
     <div class="modal-form">
       <h2 id="modal-title">Review transaction</h2>
@@ -1065,6 +1129,23 @@ function renderTransactionReview(id = ''): string {
         </div>
       ` : ''}
       <div class="form-group"><label for="modal-review-transaction-notes">Review note</label><textarea id="modal-review-transaction-notes" rows="2" placeholder="Optional note for why this is clear"></textarea></div>
+      ${technicalRows.length ? `
+        <details class="modal-technical-details">
+          <summary>Technical details</summary>
+          <div>
+            ${technicalRows.map(([label, fieldValue]) => `<p><span>${escapeHtml(label)}</span><strong>${escapeHtml(fieldValue)}</strong></p>`).join('')}
+          </div>
+        </details>
+      ` : ''}
+      ${id ? `
+        <div class="modal-danger-zone">
+          <span>
+            <strong>Card settings</strong>
+            <small>Reverse only after checking the transaction details above.</small>
+          </span>
+          <button class="fin-mini-btn fin-mini-btn--danger" type="button" data-action="deleteTransaction" data-action-args="'${escapeHtml(actionArg(id))}'">Reverse transaction</button>
+        </div>
+      ` : ''}
       ${formActions('transactionReview')}
     </div>
   `;
@@ -1743,7 +1824,7 @@ Object.assign(window, {
       copy: 'This reverses the transaction and its linked account balance update.',
       phrase: 'REVERSE TRANSACTION',
       buttonLabel: 'Reverse transaction',
-      reopenModal: 'financeOverview',
+      renderAfter: true,
     });
   },
   markAsPaid: (id: string) => {
