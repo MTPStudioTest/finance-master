@@ -40,7 +40,7 @@ export function normalizeReviewState(input) {
     const summary = isObject(entry.summary) ? entry.summary : {};
     const historyReconciliations = isObject(entry.accountReconciliations) ? entry.accountReconciliations : {};
     const closedAt = String(entry.closedAt);
-    return [{
+    const normalizedEntry = {
       id: String(entry.id || `${entry.monthKey}-${closedAt}`),
       monthKey: String(entry.monthKey),
       closedAt,
@@ -77,15 +77,23 @@ export function normalizeReviewState(input) {
         mainRisk: typeof summary.mainRisk === 'string' ? summary.mainRisk : 'No major close risk detected.',
         mainAction: typeof summary.mainAction === 'string' ? summary.mainAction : 'Keep next month reviewed on the same cadence.',
       },
-    }];
+    };
+    if (isObject(entry.chosenFocus) && String(entry.chosenFocus.id || '').trim()) {
+      normalizedEntry.chosenFocus = { id: String(entry.chosenFocus.id), title: String(entry.chosenFocus.title || 'Weekly focus') };
+    }
+    return [normalizedEntry];
   }).slice(0, REVIEW_HISTORY_LIMIT) : [];
-  return {
+  const normalized = {
     lastReviewedAt,
     accountReconciliations,
     checklist: normalizedChecklist,
     notes: typeof source.notes === 'string' ? source.notes : '',
     history,
   };
+  if (isObject(source.chosenFocus) && String(source.chosenFocus.id || '').trim()) {
+    normalized.chosenFocus = { id: String(source.chosenFocus.id), title: String(source.chosenFocus.title || 'Weekly focus') };
+  }
+  return normalized;
 }
 
 export function normalizeGoalState(input) {

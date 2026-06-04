@@ -124,6 +124,15 @@ function validateSupportingState(backup, errors, version) {
   if (!isObject(backup.prices) || !isObject(backup.prices.quotes)) {
     errors.push('Cached wallet prices are incomplete.');
   }
+  const allowedScenarioTypes = ['reduce_flexible_costs', 'reduce_debt_pressure', 'add_recurring_income', 'protect_future_income', 'pause_savings_goal', 'increase_reserve_contribution'];
+  if (backup.scenarios !== undefined && (!isObject(backup.scenarios) || !Array.isArray(backup.scenarios.scenarios)
+    || backup.scenarios.scenarios.some((scenario) => !isObject(scenario) || !String(scenario.id || '').trim()
+      || !String(scenario.name || '').trim() || !allowedScenarioTypes.includes(String(scenario.type || ''))
+      || !Number.isFinite(Number(scenario.amount)) || Number(scenario.amount) < 0
+      || (scenario.protectPercent !== undefined && (!Number.isFinite(Number(scenario.protectPercent)) || Number(scenario.protectPercent) < 0 || Number(scenario.protectPercent) > 100))
+      || !isTimestamp(scenario.createdAt) || !isTimestamp(scenario.updatedAt)))) {
+    errors.push('Saved scenarios are incomplete.');
+  }
 }
 
 function uniqueRelated(ledger, type) {
@@ -168,6 +177,7 @@ export function validateFinanceBackup(input, options = {}) {
       pipelineItems: uniqueRelated(ledger, 'pipeline.created'),
       goals: Array.isArray(input.goals?.goals) ? input.goals.goals.length : 0,
       importBatches: Array.isArray(input.imports?.batches) ? input.imports.batches.length : 0,
+      scenarios: Array.isArray(input.scenarios?.scenarios) ? input.scenarios.scenarios.length : 0,
       cachedQuotes: isObject(input.prices?.quotes) ? Object.keys(input.prices.quotes).length : 0,
     },
     errors,

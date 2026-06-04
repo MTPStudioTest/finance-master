@@ -155,6 +155,7 @@ test('backup preview summarizes a complete FinanceBackupV1 payload', () => {
     pipelineItems: 0,
     goals: 0,
     importBatches: 0,
+    scenarios: 0,
     cachedQuotes: 0,
   });
   assert.equal(assertFinanceBackupV1(backup), backup);

@@ -53,6 +53,10 @@ export interface FinanceReviewHistoryEntry {
     reviewSignals: boolean;
     closeMonth: boolean;
   };
+  chosenFocus?: {
+    id: string;
+    title: string;
+  };
   summary: FinanceMonthCloseSummary;
 }
 
@@ -67,6 +71,10 @@ export interface FinanceReviewState {
     closeMonth: boolean;
   };
   notes: string;
+  chosenFocus?: {
+    id: string;
+    title: string;
+  };
   history: FinanceReviewHistoryEntry[];
 }
 
@@ -128,6 +136,29 @@ export interface FinanceImportState {
   lastProfileId?: string;
 }
 
+export type FinanceScenarioType =
+  | 'reduce_flexible_costs'
+  | 'reduce_debt_pressure'
+  | 'add_recurring_income'
+  | 'protect_future_income'
+  | 'pause_savings_goal'
+  | 'increase_reserve_contribution';
+
+export interface FinanceSavedScenario {
+  id: string;
+  name: string;
+  type: FinanceScenarioType;
+  amount: number;
+  protectPercent?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FinanceScenarioState {
+  scenarios: FinanceSavedScenario[];
+  selectedScenarioId?: string;
+}
+
 export interface FinancePriceQuote {
   symbol: string;
   currency: string;
@@ -160,6 +191,7 @@ export interface FinanceBackupV2 {
   review: FinanceReviewState;
   goals: FinanceGoalState;
   imports: FinanceImportState;
+  scenarios?: FinanceScenarioState;
   prices: FinancePriceCache;
 }
 

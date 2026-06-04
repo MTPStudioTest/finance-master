@@ -601,6 +601,12 @@
                 { label: 'Available cash', value: availableCash, operation: 'divide' },
                 { label: 'Monthly burn rate', value: runwayBurn, operation: 'divide' }
             ], runwayBurn > 0 ? [] : ['Runway is unavailable until monthly burn is known.']),
+            debtPressure: metricExplanation('debtPressure', 'Debt pressure', debtBurn, debtPlansForBurn.length
+                ? debtPlansForBurn.map(function (debt) { return { label: String(debt.name || 'Debt payment plan'), value: debtMonthlyPressure(debt), operation: 'add' }; })
+                : [{ label: 'Active debt payment plans', value: 0, operation: 'add' }],
+                debtAccounts.some(function (debt) { return (Number(debt && debt.outstanding) || 0) > 0 && String(debt && debt.planStatus || 'missing') === 'missing'; })
+                    ? ['Some debt items still need payment plans.']
+                    : []),
             debtBurden: metricExplanation('debtBurden', 'Debt burden', debtRemaining, debtAccounts
                 .filter(function (debt) { return (Number(debt && debt.outstanding) || 0) > 0; })
                 .map(function (debt) { return { label: String(debt.name || 'Debt'), value: Number(debt.outstanding) || 0, operation: 'add' }; }))

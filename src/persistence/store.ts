@@ -32,6 +32,9 @@ import type {
   FinancePriceCache,
   FinancePriceQuote,
   FinanceReviewState,
+  FinanceSavedScenario,
+  FinanceScenarioState,
+  FinanceScenarioType,
   FinanceScope,
   FinanceScopeFilter,
 } from '../types/finance';
@@ -85,6 +88,10 @@ const DEFAULT_IMPORT_STATE: FinanceImportState = {
 
 const DEFAULT_PRICE_CACHE: FinancePriceCache = {
   quotes: {},
+};
+
+const DEFAULT_SCENARIO_STATE: FinanceScenarioState = {
+  scenarios: [],
 };
 
 const DEFAULT_BACKUP_META = {
@@ -212,6 +219,46 @@ function normalizeImportState(value: unknown): FinanceImportState {
   };
 }
 
+function scenarioType(value: unknown): FinanceScenarioType {
+  const normalized = String(value || '').trim().toLowerCase();
+  if ([
+    'reduce_flexible_costs',
+    'reduce_debt_pressure',
+    'add_recurring_income',
+    'protect_future_income',
+    'pause_savings_goal',
+    'increase_reserve_contribution',
+  ].includes(normalized)) return normalized as FinanceScenarioType;
+  return 'reduce_flexible_costs';
+}
+
+function normalizeScenarioState(value: unknown): FinanceScenarioState {
+  const state = isObject(value) ? value : {};
+  const scenarios = Array.isArray(state.scenarios)
+    ? state.scenarios.filter(isObject).map((scenario) => {
+      const nowIso = new Date().toISOString();
+      const type = scenarioType(scenario.type);
+      const updatedAt = String(scenario.updatedAt || scenario.createdAt || nowIso);
+      return {
+        id: String(scenario.id || entityId('scenario')),
+        name: String(scenario.name || type.replace(/_/g, ' ')),
+        type,
+        amount: Math.max(0, Number(scenario.amount) || 0),
+        protectPercent: Number.isFinite(Number(scenario.protectPercent))
+          ? Math.max(0, Math.min(100, Number(scenario.protectPercent)))
+          : undefined,
+        createdAt: String(scenario.createdAt || updatedAt),
+        updatedAt,
+      };
+    }).filter((scenario) => scenario.id && scenario.name)
+    : [];
+  const selectedScenarioId = String(state.selectedScenarioId || '');
+  return {
+    scenarios,
+    ...(selectedScenarioId && scenarios.some((scenario) => scenario.id === selectedScenarioId) ? { selectedScenarioId } : {}),
+  };
+}
+
 function toTransactionIso(date: string): string {
   return window.FinanceDates?.dateOnlyToNoonIso?.(date) || new Date().toISOString();
 }
@@ -330,6 +377,7 @@ export const Store = {
       STORAGE_KEYS.review,
       STORAGE_KEYS.goals,
       STORAGE_KEYS.imports,
+      STORAGE_KEYS.scenarios,
       STORAGE_KEYS.priceCache,
       STORAGE_KEYS.backupMeta,
       STORAGE_KEYS.demoSeed,
@@ -342,6 +390,7 @@ export const Store = {
       review: rawStorageEntry(STORAGE_KEYS.review).value,
       goals: rawStorageEntry(STORAGE_KEYS.goals).value,
       imports: rawStorageEntry(STORAGE_KEYS.imports).value,
+      scenarios: rawStorageEntry(STORAGE_KEYS.scenarios).value,
       priceCache: rawStorageEntry(STORAGE_KEYS.priceCache).value,
     }, DATA_SCHEMA_LABEL).status;
   },
@@ -1332,6 +1381,7 @@ export const Store = {
     confirmObligations?: boolean;
     reviewSignals?: boolean;
     closeMonth?: boolean;
+    chosenFocus?: { id: string; title: string };
     notes?: string;
   } = {}): FinanceReviewState {
     const readModel = this.getFinancialReadModel();
@@ -1400,6 +1450,9 @@ export const Store = {
       notes: String(input.notes || ''),
       accountReconciliations,
       checklist,
+      chosenFocus: input.chosenFocus && String(input.chosenFocus.id || '').trim()
+        ? { id: String(input.chosenFocus.id), title: String(input.chosenFocus.title || 'Weekly focus') }
+        : undefined,
       summary,
     };
     const history = [
@@ -1411,6 +1464,9 @@ export const Store = {
       accountReconciliations,
       checklist,
       notes: String(input.notes || ''),
+      chosenFocus: input.chosenFocus && String(input.chosenFocus.id || '').trim()
+        ? { id: String(input.chosenFocus.id), title: String(input.chosenFocus.title || 'Weekly focus') }
+        : undefined,
       history,
     };
     setJson(STORAGE_KEYS.review, review);
@@ -1420,6 +1476,52 @@ export const Store = {
 
   getGoals(): FinanceGoalState {
     return normalizeGoalState(getJson(STORAGE_KEYS.goals, DEFAULT_GOAL_STATE));
+  },
+
+  getSavedScenarios(): FinanceScenarioState {
+    return normalizeScenarioState(getJson(STORAGE_KEYS.scenarios, DEFAULT_SCENARIO_STATE));
+  },
+
+  saveScenario(input: {
+    id?: string;
+    name: string;
+    type: FinanceScenarioType;
+    amount: number;
+    protectPercent?: number;
+  }): FinanceSavedScenario {
+    const state = this.getSavedScenarios();
+    const nowIso = new Date().toISOString();
+    const id = String(input.id || entityId('scenario'));
+    const existing = state.scenarios.find((scenario) => scenario.id === id);
+    const scenario: FinanceSavedScenario = {
+      id,
+      name: String(input.name || existing?.name || 'Saved scenario').trim() || 'Saved scenario',
+      type: scenarioType(input.type),
+      amount: Math.max(0, Number(input.amount) || 0),
+      protectPercent: Number.isFinite(Number(input.protectPercent)) ? Math.max(0, Math.min(100, Number(input.protectPercent))) : existing?.protectPercent,
+      createdAt: existing?.createdAt || nowIso,
+      updatedAt: nowIso,
+    };
+    const scenarios = [
+      scenario,
+      ...state.scenarios.filter((entry) => entry.id !== id),
+    ].slice(0, 24);
+    setJson(STORAGE_KEYS.scenarios, { scenarios, selectedScenarioId: scenario.id });
+    window.dispatchEvent(new CustomEvent('finance:ui-updated', { detail: clone(this.getUiSettings()) }));
+    return scenario;
+  },
+
+  deleteScenario(id: string): FinanceScenarioState {
+    const state = this.getSavedScenarios();
+    const scenarios = state.scenarios.filter((scenario) => scenario.id !== String(id || ''));
+    const selectedScenarioId = state.selectedScenarioId === String(id || '') ? scenarios[0]?.id : state.selectedScenarioId;
+    const next = {
+      scenarios,
+      ...(selectedScenarioId ? { selectedScenarioId } : {}),
+    };
+    setJson(STORAGE_KEYS.scenarios, next);
+    window.dispatchEvent(new CustomEvent('finance:ui-updated', { detail: clone(this.getUiSettings()) }));
+    return next;
   },
 
   getGoalProgress(filter: FinanceScopeFilter = 'all'): FinanceGoalProgress[] {
@@ -1715,6 +1817,7 @@ export const Store = {
       review: this.getReviewState(),
       goals: this.getGoals(),
       imports: this.getImportState(),
+      scenarios: this.getSavedScenarios(),
       prices: this.getPriceCache(),
     };
     return {
@@ -1739,6 +1842,7 @@ export const Store = {
     setJson(STORAGE_KEYS.review, backup.review || DEFAULT_REVIEW_STATE);
     setJson(STORAGE_KEYS.goals, backup.goals || DEFAULT_GOAL_STATE);
     setJson(STORAGE_KEYS.imports, backup.imports || DEFAULT_IMPORT_STATE);
+    setJson(STORAGE_KEYS.scenarios, backup.scenarios || DEFAULT_SCENARIO_STATE);
     setJson(STORAGE_KEYS.priceCache, backup.prices || DEFAULT_PRICE_CACHE);
     repositorySet(STORAGE_KEYS.demoSeed, 'restored-backup');
     invalidate();
@@ -1756,6 +1860,7 @@ export const Store = {
       review: rawStorageEntry(STORAGE_KEYS.review),
       goals: rawStorageEntry(STORAGE_KEYS.goals),
       imports: rawStorageEntry(STORAGE_KEYS.imports),
+      scenarios: rawStorageEntry(STORAGE_KEYS.scenarios),
       priceCache: rawStorageEntry(STORAGE_KEYS.priceCache),
     });
     return {

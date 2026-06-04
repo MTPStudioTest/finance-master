@@ -1,4 +1,4 @@
-import { selectRepositoryValue } from './legacy-migration.js';
+import { decodeLegacyValue, selectRepositoryValue } from './legacy-migration.js';
 
 const DB_NAME = 'finance-master';
 const DB_VERSION = 1;
@@ -85,7 +85,9 @@ export async function initializeRepositories(keys: string[]): Promise<void> {
   await Promise.all(keys.map(async (key) => {
     const stored = await readDatabase(key);
     const legacy = readLocalStorage(key);
-    const selected = selectRepositoryValue(stored, legacy);
+    const selected = key === 'finance-master.scenarios.v1' && legacy != null
+      ? { source: 'localStorage', value: decodeLegacyValue(legacy), removeLegacy: false }
+      : selectRepositoryValue(stored, legacy);
     if (selected.source === 'empty') return;
     memory.set(key, clone(selected.value));
     if (selected.source === 'indexeddb') {

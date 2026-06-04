@@ -1,5 +1,10 @@
 export function createSectionRenderer(renderers, renderSectionHeading) {
     const pages = {
+        decisions: {
+            title: 'Decisions',
+            copy: 'A deterministic decision board for focus, pressure, opportunities, and what can safely wait.',
+            sections: ['decisionBoard']
+        },
         flow: {
             title: 'Flow',
             copy: 'The timeline and forecast view for upcoming income, obligations, burn, and cash pressure.',

@@ -568,6 +568,7 @@ test('treasury model separates reserved cash from truly available cash', () => {
   assert.equal(result.explanations.availableCash.parts.map((part) => part.label).join('|'), 'Actual cash|This money is protected|Due within 30 days');
   assert.equal(result.explanations.safeToSpend.parts.map((part) => part.label).join('|'), 'Actual cash|This money is protected|Confirmed obligations due within 30 days|Debt payments due soon|Minimum 7-day buffer');
   assert.equal(result.explanations.runway.parts[0].label, 'Available cash');
+  assert.equal(result.explanations.debtPressure.label, 'Debt pressure');
 });
 
 test('safe-to-spend excludes expected income and reserves debt pressure plus buffer', () => {
@@ -637,6 +638,8 @@ test('safe-to-spend excludes expected income and reserves debt pressure plus buf
   assert.equal(result.treasury.incomeScenarios.expected, 10100);
   assert.equal(result.explanations.safeToSpend.value, 3520);
   assert.equal(result.explanations.safeToSpend.parts.find((part) => part.label === 'Debt payments due soon').value, 300);
+  assert.equal(result.explanations.debtPressure.value, 300);
+  assert.equal(result.explanations.debtPressure.parts.map((part) => part.label).join('|'), 'Card balance');
 });
 
 test('treasury model classifies income scenarios and review items', () => {

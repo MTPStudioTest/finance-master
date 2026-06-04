@@ -112,6 +112,7 @@ export function inspectFinanceStorage(entries) {
     ['review', 'Review state'],
     ['goals', 'Goals'],
     ['imports', 'CSV import history'],
+    ['scenarios', 'Saved scenarios'],
     ['priceCache', 'Cached prices'],
   ].forEach(([key, label]) => {
     if (entries[key]?.present && !isObject(entries[key].value)) {
@@ -124,6 +125,9 @@ export function inspectFinanceStorage(entries) {
   }
   if (entries.goals?.present && isObject(entries.goals.value) && !Array.isArray(entries.goals.value.goals)) {
     issues.push(issue('goals', 'Goals', 'Goals data is missing its goal list.'));
+  }
+  if (entries.scenarios?.present && isObject(entries.scenarios.value) && !Array.isArray(entries.scenarios.value.scenarios)) {
+    issues.push(issue('scenarios', 'Saved scenarios', 'Saved scenario data is missing its scenario list.'));
   }
   if (entries.priceCache?.present && isObject(entries.priceCache.value) && !isObject(entries.priceCache.value.quotes)) {
     issues.push(issue('priceCache', 'Cached prices', 'Cached price data is missing its quote map.'));

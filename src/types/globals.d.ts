@@ -94,6 +94,7 @@ declare global {
       confirmObligations?: boolean;
       reviewSignals?: boolean;
       closeMonth?: boolean;
+      chosenFocus?: { id: string; title: string };
       notes?: string;
     }): import('./finance').FinanceReviewState;
     computeFinanceContext(force?: boolean, filter?: FinanceScopeFilter): FinanceContext;
@@ -114,6 +115,7 @@ declare global {
     getImportState(): import('./finance').FinanceImportState;
     getGoals(): import('./finance').FinanceGoalState;
     getGoalProgress(filter?: FinanceScopeFilter): import('./finance').FinanceGoalProgress[];
+    getSavedScenarios(): import('./finance').FinanceScenarioState;
     getPriceCache(): import('./finance').FinancePriceCache;
     getReviewState(): import('./finance').FinanceReviewState;
     getUiSettings(): FinanceUiSettings;
@@ -222,6 +224,14 @@ declare global {
       linkedAccountIds?: string[];
     }): import('./finance').FinanceGoal;
     deleteGoal(id: string): import('./finance').FinanceGoalState;
+    saveScenario(input: {
+      id?: string;
+      name: string;
+      type: import('./finance').FinanceScenarioType;
+      amount: number;
+      protectPercent?: number;
+    }): import('./finance').FinanceSavedScenario;
+    deleteScenario(id: string): import('./finance').FinanceScenarioState;
     getImportState(): import('./finance').FinanceImportState;
     saveCsvImportProfile(input: {
       name?: string;
