@@ -52,7 +52,7 @@ window.FinancialMode = (function () {
         activeSection: 'finance-master.layout.active-section'
     };
 
-    const SECTIONS = ['dashboard', 'ledger', 'planning', 'review', 'reserves', 'reports', 'data'];
+    const SECTIONS = ['dashboard', 'ledger', 'review', 'reserves', 'reports', 'data'];
     const SECTION_ALIASES = {
         overview: 'dashboard',
         today: 'dashboard',
@@ -61,10 +61,10 @@ window.FinancialMode = (function () {
         'cash-movement': 'ledger',
         cashmovement: 'ledger',
         cashMovement: 'ledger',
-        income: 'planning',
-        invoices: 'planning',
-        cashflow: 'planning',
-        planning: 'planning',
+        income: 'ledger',
+        invoices: 'ledger',
+        cashflow: 'ledger',
+        planning: 'ledger',
         review: 'review',
         'monthly-review': 'review',
         monthlyreview: 'review',
@@ -728,8 +728,6 @@ window.FinancialMode = (function () {
         elements.content.classList.toggle('fin-focus-mode', activeSection === 'dashboard' && focusMode);
         elements.content.innerHTML = sections.join('');
 
-        if (activeSection === 'planning') attachCharts();
-
         // Post-render attachments
         if (window.CoreDashboardLayout && typeof window.CoreDashboardLayout.refresh === 'function') {
             window.CoreDashboardLayout.refresh();
@@ -742,11 +740,7 @@ window.FinancialMode = (function () {
         return createSectionRenderer({
             ledger: renderLedgerSection,
             invoices: renderInvoicesSection,
-            scenarioOutcomes: renderScenarioOutcomes,
-            cashCalendar: renderCashCalendar,
-            pipelineTabs: renderPipelineTabs,
             goals: renderGoals,
-            projection: renderProjection,
             reviewQueue: renderReviewQueue,
             obligationReview: renderObligationReviewSection,
             paymentReview: renderPaymentReviewSection,
@@ -816,7 +810,7 @@ window.FinancialMode = (function () {
         const matchedPayments = transactions.filter((entry) => String(entry && entry.obligationId || '').trim()).length;
         const netMovement = transactions.reduce((sum, entry) => sum + ledgerSignedAmount(entry), 0);
         const statusStrip = `
-            <div class="fin-ledger-status-strip" aria-label="Ledger status">
+            <div class="fin-ledger-status-strip" aria-label="Record status">
                 <div><span>Records</span><strong>${transactions.length}</strong><small>${allTransactions.length} total</small></div>
                 <div><span>Net movement</span><strong class="${netMovement >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${netMovement >= 0 ? '+' : '-'}${formatCurrency(Math.abs(netMovement))}</strong><small>Current filters</small></div>
                 <div><span>Open items</span><strong>${reviewTransactions.length}</strong><small>Classification or evidence</small></div>
@@ -984,13 +978,13 @@ window.FinancialMode = (function () {
         const renderLedgerRow = (entry) => renderLedgerRowDetails(entry, 'ledger');
         const renderReviewRow = (entry) => renderLedgerRowDetails(entry, 'review');
         const sourceFilter = sourceOptions.length ? `
-            <select id="fin-ledger-source" aria-label="Filter ledger by source">
+            <select id="fin-ledger-source" aria-label="Filter records by source">
                 <option value="all"${filters.source === 'all' || !filters.source ? ' selected' : ''}>All sources</option>
                 ${sourceOptions.map((source) => `<option value="${escapeHtml(source)}"${String(filters.source) === source ? ' selected' : ''}>${escapeHtml(source)}</option>`).join('')}
             </select>
-        ` : `<input id="fin-ledger-source" aria-label="Filter ledger by source" value="all" type="hidden" />`;
+        ` : `<input id="fin-ledger-source" aria-label="Filter records by source" value="all" type="hidden" />`;
         const importBatchFilter = importBatchOptions.length ? `
-            <select id="fin-ledger-import-batch" aria-label="Filter ledger by import batch">
+            <select id="fin-ledger-import-batch" aria-label="Filter records by import batch">
                 <option value="all"${filters.importBatchId === 'all' || !filters.importBatchId ? ' selected' : ''}>All import batches</option>
                 ${importBatchOptions.map((batchId) => {
             const batch = ledgerImportBatch({ importBatchId: batchId });
@@ -998,30 +992,30 @@ window.FinancialMode = (function () {
             return `<option value="${escapeHtml(batchId)}"${String(filters.importBatchId) === batchId ? ' selected' : ''}>${escapeHtml(label)}</option>`;
         }).join('')}
             </select>
-        ` : `<input id="fin-ledger-import-batch" aria-label="Filter ledger by import batch" value="all" type="hidden" />`;
+        ` : `<input id="fin-ledger-import-batch" aria-label="Filter records by import batch" value="all" type="hidden" />`;
         const chips = renderLedgerFilterChips(filters);
         const filtersHtml = `
-            <div class="fin-ledger-toolbar" aria-label="Ledger filters">
+            <div class="fin-ledger-toolbar" aria-label="Record filters">
                 <div class="fin-ledger-filter-bar">
-                    <input id="fin-ledger-search" aria-label="Search ledger" value="${escapeHtml(filters.search)}" placeholder="Search note, account, category, source" />
-                    <select id="fin-ledger-account" aria-label="Filter ledger by account">${ledgerAccountOptions(filters.accountId)}</select>
-                    <input id="fin-ledger-category" aria-label="Filter ledger by category" value="${escapeHtml(filters.categoryId)}" placeholder="Category" />
-                    <input id="fin-ledger-date-from" aria-label="Ledger date from" type="date" value="${escapeHtml(filters.dateFrom)}" />
-                    <input id="fin-ledger-date-to" aria-label="Ledger date to" type="date" value="${escapeHtml(filters.dateTo)}" />
+                    <input id="fin-ledger-search" aria-label="Search records" value="${escapeHtml(filters.search)}" placeholder="Search note, account, category, source" />
+                    <select id="fin-ledger-account" aria-label="Filter records by account">${ledgerAccountOptions(filters.accountId)}</select>
+                    <input id="fin-ledger-category" aria-label="Filter records by category" value="${escapeHtml(filters.categoryId)}" placeholder="Category" />
+                    <input id="fin-ledger-date-from" aria-label="Record date from" type="date" value="${escapeHtml(filters.dateFrom)}" />
+                    <input id="fin-ledger-date-to" aria-label="Record date to" type="date" value="${escapeHtml(filters.dateTo)}" />
                     <button class="fin-mini-btn" type="button" data-fin-action="toggle-ledger-more-filters" aria-expanded="${ledgerMoreFiltersOpen ? 'true' : 'false'}">More filters</button>
                     <button class="fin-mini-btn fin-mini-btn--primary" type="button" data-fin-action="apply-ledger-filters">Apply filters</button>
                 </div>
                 ${ledgerMoreFiltersOpen ? `
-                <div class="fin-ledger-filter-advanced" aria-label="Advanced ledger filters">
-                    <select id="fin-ledger-scope" aria-label="Filter ledger by scope">${scopeFilterOptions(filters.scope)}</select>
-                    <select id="fin-ledger-type" aria-label="Filter ledger by type">
+                <div class="fin-ledger-filter-advanced" aria-label="Advanced record filters">
+                    <select id="fin-ledger-scope" aria-label="Filter records by scope">${scopeFilterOptions(filters.scope)}</select>
+                    <select id="fin-ledger-type" aria-label="Filter records by type">
                         <option value="all"${filters.type === 'all' ? ' selected' : ''}>All types</option>
                         <option value="income"${filters.type === 'income' ? ' selected' : ''}>Income</option>
                         <option value="expense"${filters.type === 'expense' ? ' selected' : ''}>Expense</option>
                         <option value="transfer"${filters.type === 'transfer' ? ' selected' : ''}>Transfer</option>
                         <option value="adjustment"${filters.type === 'adjustment' ? ' selected' : ''}>Adjustment</option>
                     </select>
-                    <select id="fin-ledger-review" aria-label="Filter ledger by review status">
+                    <select id="fin-ledger-review" aria-label="Filter records by review status">
                         <option value="all"${filters.reviewStatus === 'all' ? ' selected' : ''}>All review states</option>
                         <option value="clear"${filters.reviewStatus === 'clear' ? ' selected' : ''}>Clear</option>
                         <option value="needs_review"${filters.reviewStatus === 'needs_review' ? ' selected' : ''}>Needs review</option>
@@ -1029,13 +1023,13 @@ window.FinancialMode = (function () {
                     </select>
                     ${sourceFilter}
                     ${importBatchFilter}
-                    <select id="fin-ledger-link-state" aria-label="Filter ledger by link state">
+                    <select id="fin-ledger-link-state" aria-label="Filter records by link state">
                         <option value="all"${filters.linkState === 'all' ? ' selected' : ''}>All link states</option>
                         <option value="linked"${filters.linkState === 'linked' ? ' selected' : ''}>Linked records</option>
                         <option value="unlinked"${filters.linkState === 'unlinked' ? ' selected' : ''}>Unlinked records</option>
                     </select>
-                    <input id="fin-ledger-amount-min" aria-label="Ledger amount minimum" type="number" min="0" step="0.01" value="${escapeHtml(filters.amountMin)}" placeholder="Minimum amount" />
-                    <input id="fin-ledger-amount-max" aria-label="Ledger amount maximum" type="number" min="0" step="0.01" value="${escapeHtml(filters.amountMax)}" placeholder="Maximum amount" />
+                    <input id="fin-ledger-amount-min" aria-label="Record amount minimum" type="number" min="0" step="0.01" value="${escapeHtml(filters.amountMin)}" placeholder="Minimum amount" />
+                    <input id="fin-ledger-amount-max" aria-label="Record amount maximum" type="number" min="0" step="0.01" value="${escapeHtml(filters.amountMax)}" placeholder="Maximum amount" />
                     <button class="fin-mini-btn" type="button" data-fin-action="clear-ledger-filters">Reset filters</button>
                 </div>
                 ` : `
@@ -1070,8 +1064,8 @@ window.FinancialMode = (function () {
                 <div class="widget ui-card glass fin-card fin-ledger-workspace-card">
                     <div class="fin-section-heading-row">
                         <div>
-                            <div class="widget-title ui-title">Ledger Workspace</div>
-                            <div class="fin-helper-text">Review cash movement, classify records, and inspect evidence when needed.</div>
+                            <div class="widget-title ui-title">Cash Movement Workspace</div>
+                            <div class="fin-helper-text">Review cash movement, expected income, matching, and evidence in one place.</div>
                         </div>
                         <div class="fin-action-row">
                             <button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'csvImport'">Import CSV</button>
@@ -1081,8 +1075,8 @@ window.FinancialMode = (function () {
                     </div>
                     ${statusStrip}
                     ${filtersHtml}
-                    <div class="fin-tabs" role="tablist" aria-label="Transaction view modes">
-                        <button class="fin-tab-btn ${view === 'clean' ? 'active' : ''}" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="clean">Ledger</button>
+                    <div class="fin-tabs" role="tablist" aria-label="Record view modes">
+                        <button class="fin-tab-btn ${view === 'clean' ? 'active' : ''}" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="clean">Records</button>
                         <button class="fin-tab-btn ${view === 'work' ? 'active' : ''}" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="work">Review</button>
                     </div>
                     <div class="fin-ledger-workspace-grid">
@@ -1092,6 +1086,7 @@ window.FinancialMode = (function () {
                     </div>
                 </div>
             </section>
+            ${renderInvoicesSection({ compact: true })}
         `;
     }
 
@@ -1342,7 +1337,7 @@ window.FinancialMode = (function () {
         if (String(filters.amountMax || '').trim()) labels.push(`Max ${filters.amountMax}`);
         if (!labels.length) return '';
         return `
-            <div class="fin-ledger-filter-chips" aria-label="Active ledger filters">
+            <div class="fin-ledger-filter-chips" aria-label="Active record filters">
                 ${labels.map((label) => `<span class="fin-status-pill">${escapeHtml(label)}</span>`).join('')}
                 <button class="fin-mini-btn" type="button" data-fin-action="clear-ledger-filters">Clear all</button>
             </div>
@@ -2566,7 +2561,8 @@ window.FinancialMode = (function () {
         return 'Early signal';
     }
 
-    function renderInvoicesSection() {
+    function renderInvoicesSection(options = {}) {
+        const compact = Boolean(options && options.compact);
         const view = getInvoicesView();
         const active = getActivePipelineDeals()
             .map((deal) => {
@@ -2628,11 +2624,11 @@ window.FinancialMode = (function () {
         
         return `
             <section class="fin-section">
-                <div class="widget ui-card glass fin-card">
+                <div class="widget ui-card glass fin-card ${compact ? 'fin-income-lane-card' : ''}">
                     <div class="fin-section-heading-row">
                         <div>
                             <div class="widget-title ui-title">Income</div>
-                            <div class="fin-helper-text">Expected and settled income records. Settlement turns expected money into real account cash.</div>
+                            <div class="fin-helper-text">Expected income lives beside real cash movement. Settlement turns expected money into account cash.</div>
                         </div>
                         <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'income'">Add expected income</button>
                     </div>
@@ -2643,7 +2639,7 @@ window.FinancialMode = (function () {
                         <div class="fin-status-card">${renderStatusPill('overdue')}<strong>${formatCurrency(totals.overdue)}</strong><span>Needs follow-up</span></div>
                     </div>
                     
-                    <div class="fin-tabs" role="tablist" aria-label="Invoice view modes">
+                    <div class="fin-tabs" role="tablist" aria-label="Income view modes">
                         <button class="fin-tab-btn ${view === 'open' ? 'active' : ''}" type="button" data-fin-action="set-invoices-view" data-fin-invoices-view="open">Open Income</button>
                         <button class="fin-tab-btn ${view === 'settled' ? 'active' : ''}" type="button" data-fin-action="set-invoices-view" data-fin-invoices-view="settled">Settled</button>
                         <button class="fin-tab-btn ${view === 'all' ? 'active' : ''}" type="button" data-fin-action="set-invoices-view" data-fin-invoices-view="all">All</button>
@@ -2999,7 +2995,7 @@ window.FinancialMode = (function () {
             moves.push({ title: 'Build a €500 micro-buffer', why: 'A small protected buffer makes delayed invoices less disruptive.', effect: 'Improves reserve discipline.', label: 'Add reserve bucket', action: 'FinancialMode.openAddModal', args: "'reserveBucket'" });
         }
         if (dependency.top && dependency.top.pct >= 55) {
-            moves.push({ title: 'Diversify income over 90 days', why: `${dependency.top.source} carries ${dependency.top.pct}% of tracked income.`, effect: 'Lowers concentration risk.', label: 'Open Cashflow', action: 'FinancialMode.setSection', args: "'planning'" });
+            moves.push({ title: 'Diversify income over 90 days', why: `${dependency.top.source} carries ${dependency.top.pct}% of tracked income.`, effect: 'Lowers concentration risk.', label: 'Open Cash Movement', action: 'FinancialMode.setSection', args: "'ledger'" });
         }
         if (!safeArray(currentReview && currentReview.history).length) {
             moves.push({ title: 'Close first operating month', why: 'Pattern detection starts after the first close.', effect: 'Unlocks cash rhythm and trend memory.', label: 'Go to Month Close', action: 'FinancialMode.setSection', args: "'review'" });
@@ -3275,7 +3271,7 @@ window.FinancialMode = (function () {
         const id = escapeActionArg(item && item.id || '');
         if (String(item && item.id) === 'month-end-gap') return { label: 'Adjust reserves', action: 'FinancialMode.setSection', args: "'reserves'" };
         if (String(item && item.id) === 'monthly-review') return { label: 'Start close', action: 'FinancialMode.setSection', args: "'review'" };
-        if (type === 'Overdue') return { label: 'Review income', action: 'FinancialMode.setSection', args: "'planning'" };
+        if (type === 'Overdue') return { label: 'Review income', action: 'FinancialMode.setSection', args: "'ledger'" };
         if (type === 'Due soon') return { label: 'Review obligation', action: 'FinancialMode.setSection', args: "'review'" };
         if (type === 'Missing forecast input') return { label: 'Add income', action: 'FinancialMode.openAddModal', args: "'income'" };
         if (type === 'Missing plan' && /reserve/i.test(String(item && item.title || ''))) {
@@ -3416,6 +3412,11 @@ window.FinancialMode = (function () {
         const reservedCash = treasuryNumber('protectedCash', treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0));
         const snapshotAvailableCash = Number(currentSnapshot?.availableCash);
         const availableCash = treasuryNumber('availableCash', Number.isFinite(snapshotAvailableCash) ? snapshotAvailableCash : treasuryNumber('trulyAvailableCash', totalCash - reservedCash));
+        const safeToSpend = treasuryNumber('safeToSpend', Number.isFinite(Number(currentSnapshot?.safeToSpend)) ? Number(currentSnapshot.safeToSpend) : availableCash);
+        const shortTermPressure = treasuryNumber('committedShortTermObligations', Number(currentSnapshot?.committedShortTermObligations) || 0);
+        const debtPressure = treasuryNumber('debtPaymentsDueSoon', Number(currentSnapshot?.debtPaymentsDueSoon) || 0);
+        const minimumBuffer = treasuryNumber('minimumBuffer', Number(currentSnapshot?.minimumBuffer) || 0);
+        const minimumBufferDays = treasuryNumber('minimumBufferDays', Number(currentSnapshot?.minimumBufferDays) || 7);
         const monthlyBurn = treasuryNumber('totalMonthlyBurn', Number(currentSnapshot?.monthlyBurn) || 0);
         const expectedMonthEnd = overviewExpectedMonthEnd();
         const forecastWarning = safeArray(currentForecast && currentForecast.warnings)[0] || '';
@@ -3423,8 +3424,11 @@ window.FinancialMode = (function () {
         const runwayLabel = runway == null ? '—' : `${Number(runway).toFixed(1)}`;
         const runwayStatus = overviewRunwayStatus(runway);
         const resultClass = expectedMonthEnd < 0 ? 'is-critical' : 'is-steady';
+        const safeClass = safeToSpend < 0 ? 'is-critical' : (safeToSpend < monthlyBurn ? 'is-watch' : 'is-steady');
+        const safeLabel = safeToSpend < 0 ? 'Shortfall' : (safeToSpend < monthlyBurn ? 'Thin' : 'Usable');
         const protectedPercent = overviewPercent(reservedCash, totalCash);
-        const availablePercent = Math.max(0, 100 - protectedPercent);
+        const pressurePercent = overviewPercent(Math.max(0, shortTermPressure), totalCash);
+        const availablePercent = Math.max(0, 100 - protectedPercent - pressurePercent);
         const burnCoverageDays = monthlyBurn > 0 ? Math.round((availableCash / monthlyBurn) * 30) : null;
         const burnPressurePercent = burnCoverageDays == null ? 0 : Math.max(8, Math.min(100, 100 - Math.min(100, (burnCoverageDays / 365) * 100)));
         const runwayCopy = runway == null
@@ -3432,29 +3436,47 @@ window.FinancialMode = (function () {
             : `Available cash covers ${Number(runway).toFixed(1)} months at the current monthly burn.`;
         const burnDaysLabel = burnCoverageDays == null ? '—' : `${burnCoverageDays} days`;
         const resultLabel = currentHasFinanceData ? `${expectedMonthEnd >= 0 ? '+' : ''}${formatCurrency(expectedMonthEnd)}` : '—';
+        const safeCopy = currentHasFinanceData
+            ? `After protected cash, confirmed obligations, debt pressure, and a ${minimumBufferDays}-day buffer.`
+            : 'Add cash accounts and recurring pressure to reveal what is safe to use.';
 
         return `
             <section class="fin-section">
-                <div class="widget ui-card glass fin-card fin-money-picture" data-fin-command-summary>
+                <div class="widget ui-card glass fin-card fin-money-picture fin-money-picture--living" data-fin-command-summary>
                     <div class="fin-money-picture-head">
                         <div>
-                            <div class="widget-title ui-title">Money Picture</div>
-                            <div class="fin-helper-text">The money picture before any review work.</div>
+                            <div class="widget-title ui-title">Living Money Picture</div>
+                            <div class="fin-helper-text">What is free, protected, pressured, and still ahead.</div>
                         </div>
                     </div>
                     <div class="fin-money-picture-grid">
-                        <div class="fin-money-runway ${runwayStatus.className}">
-                            <span>Runway</span>
-                            <strong>${runwayLabel}<small> months</small></strong>
-                            <div class="fin-runway-pill"><span></span>${escapeHtml(runwayStatus.label)}</div>
-                            <p>${escapeHtml(runwayCopy)}</p>
+                        <div class="fin-money-safe ${safeClass}">
+                            <span>Safe-to-Spend</span>
+                            <strong>${currentHasFinanceData ? formatCurrency(safeToSpend) : '—'}</strong>
+                            <div class="fin-runway-pill"><span></span>${escapeHtml(safeLabel)}</div>
+                            <p>${escapeHtml(safeCopy)}</p>
+                            <div class="fin-safe-breakdown" aria-label="Safe-to-Spend formula">
+                                <div><span>Actual cash</span><strong>${formatCurrency(totalCash)}</strong></div>
+                                <div><span>Protected</span><strong>-${formatCurrency(reservedCash)}</strong></div>
+                                <div><span>30-day pressure</span><strong>-${formatCurrency(shortTermPressure)}</strong></div>
+                                <div><span>Debt due soon</span><strong>-${formatCurrency(debtPressure)}</strong></div>
+                                <div><span>Buffer</span><strong>-${formatCurrency(minimumBuffer)}</strong></div>
+                            </div>
                         </div>
-                        <div class="fin-money-result ${resultClass}">
-                            <span>30-Day Result</span>
-                            <strong>${resultLabel}</strong>
-                            <p>Projected month-end</p>
-                            ${renderOverviewForecastLine(expectedMonthEnd)}
-                            <small>Based on confirmed obligations and expected income.</small>
+                        <div class="fin-money-signal-stack">
+                            <div class="fin-money-result ${resultClass}">
+                                <span>30-Day Result</span>
+                                <strong>${resultLabel}</strong>
+                                <p>Projected month-end</p>
+                                ${renderOverviewForecastLine(expectedMonthEnd)}
+                                <small>Based on confirmed obligations and expected income.</small>
+                            </div>
+                            <div class="fin-money-runway ${runwayStatus.className}">
+                                <span>Runway</span>
+                                <strong>${runwayLabel}<small> months</small></strong>
+                                <div class="fin-runway-pill"><span></span>${escapeHtml(runwayStatus.label)}</div>
+                                <p>${escapeHtml(runwayCopy)}</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -3471,11 +3493,14 @@ window.FinancialMode = (function () {
                         </div>
                         <div class="fin-money-bar" aria-label="Cash allocation">
                             <span class="fin-money-bar-available" style="width:${availablePercent}%"></span>
+                            <span class="fin-money-bar-pressure" style="width:${pressurePercent}%"></span>
                             <span class="fin-money-bar-protected" style="width:${protectedPercent}%"></span>
                         </div>
                         <div class="fin-money-legend">
-                            <div><span class="fin-dot fin-dot--safe"></span><span>Available</span><strong>${formatCurrency(availableCash)}</strong><small>${availablePercent.toFixed(1)}%</small></div>
-                            <div><span class="fin-dot"></span><span>Protected</span><strong>${formatCurrency(reservedCash)}</strong><small>${protectedPercent.toFixed(1)}%</small></div>
+                            <div><span class="fin-dot fin-dot--safe"></span><span>Safe-to-Spend</span><strong>${formatCurrency(safeToSpend)}</strong><small>usable after buffer</small></div>
+                            <div><span class="fin-dot fin-dot--available"></span><span>Available</span><strong>${formatCurrency(availableCash)}</strong><small>after reserves and 30-day pressure</small></div>
+                            <div><span class="fin-dot fin-dot--pressure"></span><span>Due within 30 days</span><strong>${formatCurrency(shortTermPressure)}</strong><small>${pressurePercent.toFixed(1)}% of cash</small></div>
+                            <div><span class="fin-dot"></span><span>Protected</span><strong>${formatCurrency(reservedCash)}</strong><small>${protectedPercent.toFixed(1)}% of cash</small></div>
                         </div>
                     </div>
 
@@ -3493,6 +3518,7 @@ window.FinancialMode = (function () {
                             <div>${renderSAGGlyph('attention', { size: 'sm', tone: 'warning' })}<span>Cash out per month</span><strong>${formatCurrency(monthlyBurn)}</strong></div>
                             <div>${renderSAGGlyph('success', { size: 'sm', tone: 'warning' })}<span>Days of coverage</span><strong>${escapeHtml(burnDaysLabel)}</strong></div>
                             <div>${renderSAGGlyph('sprout', { size: 'sm', tone: 'warning' })}<span>Runway</span><strong>${runwayLabel}${runway != null ? ' months' : ''}</strong></div>
+                            <div>${renderSAGGlyph('attention', { size: 'sm', tone: 'warning' })}<span>Debt due soon</span><strong>${formatCurrency(debtPressure)}</strong></div>
                         </div>
                     </div>
                 </div>
@@ -3528,9 +3554,9 @@ window.FinancialMode = (function () {
                 title: `Projected month-end gap: ${formatCurrency(Math.abs(expectedMonthEnd))}`,
                 body: 'Confirm expected income or adjust reserves before reviewing smaller obligations.',
                 buttons: [
-                    { label: 'Review income', action: 'FinancialMode.setSection', args: "'planning'" },
+                    { label: 'Review income', action: 'FinancialMode.setSection', args: "'ledger'" },
                     { label: 'Adjust reserves', action: 'FinancialMode.setSection', args: "'reserves'" },
-                    { label: 'Open forecast', action: 'FinancialMode.setSection', args: "'planning'" }
+                    { label: 'Open Cash Movement', action: 'FinancialMode.setSection', args: "'ledger'" }
                 ]
             };
         } else if (overdue) {

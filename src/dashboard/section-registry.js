@@ -2,13 +2,8 @@ export function createSectionRenderer(renderers, renderSectionHeading) {
     const pages = {
         ledger: {
             title: 'Cash Movement',
-            copy: 'Clean daily movement, focused review work, and transaction evidence when you need it.',
+            copy: 'Transactions, expected income, review work, matching, and evidence in one workspace.',
             sections: ['ledger']
-        },
-        planning: {
-            title: 'Cashflow',
-            copy: 'Expected income, cash calendar, and projections for the next decisions.',
-            sections: ['invoices', 'scenarioOutcomes', 'cashCalendar', 'pipelineTabs', 'projection']
         },
         review: {
             title: 'Month Close',
