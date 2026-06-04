@@ -70,6 +70,9 @@ type DestructiveConfirmationAction =
   | 'deactivateReserveBucket'
   | 'deactivateRecurringExpense'
   | 'deactivateDebtAccount'
+  | 'deleteDebtAccount'
+  | 'completeDebtPlan'
+  | 'archiveDebtPlan'
   | 'reverseTransaction'
   | 'deleteInvoice'
   | 'cancelPipelineItem'
@@ -1198,7 +1201,8 @@ function renderPipelineReview(id = ''): string {
 function renderDebtPlan(id = ''): string {
   const debt = (Store.getFinancialReadModel().debtAccounts || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
   const planType = debt?.planType || 'regular';
-  const frequency = debt?.frequency || 'monthly';
+  const frequency = debt?.paymentFrequency || debt?.frequency || 'monthly';
+  const planStatus = debt?.planStatus || 'active';
   const installments = debt?.installments || [];
   
   const customHtml = installments.map((inst: any, idx: number) => `
@@ -1211,9 +1215,27 @@ function renderDebtPlan(id = ''): string {
 
   return `
     <div class="modal-form">
-      <h2 id="modal-title">Add debt payment plan</h2>
+      <h2 id="modal-title">${debt?.planReviewedAt ? 'Edit debt payment plan' : 'Add debt payment plan'}</h2>
       <p class="modal-copy">${escapeHtml(debt?.name || 'Debt item')} · ${money(debt?.outstanding)} outstanding</p>
       <input id="modal-debt-plan-id" type="hidden" value="${escapeHtml(id)}" />
+      <div class="modal-grid-two">
+        <div class="form-group">
+          <label for="modal-debt-plan-status">Plan status</label>
+          <select id="modal-debt-plan-status">
+            ${[
+              ['active', 'Active'],
+              ['starts_later', 'Starts later'],
+              ['on_hold', 'On hold'],
+              ['irregular', 'Irregular'],
+              ['completed', 'Completed'],
+              ['archived', 'Archived'],
+            ].map(([status, label]) => `<option value="${status}"${String(planStatus) === status ? ' selected' : ''}>${label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group"><label for="modal-debt-plan-custom-pressure">Custom monthly pressure</label><input id="modal-debt-plan-custom-pressure" type="number" min="0" step="0.01" value="${escapeHtml(debt?.customMonthlyPressure ?? '')}" placeholder="Optional" /></div>
+        <div class="form-group"><label for="modal-debt-plan-start-date">Start date</label><input id="modal-debt-plan-start-date" type="date" value="${escapeHtml(debt?.startDate || '')}" /></div>
+        <div class="form-group"><label for="modal-debt-plan-end-date">End date</label><input id="modal-debt-plan-end-date" type="date" value="${escapeHtml(debt?.endDate || '')}" /></div>
+      </div>
       <div class="form-group">
         <label for="modal-debt-plan-type">Plan Type</label>
         <select id="modal-debt-plan-type" onchange="if(window.toggleDebtPlanType) window.toggleDebtPlanType(this.value)">
@@ -1227,12 +1249,13 @@ function renderDebtPlan(id = ''): string {
           <div class="form-group"><label for="modal-debt-plan-frequency">Frequency</label>
             <select id="modal-debt-plan-frequency">
               <option value="weekly"${frequency === 'weekly' ? ' selected' : ''}>Weekly</option>
+              <option value="biweekly"${frequency === 'biweekly' ? ' selected' : ''}>Biweekly</option>
               <option value="monthly"${frequency === 'monthly' ? ' selected' : ''}>Monthly</option>
               <option value="quarterly"${frequency === 'quarterly' ? ' selected' : ''}>Quarterly</option>
-              <option value="annually"${frequency === 'annually' ? ' selected' : ''}>Annually</option>
+              <option value="yearly"${frequency === 'yearly' || frequency === 'annually' ? ' selected' : ''}>Yearly</option>
             </select>
           </div>
-          <div class="form-group"><label for="modal-debt-plan-minimum">Minimum payment</label><input id="modal-debt-plan-minimum" type="number" min="0" step="0.01" value="${escapeHtml(debt?.minimumPayment || '')}" /></div>
+          <div class="form-group"><label for="modal-debt-plan-minimum">Minimum payment</label><input id="modal-debt-plan-minimum" type="number" min="0" step="0.01" value="${escapeHtml(debt?.paymentAmount || debt?.minimumPayment || '')}" /></div>
         </div>
         <div class="form-group"><label for="modal-debt-plan-due-date">Next due date</label><input id="modal-debt-plan-due-date" type="date" value="${escapeHtml(debt?.dueDate || today())}" /></div>
       </div>
@@ -1248,6 +1271,11 @@ function renderDebtPlan(id = ''): string {
       </div>
 
       <div class="form-group"><label for="modal-debt-plan-note">Payment plan note <span class="fin-text-med">(optional)</span></label><textarea id="modal-debt-plan-note" rows="2" placeholder="Monthly minimum, creditor agreement, or next decision">${escapeHtml(debt?.paymentPlanNote || '')}</textarea></div>
+      <div class="modal-section">
+        <label class="settings-check"><input id="modal-debt-plan-include-burn" type="checkbox"${debt?.includeInBurnRate === false ? '' : ' checked'} /><span>Include in monthly burn</span></label>
+        <label class="settings-check"><input id="modal-debt-plan-include-safe" type="checkbox"${debt?.includeInSafeToSpend === false ? '' : ' checked'} /><span>Include in Safe-to-Spend</span></label>
+        <label class="settings-check"><input id="modal-debt-plan-include-runway" type="checkbox"${debt?.includeInRunway === false ? '' : ' checked'} /><span>Include in runway</span></label>
+      </div>
       ${formActions('debtPlan')}
     </div>
   `;
@@ -1686,9 +1714,13 @@ function saveFinanceModal(type: string): void {
   }
   if (type === 'debtPlan') {
     const planType = (value('modal-debt-plan-type') as 'regular' | 'custom') || 'regular';
+    const planStatus = value('modal-debt-plan-status') || 'active';
     const frequency = value('modal-debt-plan-frequency');
     const minimumPayment = Number(value('modal-debt-plan-minimum'));
     const dueDate = value('modal-debt-plan-due-date');
+    const startDate = value('modal-debt-plan-start-date');
+    const endDate = value('modal-debt-plan-end-date');
+    const customMonthlyPressure = value('modal-debt-plan-custom-pressure') ? Number(value('modal-debt-plan-custom-pressure')) : null;
     const note = value('modal-debt-plan-note');
     
     const installments: Array<{ date: string; amount: number }> = [];
@@ -1704,11 +1736,19 @@ function saveFinanceModal(type: string): void {
         showModalError('Add at least one valid installment for a custom plan.');
         return;
       }
-    } else {
+    } else if (planStatus === 'active') {
       if (!dueDate || !Number.isFinite(minimumPayment) || minimumPayment <= 0) {
         showModalError('Add a due date and positive minimum payment.');
         return;
       }
+    }
+    if (planStatus === 'starts_later' && !startDate) {
+      showModalError('Choose when this payment plan starts.');
+      return;
+    }
+    if (customMonthlyPressure !== null && (!Number.isFinite(customMonthlyPressure) || customMonthlyPressure < 0)) {
+      showModalError('Add a valid custom monthly pressure or leave it empty.');
+      return;
     }
 
     if (!value('modal-debt-plan-id')) {
@@ -1723,8 +1763,15 @@ function saveFinanceModal(type: string): void {
         minimumPayment: minimumPayment || installments[0]?.amount || 0,
         paymentPlanNote: note,
         planType,
+        planStatus,
+        startDate,
+        endDate,
+        customMonthlyPressure,
         frequency,
         installments,
+        includeInBurnRate: checked('modal-debt-plan-include-burn'),
+        includeInSafeToSpend: checked('modal-debt-plan-include-safe'),
+        includeInRunway: checked('modal-debt-plan-include-runway'),
       });
       closeModal();
     } catch (error) {
@@ -1915,6 +1962,58 @@ Object.assign(window, {
   deactivateReserveBucket: () => confirmDeactivate('deactivateReserveBucket', 'modal-reserve-id'),
   deactivateRecurringExpense: () => confirmDeactivate('deactivateRecurringExpense', 'modal-expense-id'),
   deactivateDebtAccount: () => confirmDeactivate('deactivateDebtAccount', 'modal-debt-id'),
+  deleteDebtAccount: (id: string) => {
+    if (!id) return;
+    openDestructiveConfirmation({
+      action: 'deleteDebtAccount',
+      targetId: id,
+      title: 'Delete mistaken debt',
+      copy: 'This reverses the selected debt, its payments, and its payment-plan events. Use archive for old debt history you want to keep visible in the record.',
+      phrase: 'DELETE DEBT ENTRY',
+      buttonLabel: 'Delete debt entry',
+      renderAfter: true,
+    });
+  },
+  pauseDebtPlan: (id: string) => {
+    try {
+      Store.setDebtPlanStatus(id, 'on_hold');
+      window.FinancialMode?.render?.();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not pause this debt plan.');
+    }
+  },
+  reactivateDebtPlan: (id: string) => {
+    try {
+      Store.setDebtPlanStatus(id, 'active');
+      window.FinancialMode?.render?.();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not reactivate this debt plan.');
+    }
+  },
+  completeDebtPlan: (id: string) => {
+    if (!id) return;
+    openDestructiveConfirmation({
+      action: 'completeDebtPlan',
+      targetId: id,
+      title: 'Mark debt plan complete',
+      copy: 'This keeps the debt record in history and removes the plan from active monthly pressure.',
+      phrase: 'MARK DEBT COMPLETE',
+      buttonLabel: 'Mark complete',
+      renderAfter: true,
+    });
+  },
+  archiveDebtPlan: (id: string) => {
+    if (!id) return;
+    openDestructiveConfirmation({
+      action: 'archiveDebtPlan',
+      targetId: id,
+      title: 'Archive debt plan',
+      copy: 'This hides the payment plan from active calculations while keeping the liability history available.',
+      phrase: 'ARCHIVE DEBT PLAN',
+      buttonLabel: 'Archive debt plan',
+      renderAfter: true,
+    });
+  },
   resetDemoData: () => {
     openDestructiveConfirmation({
       action: 'resetDemoData',
@@ -2120,6 +2219,15 @@ Object.assign(window, {
       } else if (config.action === 'deactivateFiatAccount' || config.action === 'deactivateReserveBucket' || config.action === 'deactivateRecurringExpense' || config.action === 'deactivateDebtAccount') {
         if (!config.targetId) throw new Error('Choose an item before deactivating.');
         (Store[config.action] as (id: string) => FinanceEvent[])(config.targetId);
+      } else if (config.action === 'deleteDebtAccount') {
+        if (!config.targetId) throw new Error('Choose a debt item before deleting.');
+        Store.deleteDebtAccount(config.targetId);
+      } else if (config.action === 'completeDebtPlan') {
+        if (!config.targetId) throw new Error('Choose a debt item before completing.');
+        Store.setDebtPlanStatus(config.targetId, 'completed');
+      } else if (config.action === 'archiveDebtPlan') {
+        if (!config.targetId) throw new Error('Choose a debt item before archiving.');
+        Store.setDebtPlanStatus(config.targetId, 'archived');
       } else if (config.action === 'reverseTransaction') {
         if (!config.targetId) throw new Error('Choose a transaction before reversing.');
         Store.reverseTransaction(config.targetId, config.source || 'modal.transaction.reverse');

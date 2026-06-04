@@ -153,7 +153,7 @@ function scenarioForHorizon({ readModel, snapshot, treasury, today, days }) {
   ) || 0);
   const recurringObligations = round(monthlyBurn * (days / 30));
   const debtPaymentPlans = round(safeArray(readModel && readModel.debtAccounts).reduce((sum, debt) => {
-    return sum + Math.max(0, Number(debt && debt.minimumPaymentMonthly) || 0);
+    return sum + Math.max(0, Number(debt && debt.monthlyPressure) || Number(debt && debt.minimumPaymentMonthly) || 0);
   }, 0) * (days / 30));
   const activeIncome = safeArray(readModel && readModel.pipelineDeals)
     .filter(isActiveIncome)
@@ -222,7 +222,7 @@ export function buildFinanceForecast({
   if (reserveTargetGap > 0) {
     warnings.push('Reserve targets are not fully funded.');
   }
-  if (safeArray(readModel && readModel.debtAccounts).some((debt) => (Number(debt && debt.outstanding) || 0) > 0 && !(Number(debt && debt.minimumPaymentMonthly) > 0))) {
+  if (safeArray(readModel && readModel.debtAccounts).some((debt) => (Number(debt && debt.outstanding) || 0) > 0 && String(debt && debt.planStatus || (Number(debt && debt.minimumPaymentMonthly) > 0 ? 'active' : 'missing')) === 'missing')) {
     warnings.push('Some debt items still need payment plans.');
   }
 
@@ -371,7 +371,7 @@ export function buildTopSignals({ readModel = {}, snapshot = {}, treasury = {}, 
       source: 'Plan',
     });
   }
-  if (safeArray(readModel && readModel.debtAccounts).some((debt) => (Number(debt && debt.outstanding) || 0) > 0 && !(Number(debt && debt.minimumPaymentMonthly) > 0))) {
+  if (safeArray(readModel && readModel.debtAccounts).some((debt) => (Number(debt && debt.outstanding) || 0) > 0 && String(debt && debt.planStatus || (Number(debt && debt.minimumPaymentMonthly) > 0 ? 'active' : 'missing')) === 'missing')) {
     addSignal({
       title: 'Debt payment plan missing',
       severity: 'warning',

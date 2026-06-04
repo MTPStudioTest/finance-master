@@ -151,10 +151,22 @@ declare global {
     cancelPipelineItem(id: string, notes?: string): FinanceEvent[];
     saveDebtPlan(input: {
       id: string;
-      dueDate: string;
-      minimumPayment: number;
+      dueDate?: string;
+      minimumPayment?: number;
       paymentPlanNote: string;
+      planType?: 'regular' | 'custom';
+      planStatus?: string;
+      startDate?: string;
+      endDate?: string;
+      customMonthlyPressure?: number | null;
+      frequency?: string;
+      installments?: Array<{ date: string; amount: number }>;
+      includeInBurnRate?: boolean;
+      includeInSafeToSpend?: boolean;
+      includeInRunway?: boolean;
     }): FinanceEvent[];
+    setDebtPlanStatus(id: string, planStatus: string): FinanceEvent[];
+    deleteDebtAccount(id: string): FinanceEvent[];
     recordTransaction(input: {
       description: string;
       amount: number;

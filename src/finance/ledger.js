@@ -42,6 +42,44 @@
         return Events.roundMoney(value);
     }
 
+    function normalizePlanStatus(value) {
+        var raw = String(value || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+        if (raw === 'paused' || raw === 'pause') return 'on_hold';
+        if (raw === 'future' || raw === 'future_start' || raw === 'starts_later') return 'starts_later';
+        if (raw === 'complete' || raw === 'paid_off') return 'completed';
+        if (raw === 'archive') return 'archived';
+        if (raw === 'custom') return 'irregular';
+        return ['active', 'on_hold', 'starts_later', 'irregular', 'completed', 'archived', 'missing'].indexOf(raw) !== -1 ? raw : '';
+    }
+
+    function metadataBoolean(metadata, key, fallback) {
+        if (metadata && Object.prototype.hasOwnProperty.call(metadata, key)) return metadata[key] !== false;
+        return fallback !== false;
+    }
+
+    function resolveDebtPlanStatus(debt, nowIso) {
+        var today = toIsoDateOnly(nowIso);
+        var status = normalizePlanStatus(debt && debt.planStatus);
+        var payment = Math.max(0, Number(debt && debt.paymentAmount) || Number(debt && debt.minimumPayment) || 0);
+        var hasCustomPressure = Number.isFinite(Number(debt && debt.customMonthlyPressure)) && Number(debt.customMonthlyPressure) > 0;
+        if (!status) status = payment > 0 || hasCustomPressure ? 'active' : 'missing';
+        if (status === 'missing' && (payment > 0 || hasCustomPressure)) status = 'active';
+        var startDate = toIsoDateOnly(debt && debt.startDate);
+        var endDate = toIsoDateOnly(debt && debt.endDate);
+        if (status === 'active' && endDate && today && endDate < today) return 'completed';
+        if (status === 'active' && startDate && today && startDate > today) return 'starts_later';
+        return status;
+    }
+
+    function resolveDebtMonthlyPressure(debt, nowIso) {
+        var status = resolveDebtPlanStatus(debt, nowIso);
+        if (['on_hold', 'starts_later', 'completed', 'archived', 'missing'].indexOf(status) !== -1) return 0;
+        var customMonthlyPressure = Number(debt && debt.customMonthlyPressure);
+        if (Number.isFinite(customMonthlyPressure) && customMonthlyPressure > 0) return Events.roundMoney(customMonthlyPressure);
+        if (status === 'irregular') return 0;
+        return normalizeRecurrenceMonthlyAmount(debt && debt.paymentAmount, debt && debt.paymentFrequency);
+    }
+
     var INCOME_PROBABILITY_DEFAULTS = {
         lead: 0.15,
         proposal: 0.4,
@@ -643,8 +681,18 @@
                         dueDate: '',
                         minimumPayment: 0,
                         minimumPaymentMonthly: 0,
+                        monthlyPressure: 0,
+                        paymentAmount: 0,
+                        paymentFrequency: 'monthly',
                         paymentPlanNote: '',
                         planType: 'regular',
+                        planStatus: 'missing',
+                        startDate: '',
+                        endDate: '',
+                        customMonthlyPressure: null,
+                        includeInBurnRate: true,
+                        includeInSafeToSpend: true,
+                        includeInRunway: true,
                         frequency: 'monthly',
                         installments: [],
                         planReviewedAt: '',
@@ -660,19 +708,36 @@
                     if (Number.isFinite(Number(metadata.minimumPayment))) debtById[relatedId].minimumPayment = Math.max(0, Number(metadata.minimumPayment));
                     if (metadata.paymentPlanNote) debtById[relatedId].paymentPlanNote = String(metadata.paymentPlanNote);
                     debtById[relatedId].frequency = normalizeFrequency(metadata.frequency || debtById[relatedId].frequency);
+                    debtById[relatedId].paymentFrequency = normalizeFrequency(metadata.paymentFrequency || metadata.frequency || debtById[relatedId].paymentFrequency);
+                    debtById[relatedId].paymentAmount = Number.isFinite(Number(metadata.paymentAmount)) ? Math.max(0, Number(metadata.paymentAmount)) : debtById[relatedId].minimumPayment;
                 } else if (event.type === 'debt.payment_made') {
                     debtById[relatedId].totalPaid += Math.max(0, eventAmount);
                 } else {
                     if (metadata.dueDate) debtById[relatedId].dueDate = toIsoDateOnly(metadata.dueDate);
                     debtById[relatedId].minimumPayment = Math.max(0, Number(metadata.minimumPayment) || 0);
+                    debtById[relatedId].paymentAmount = Math.max(0, Number(metadata.paymentAmount != null ? metadata.paymentAmount : metadata.minimumPayment) || 0);
                     debtById[relatedId].paymentPlanNote = String(metadata.paymentPlanNote || '');
                     debtById[relatedId].planType = String(metadata.planType || 'regular');
                     debtById[relatedId].frequency = normalizeFrequency(metadata.frequency);
+                    debtById[relatedId].paymentFrequency = normalizeFrequency(metadata.paymentFrequency || metadata.frequency);
                     debtById[relatedId].installments = Array.isArray(metadata.installments) ? metadata.installments : [];
+                    debtById[relatedId].planStatus = normalizePlanStatus(metadata.planStatus || metadata.status) || (debtById[relatedId].paymentAmount > 0 ? 'active' : 'missing');
+                    debtById[relatedId].startDate = toIsoDateOnly(metadata.startDate || '') || '';
+                    debtById[relatedId].endDate = toIsoDateOnly(metadata.endDate || '') || '';
+                    debtById[relatedId].customMonthlyPressure = Number.isFinite(Number(metadata.customMonthlyPressure)) ? Math.max(0, Number(metadata.customMonthlyPressure)) : null;
+                    debtById[relatedId].includeInBurnRate = metadataBoolean(metadata, 'includeInBurnRate', true);
+                    debtById[relatedId].includeInSafeToSpend = metadataBoolean(metadata, 'includeInSafeToSpend', true);
+                    debtById[relatedId].includeInRunway = metadataBoolean(metadata, 'includeInRunway', true);
                     debtById[relatedId].planReviewedAt = event.timestamp;
                 }
                 debtById[relatedId].outstanding = Math.max(0, debtById[relatedId].totalAdded - debtById[relatedId].totalPaid);
-                debtById[relatedId].minimumPaymentMonthly = normalizeRecurrenceMonthlyAmount(debtById[relatedId].minimumPayment, debtById[relatedId].frequency);
+                if (!debtById[relatedId].paymentAmount && debtById[relatedId].minimumPayment > 0) {
+                    debtById[relatedId].paymentAmount = debtById[relatedId].minimumPayment;
+                }
+                debtById[relatedId].paymentFrequency = normalizeFrequency(debtById[relatedId].paymentFrequency || debtById[relatedId].frequency);
+                debtById[relatedId].planStatus = resolveDebtPlanStatus(debtById[relatedId], nowIso);
+                debtById[relatedId].minimumPaymentMonthly = normalizeRecurrenceMonthlyAmount(debtById[relatedId].paymentAmount, debtById[relatedId].paymentFrequency);
+                debtById[relatedId].monthlyPressure = resolveDebtMonthlyPressure(debtById[relatedId], nowIso);
                 Object.assign(debtById[relatedId], estimateDebtPayoff(debtById[relatedId], nowIso));
                 debtById[relatedId].scope = String(metadata.scope || debtById[relatedId].scope || 'shared');
                 if (Object.prototype.hasOwnProperty.call(metadata, 'projectId')) {

@@ -141,9 +141,9 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
   await expect(page.getByText('Flexible cost simulator', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Fixed Costs & Debt', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Savings and Buffer Goals', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: /Debt Details/ }).click();
-  await expect(page.locator('.fin-treasury-detail-row').first()).toBeVisible();
-  await expect(page.locator('[data-fin-collapsible="treasury-debt-details"] .fin-treasury-debt-card')).toHaveCount(0);
+  await expect(page.locator('.fin-debt-control-panel')).toBeVisible();
+  await expect(page.locator('[data-debt-group="no_plan"]')).toBeVisible();
+  await expect(page.locator('[data-fin-collapsible="treasury-debt-details"]')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Review', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Review', exact: true })).toBeVisible();
@@ -244,10 +244,10 @@ test('treasury cash accounts and reserve buckets can be edited and persist', asy
   await page.getByRole('button', { name: 'Add cash account', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Add cash account', exact: true })).toBeVisible();
   const accountModal = page.locator('#modal-body');
-  await accountModal.getByLabel('Name', { exact: true }).fill('Temporary treasury cash');
-  await accountModal.getByLabel('Balance', { exact: true }).fill('123');
-  await accountModal.getByLabel('Scope', { exact: true }).selectOption('business');
-  await accountModal.getByLabel('Bucket', { exact: true }).selectOption('available');
+  await accountModal.locator('#modal-fiat-name').fill('Temporary treasury cash');
+  await accountModal.locator('#modal-fiat-balance').fill('123');
+  await accountModal.locator('#modal-fiat-scope').selectOption('business');
+  await accountModal.locator('#modal-fiat-bucket').selectOption('available');
   await accountModal.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
   const accountToggle = page.locator('[data-fin-collapsible="treasury-accounts"]').getByRole('button', { name: /Account Details/ });
@@ -258,7 +258,7 @@ test('treasury cash accounts and reserve buckets can be edited and persist', asy
 
   await page.getByRole('button', { name: 'Edit Temporary treasury cash', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Edit cash account', exact: true })).toBeVisible();
-  await accountModal.getByLabel('Balance', { exact: true }).fill('456');
+  await accountModal.locator('#modal-fiat-balance').fill('456');
   await accountModal.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (
@@ -297,6 +297,101 @@ test('treasury cash accounts and reserve buckets can be edited and persist', asy
   await expect(page.getByRole('heading', { name: 'Plan', exact: true })).toBeVisible();
   await expect(page.locator('.fin-treasury-reserve-card').filter({ hasText: 'Client tax reserve' })).toBeVisible();
   await expect(page.getByText('Temporary treasury cash', { exact: true })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('debt payment plan control panel shows all statuses and persists lifecycle actions', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await page.goto('/');
+  await page.evaluate(() => {
+    const currency = window.Store.getFinanceSettings().baseCurrency;
+    const now = '2026-06-04T10:00:00.000Z';
+    const debts = [
+      ['e2e-active-debt', 'E2E Active Debt', 2400, { minimumPayment: 600, frequency: 'quarterly', dueDate: '2026-08-15', planStatus: 'active' }],
+      ['e2e-hold-debt', 'E2E Hold Debt', 1200, { minimumPayment: 100, frequency: 'monthly', dueDate: '2026-06-20', planStatus: 'on_hold' }],
+      ['e2e-future-debt', 'E2E Future Debt', 900, { minimumPayment: 90, frequency: 'monthly', dueDate: '2026-07-20', startDate: '2026-07-01', planStatus: 'active' }],
+      ['e2e-irregular-debt', 'E2E Irregular Debt', 1500, { minimumPayment: 500, frequency: 'monthly', dueDate: '2026-06-20', planStatus: 'irregular', customMonthlyPressure: 125 }],
+      ['e2e-completed-debt', 'E2E Completed Debt', 700, { minimumPayment: 70, frequency: 'monthly', dueDate: '2026-06-20', planStatus: 'completed' }],
+    ];
+    const events: any[] = debts.flatMap(([id, name, amount, plan], index) => [
+      {
+        type: 'debt.added',
+        amount,
+        currency,
+        timestamp: new Date(Date.parse(now) + index * 10000).toISOString(),
+        related_entity_id: id,
+        metadata: { name, scope: 'business' },
+      },
+      {
+        type: 'debt.plan_updated',
+        amount: plan.minimumPayment,
+        currency,
+        timestamp: new Date(Date.parse(now) + index * 10000 + 1000).toISOString(),
+        related_entity_id: id,
+        metadata: { name, scope: 'business', paymentPlanNote: 'E2E plan', ...plan },
+      },
+    ]);
+    events.push({
+      type: 'debt.added',
+      amount: 500,
+      currency,
+      timestamp: new Date(Date.parse(now) + 99000).toISOString(),
+      related_entity_id: 'e2e-no-plan-debt',
+      metadata: { name: 'E2E No Plan Debt', scope: 'business' },
+    });
+    window.Store.appendFinanceEvents(events, { source: 'e2e.debtControlPanel' });
+  });
+
+  await page.getByRole('button', { name: 'Plan', exact: true }).click();
+  await expect(page.locator('[data-debt-group="active_pressure"]')).toBeVisible();
+  await expect(page.locator('[data-debt-group="starts_later"]')).toBeVisible();
+  await expect(page.locator('[data-debt-group="on_hold"]')).toBeVisible();
+  await expect(page.locator('[data-debt-group="irregular"]')).toBeVisible();
+  await expect(page.locator('[data-debt-group="no_plan"]')).toBeVisible();
+  await expect(page.locator('[data-debt-group="completed_archived"]')).toBeVisible();
+  await expect(page.locator('.fin-treasury-debt-card').filter({ hasText: /E2E .* Debt/ })).toHaveCount(6);
+
+  const activeCard = page.locator('.fin-treasury-debt-card').filter({ hasText: 'E2E Active Debt' });
+  await activeCard.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const debt = window.Store.getFinancialReadModel().debtAccounts.find((entry: any) => entry.id === 'e2e-active-debt');
+    return { status: debt?.planStatus, pressure: debt?.monthlyPressure };
+  })).toEqual({ status: 'on_hold', pressure: 0 });
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Plan', exact: true }).click();
+  await expect(page.locator('[data-debt-group="on_hold"]').filter({ hasText: 'E2E Active Debt' })).toBeVisible();
+  await page.locator('.fin-treasury-debt-card').filter({ hasText: 'E2E Active Debt' }).getByRole('button', { name: 'Reactivate', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (
+    window.Store.getFinancialReadModel().debtAccounts.find((entry: any) => entry.id === 'e2e-active-debt')?.planStatus
+  ))).toBe('active');
+
+  await page.locator('.fin-treasury-debt-card').filter({ hasText: 'E2E Active Debt' }).getByRole('button', { name: 'Complete', exact: true }).click();
+  await page.getByLabel('Type MARK DEBT COMPLETE to continue').fill('MARK DEBT COMPLETE');
+  await page.getByRole('button', { name: 'Mark complete', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (
+    window.Store.getFinancialReadModel().debtAccounts.find((entry: any) => entry.id === 'e2e-active-debt')?.planStatus
+  ))).toBe('completed');
+
+  await page.locator('.fin-treasury-debt-card').filter({ hasText: 'E2E Future Debt' }).getByRole('button', { name: 'Archive', exact: true }).click();
+  await page.getByLabel('Type ARCHIVE DEBT PLAN to continue').fill('ARCHIVE DEBT PLAN');
+  await page.getByRole('button', { name: 'Archive debt plan', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (
+    window.Store.getFinancialReadModel().debtAccounts.find((entry: any) => entry.id === 'e2e-future-debt')?.planStatus
+  ))).toBe('archived');
+
+  await page.locator('.fin-treasury-debt-card').filter({ hasText: 'E2E No Plan Debt' }).getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByLabel('Type DELETE DEBT ENTRY to continue').fill('DELETE DEBT ENTRY');
+  await page.getByRole('button', { name: 'Delete debt entry', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (
+    window.Store.getFinancialReadModel().debtAccounts.some((entry: any) => entry.id === 'e2e-no-plan-debt')
+  ))).toBe(false);
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Plan', exact: true }).click();
+  await expect(page.locator('[data-debt-group="completed_archived"]').filter({ hasText: 'E2E Active Debt' })).toBeVisible();
+  await expect(page.locator('[data-debt-group="completed_archived"]').filter({ hasText: 'E2E Future Debt' })).toBeVisible();
+  await expect(page.locator('.fin-treasury-debt-card').filter({ hasText: 'E2E No Plan Debt' })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

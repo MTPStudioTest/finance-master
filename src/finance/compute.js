@@ -212,6 +212,17 @@
         return map;
     }
 
+    function debtMonthlyPressure(debt) {
+        return round(Math.max(0, Number(debt && debt.monthlyPressure) || 0));
+    }
+
+    function includeDebtPlanFor(debt, field) {
+        var outstanding = Number(debt && debt.outstanding) || 0;
+        if (outstanding <= 0 || debtMonthlyPressure(debt) <= 0) return false;
+        if (String(debt && debt.planStatus || '') === 'archived' || String(debt && debt.planStatus || '') === 'completed') return false;
+        return debt && debt[field] !== false;
+    }
+
     function buildTreasuryModel(readModel, snapshotSeed, cfg, nowTs) {
         var fiatAccounts = safeArray(readModel.fiatAccounts);
         var recurringExpenses = safeArray(readModel.recurringExpenses);
@@ -228,11 +239,15 @@
         var debtAccounts = safeArray(readModel.debtAccounts);
         var debtPlanIds = Object.create(null);
         var debtPlansForBurn = debtAccounts.filter(function (debt) {
-            var outstanding = Number(debt && debt.outstanding) || 0;
-            var monthlyPayment = Number(debt && debt.minimumPaymentMonthly) || Number(debt && debt.minimumPayment) || 0;
-            if (outstanding <= 0 || monthlyPayment <= 0) return false;
+            if (!includeDebtPlanFor(debt, 'includeInBurnRate')) return false;
             debtPlanIds[String((debt && debt.id) || '')] = true;
             return true;
+        });
+        var debtPlansForRunway = debtAccounts.filter(function (debt) {
+            return includeDebtPlanFor(debt, 'includeInRunway');
+        });
+        var debtPlansForSafeToSpend = debtAccounts.filter(function (debt) {
+            return includeDebtPlanFor(debt, 'includeInSafeToSpend');
         });
         var recurringBurnExpenses = recurringExpenses.filter(function (expense) {
             var linkedDebtId = String(expense && expense.linkedDebtId || '').trim();
@@ -286,7 +301,7 @@
             .filter(function (expense) { return String(expense && expense.scope || '').toLowerCase() === 'business' || String(expense && expense.scope || '').toLowerCase() === 'shared'; })
             .reduce(function (sum, expense) { return sum + (Number(expense && expense.monthlyAmount) || 0); }, 0);
         debtPlansForBurn.forEach(function (debt) {
-            var amount = Number(debt && debt.minimumPaymentMonthly) || Number(debt && debt.minimumPayment) || 0;
+            var amount = debtMonthlyPressure(debt);
             var scope = String(debt && debt.scope || 'shared').toLowerCase();
             if (scope === 'personal' || scope === 'shared') personalBurn += amount;
             if (scope === 'business' || scope === 'shared') businessBurn += amount;
@@ -294,8 +309,11 @@
         var recurringBurn = recurringBurnExpenses
             .reduce(function (sum, expense) { return sum + (Number(expense && expense.monthlyAmount) || 0); }, 0);
         var debtBurn = debtPlansForBurn
-            .reduce(function (sum, debt) { return sum + (Number(debt && debt.minimumPaymentMonthly) || Number(debt && debt.minimumPayment) || 0); }, 0);
+            .reduce(function (sum, debt) { return sum + debtMonthlyPressure(debt); }, 0);
+        var debtRunwayBurn = debtPlansForRunway
+            .reduce(function (sum, debt) { return sum + debtMonthlyPressure(debt); }, 0);
         var totalBurn = recurringBurn + debtBurn;
+        var runwayBurn = recurringBurn + debtRunwayBurn;
 
         var obligations = [];
         var todayOnly = dateOnly(nowTs);
@@ -343,15 +361,21 @@
         debtAccounts.forEach(function (debt) {
             var outstanding = Number(debt && debt.outstanding) || 0;
             if (outstanding <= 0) return;
-            var debtDueDate = dateOnly(debt && debt.dueDate);
-            var hasPlan = (Number(debt && debt.minimumPayment) || 0) > 0;
+            var planStatus = String(debt && debt.planStatus || 'missing');
+            if (planStatus === 'archived' || planStatus === 'completed') return;
+            var debtDueDate = dateOnly((planStatus === 'starts_later' && debt && debt.startDate) || (debt && debt.dueDate));
+            var pressure = debtMonthlyPressure(debt);
+            if ((planStatus === 'on_hold' || planStatus === 'irregular') && pressure <= 0) return;
+            var hasPlan = pressure > 0 || planStatus === 'on_hold' || planStatus === 'starts_later' || planStatus === 'irregular';
             obligations.push({
                 id: String((debt && debt.id) || 'debt'),
                 title: String((debt && debt.name) || 'Debt repayment'),
                 type: 'debt',
-                amount: round((Number(debt && debt.minimumPayment) || 0) > 0 ? Number(debt && debt.minimumPayment) : outstanding),
+                amount: round((Number(debt && debt.paymentAmount) || Number(debt && debt.minimumPayment) || 0) > 0 ? (Number(debt && debt.paymentAmount) || Number(debt && debt.minimumPayment)) : outstanding),
                 dueDate: debtDueDate,
-                status: hasPlan ? classifyObligationStatus(debtDueDate, nowTs) : 'needs_review',
+                planStatus: planStatus,
+                monthlyPressure: pressure,
+                status: hasPlan ? (pressure > 0 ? classifyObligationStatus(debtDueDate, nowTs) : planStatus) : 'needs_review',
                 scope: String((debt && debt.scope) || 'shared')
             });
         });
@@ -528,9 +552,9 @@
         var confirmedShortTermObligations = next30Obligations
             .filter(function (entry) { return String(entry && entry.type || '') !== 'debt'; })
             .reduce(function (sum, entry) { return sum + (Number(entry.amount) || 0); }, 0);
-        var debtPaymentsDueSoon = debtPlansForBurn
+        var debtPaymentsDueSoon = debtPlansForSafeToSpend
             .reduce(function (sum, debt) {
-                return sum + (Number(debt && debt.minimumPaymentMonthly) || Number(debt && debt.minimumPayment) || 0);
+                return sum + debtMonthlyPressure(debt);
             }, 0);
         var actualCash = round(totalCash);
         var protectedCash = round(reservedCash);
@@ -542,8 +566,7 @@
         if (totalBurn <= 0) safeToSpendWarnings.push('Minimum buffer is unavailable until monthly burn is known.');
         if (debtAccounts.some(function (debt) {
             return (Number(debt && debt.outstanding) || 0) > 0
-                && !(Number(debt && debt.minimumPaymentMonthly) > 0)
-                && !(Number(debt && debt.minimumPayment) > 0);
+                && String(debt && debt.planStatus || 'missing') === 'missing';
         })) {
             safeToSpendWarnings.push('Some debt items still need payment plans.');
         }
@@ -574,10 +597,10 @@
                 { label: 'Recurring costs', value: recurringBurn, operation: 'add' },
                 { label: 'Debt payment plans', value: debtBurn, operation: 'add' }
             ]),
-            runway: metricExplanation('runway', 'Runway', totalBurn > 0 ? round(availableCash / totalBurn) : 0, [
+            runway: metricExplanation('runway', 'Runway', runwayBurn > 0 ? round(availableCash / runwayBurn) : 0, [
                 { label: 'Available cash', value: availableCash, operation: 'divide' },
-                { label: 'Monthly burn rate', value: totalBurn, operation: 'divide' }
-            ], totalBurn > 0 ? [] : ['Runway is unavailable until monthly burn is known.']),
+                { label: 'Monthly burn rate', value: runwayBurn, operation: 'divide' }
+            ], runwayBurn > 0 ? [] : ['Runway is unavailable until monthly burn is known.']),
             debtBurden: metricExplanation('debtBurden', 'Debt burden', debtRemaining, debtAccounts
                 .filter(function (debt) { return (Number(debt && debt.outstanding) || 0) > 0; })
                 .map(function (debt) { return { label: String(debt.name || 'Debt'), value: Number(debt.outstanding) || 0, operation: 'add' }; }))
@@ -601,7 +624,7 @@
             monthlyPersonalBurn: round(personalBurn),
             monthlyBusinessBurn: round(businessBurn),
             totalMonthlyBurn: round(totalBurn),
-            runwayMonths: totalBurn > 0 ? round(availableCash / totalBurn) : null,
+            runwayMonths: runwayBurn > 0 ? round(availableCash / runwayBurn) : null,
             explanations: explanations,
             obligations: obligations,
             overdueObligations: obligations.filter(function (entry) { return entry.status === 'overdue'; }),
@@ -815,7 +838,7 @@
         
         // 4. Missing plan for debt
         safeArray(readModel.debtAccounts).forEach(function(debt) {
-            if (debt.outstanding > 0 && !debt.dueDate && !debt.minimumPayment) {
+            if (debt.outstanding > 0 && String(debt.planStatus || 'missing') === 'missing') {
                 attentionQueue.push({ type: 'Missing plan', title: debt.name, amount: debt.outstanding, action: 'Add plan', id: debt.id, original: debt });
             }
         });

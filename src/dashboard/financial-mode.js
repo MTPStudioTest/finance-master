@@ -1822,17 +1822,26 @@ window.FinancialMode = (function () {
     }
 
     function treasuryDebtMonthlyPayment(debt) {
+        const pressure = Number(debt && debt.monthlyPressure);
+        if (Number.isFinite(pressure)) return Math.max(0, pressure);
         const normalized = Number(debt && debt.minimumPaymentMonthly);
         if (Number.isFinite(normalized)) return Math.max(0, normalized);
         return normalizeMonthlyEquivalent(debt && debt.minimumPayment, debt && debt.frequency);
     }
 
     function treasuryDebtHasPlan(debt) {
+        const status = String(debt && debt.planStatus || '').trim();
+        if (status && status !== 'missing') return true;
         return Boolean(
             (debt && debt.planType === 'custom' && safeArray(debt.installments).length > 0)
             || treasuryDebtMonthlyPayment(debt) > 0
             || String(debt && debt.paymentPlanNote || '').trim()
         );
+    }
+
+    function treasuryDebtStatusLabel(debt) {
+        const status = String(debt && debt.planStatus || (treasuryDebtHasPlan(debt) ? 'active' : 'missing')).replace(/_/g, ' ');
+        return status.charAt(0).toUpperCase() + status.slice(1);
     }
 
     function treasuryReserveGap(buckets) {
@@ -1904,12 +1913,33 @@ window.FinancialMode = (function () {
         }).join('') : renderCompactEmpty('Protect your runway. Create your first reserve bucket, such as taxes or buffer.');
     }
 
-    function renderTreasuryDebtCards(debts, limit = 3) {
-        const list = safeArray(debts)
-            .filter((debt) => Math.max(0, Number(debt && debt.outstanding) || 0) > 0)
-            .sort((a, b) => treasuryDebtMonthlyPayment(b) - treasuryDebtMonthlyPayment(a))
-            .slice(0, limit);
-        return list.length ? list.map((debt) => {
+    function treasuryDebtGroupKey(debt) {
+        const status = String(debt && debt.planStatus || (treasuryDebtHasPlan(debt) ? 'active' : 'missing'));
+        if (status === 'archived' || status === 'completed') return 'completed_archived';
+        if (status === 'starts_later') return 'starts_later';
+        if (status === 'on_hold') return 'on_hold';
+        if (status === 'irregular') return 'irregular';
+        if (status === 'missing') return 'no_plan';
+        return treasuryDebtMonthlyPayment(debt) > 0 ? 'active_pressure' : 'no_plan';
+    }
+
+    function renderTreasuryDebtActions(debt) {
+        const id = escapeActionArg(debt && debt.id || '');
+        const status = String(debt && debt.planStatus || '');
+        const pauseOrReactivate = status === 'on_hold' || status === 'archived' || status === 'completed'
+            ? `<button class="fin-mini-btn" type="button" data-action="reactivateDebtPlan" data-action-args="'${id}'">Reactivate</button>`
+            : `<button class="fin-mini-btn" type="button" data-action="pauseDebtPlan" data-action-args="'${id}'">Pause</button>`;
+        return `
+            ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'debtPlan', '${id}'`, label: `Edit payment plan for ${debt.name || 'debt item'}` })}
+            <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'debtPayment'">Record payment</button>
+            ${pauseOrReactivate}
+            <button class="fin-mini-btn" type="button" data-action="completeDebtPlan" data-action-args="'${id}'">Complete</button>
+            <button class="fin-mini-btn" type="button" data-action="archiveDebtPlan" data-action-args="'${id}'">Archive</button>
+            <button class="fin-mini-btn fin-mini-btn--danger" type="button" data-action="deleteDebtAccount" data-action-args="'${id}'">Delete</button>
+        `;
+    }
+
+    function renderTreasuryDebtCard(debt) {
             const outstanding = Math.max(0, Number(debt.outstanding) || 0);
             const totalAdded = Math.max(0, Number(debt.totalAdded) || 0);
             const paid = Math.max(0, Number(debt.totalPaid) || 0);
@@ -1921,13 +1951,13 @@ window.FinancialMode = (function () {
                     <div class="fin-treasury-debt-head">
                         <span>
                             <strong>${escapeHtml(debt.name || 'Debt item')}</strong>
-                            <small>${debt.dueDate ? `Due ${formatShortDate(debt.dueDate)} · ` : ''}${escapeHtml(debt.scope || 'shared')}</small>
+                            <small>${debt.startDate ? `Starts ${formatShortDate(debt.startDate)} · ` : ''}${debt.dueDate ? `Due ${formatShortDate(debt.dueDate)} · ` : ''}${escapeHtml(debt.scope || 'shared')}</small>
                         </span>
-                        ${renderStatusPill(hasPlan ? 'Reviewed' : 'Needs review')}
+                        ${renderStatusPill(hasPlan ? treasuryDebtStatusLabel(debt) : 'Needs review')}
                     </div>
                     <div class="fin-treasury-debt-main">
                         <strong>${formatCurrency(outstanding)}</strong>
-                        <span>${monthly > 0 ? `${formatCurrency(monthly)} / mo pressure` : 'No monthly plan'}</span>
+                        <span>${monthly > 0 ? `${formatCurrency(monthly)} / mo pressure` : 'No current monthly pressure'}</span>
                     </div>
                     <div class="fin-treasury-meter fin-treasury-meter--debt"><span style="width:${pct}%"></span></div>
                     <div class="fin-treasury-debt-foot">
@@ -1935,11 +1965,42 @@ window.FinancialMode = (function () {
                         <small>${debt.estimatedPayoffDate ? `Projected payoff ${formatShortDate(debt.estimatedPayoffDate)}` : 'Payoff timeline needs plan'}</small>
                     </div>
                     <div class="fin-treasury-row-actions">
-                        ${financeIconButton({ action: 'FinancialMode.openAddModal', args: `'debtPlan', '${escapeActionArg(debt.id)}'`, label: `Edit payment plan for ${debt.name || 'debt item'}` })}
+                        ${renderTreasuryDebtActions(debt)}
                     </div>
                 </div>
             `;
-        }).join('') : renderCompactEmpty('Debt-free operations.');
+    }
+
+    function renderTreasuryDebtControlPanel(debts) {
+        const list = safeArray(debts)
+            .filter((debt) => Math.max(0, Number(debt && debt.outstanding) || 0) > 0)
+            .sort((a, b) => treasuryDebtMonthlyPayment(b) - treasuryDebtMonthlyPayment(a) || String(a && a.name || '').localeCompare(String(b && b.name || '')));
+        if (!list.length) return renderCompactEmpty('Debt-free operations.');
+        const groups = [
+            ['active_pressure', 'Active pressure', 'Counting in current monthly pressure'],
+            ['starts_later', 'Starts later', 'Visible as future pressure, not current burn'],
+            ['on_hold', 'On hold', 'Tracked as liability, paused from current pressure'],
+            ['irregular', 'Irregular', 'Only custom monthly pressure counts'],
+            ['no_plan', 'No plan', 'Liability exists but pressure needs a decision'],
+            ['completed_archived', 'Completed / archived', 'Kept out of active calculations'],
+        ];
+        return `
+            <div class="fin-debt-control-panel">
+                ${groups.map(([key, title, copy]) => {
+                    const items = list.filter((debt) => treasuryDebtGroupKey(debt) === key);
+                    if (!items.length) return '';
+                    return `
+                        <div class="fin-debt-control-group" data-debt-group="${escapeHtml(key)}">
+                            <div class="fin-debt-control-head">
+                                <span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(copy)}</small></span>
+                                <span class="fin-status-pill">${items.length}</span>
+                            </div>
+                            <div class="fin-treasury-debt-grid">${items.map(renderTreasuryDebtCard).join('')}</div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
     }
 
     function renderTreasuryDebtDetailRows(debts) {
@@ -2106,7 +2167,7 @@ window.FinancialMode = (function () {
         const totalDebt = projectContext.isProjectView
             ? activeDebts.reduce((sum, debt) => sum + (Number(debt.outstanding) || 0), 0)
             : treasuryNumber('debtRemaining', explanationNumber('debtBurden', activeDebts.reduce((sum, debt) => sum + (Number(debt.outstanding) || 0), 0)));
-        const missingPlans = activeDebts.filter((debt) => !treasuryDebtHasPlan(debt));
+        const missingPlans = activeDebts.filter((debt) => String(debt && debt.planStatus || '') === 'missing' || !treasuryDebtHasPlan(debt));
         const reserveTarget = buckets.reduce((sum, bucket) => sum + Math.max(0, Number(bucket.targetAmount) || 0), 0);
         const reserveGap = treasuryReserveGap(buckets);
         const flowResult = availableCash - essentialTotal - flexibleTotal - debtMonthlyPressure;
@@ -2310,8 +2371,7 @@ window.FinancialMode = (function () {
                         <div><span>Liabilities</span><strong>${activeDebts.length}</strong></div>
                         <div><span>Plans missing</span><strong>${missingPlans.length}</strong></div>
                     </div>
-                    <div class="fin-treasury-debt-grid">${renderTreasuryDebtCards(activeDebts, 3)}</div>
-                    ${renderCollapsible('treasury-debt-details', 'Debt Details', `${formatCurrency(totalDebt)} open · ${formatCurrency(debtMonthlyPressure)} / month`, renderTreasuryDebtDetailRows(activeDebts))}
+                    ${renderTreasuryDebtControlPanel(activeDebts)}
                 </div>
             </section>
 
@@ -2394,7 +2454,7 @@ window.FinancialMode = (function () {
         const essentialTotal = essentialCosts.reduce((sum, e) => sum + (Number(e.monthlyAmount) || 0), 0);
         const flexTotal = flexCosts.reduce((sum, e) => sum + (Number(e.monthlyAmount) || 0), 0);
         const totalDebt = explanationNumber('debtBurden', debts.reduce((sum, d) => sum + (Number(d.outstanding) || 0), 0));
-        const totalMinPayments = debts.reduce((sum, d) => sum + (Number(d.minimumPayment) || 0), 0);
+        const totalMinPayments = debts.reduce((sum, d) => sum + treasuryDebtMonthlyPayment(d), 0);
         
         return `
             <section class="fin-section">
@@ -2486,7 +2546,8 @@ window.FinancialMode = (function () {
                     <button class="fin-mini-btn" type="button" data-action="FinancialMode.openAddModal" data-action-args="'debtAdd'">Add debt item</button>
                 </div>
                 ${debts.length ? debts.map(debt => {
-                    const hasPlan = (debt.planType === 'custom' && debt.installments?.length > 0) || (Number(debt.minimumPayment) || 0) > 0 || String(debt.paymentPlanNote || '').trim();
+                    const hasPlan = treasuryDebtHasPlan(debt);
+                    const monthlyPressure = treasuryDebtMonthlyPayment(debt);
                     const progressPct = debt.totalAdded > 0 ? Math.min(100, Math.round(((debt.totalPaid || 0) / debt.totalAdded) * 100)) : 0;
                     return `
                     <div class="widget ui-card glass fin-card fin-debt-card">
@@ -2515,8 +2576,8 @@ window.FinancialMode = (function () {
                         <div class="fin-debt-details">
                             ${debt.planType === 'custom' 
                                 ? `<span>Custom Plan: ${debt.installments?.length || 0} installments</span>` 
-                                : ((Number(debt.minimumPayment) || 0) > 0 
-                                    ? `<span>${(debt.frequency || 'monthly').charAt(0).toUpperCase() + (debt.frequency || 'monthly').slice(1)} payment: ${formatCurrency(debt.minimumPayment)}</span>` 
+                                : (monthlyPressure > 0 
+                                    ? `<span>${treasuryDebtStatusLabel(debt)} pressure: ${formatCurrency(monthlyPressure)} / month</span>` 
                                     : '')
                             }
                             ${String(debt.paymentPlanNote || '').trim() ? `<span>Plan note: ${escapeHtml(debt.paymentPlanNote)}</span>` : ''}
@@ -4216,7 +4277,7 @@ window.FinancialMode = (function () {
         });
 
         safeArray(currentData && currentData.debtAccounts).forEach((debt) => {
-            const amount = Math.max(0, Number(debt && debt.minimumPaymentMonthly) || 0);
+            const amount = treasuryDebtMonthlyPayment(debt);
             if (!amount) return;
             const baseDue = new Date(debt && debt.dueDate || start);
             for (let monthOffset = 0; monthOffset < 4; monthOffset += 1) {

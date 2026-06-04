@@ -496,7 +496,23 @@ export const Store = {
     if (!window.FinanceLedger?.appendEvents) throw new Error('Finance ledger module is unavailable.');
     const nowIso = new Date().toISOString();
     const settings = this.getFinanceSettings();
-    const result = window.FinanceLedger.appendEvents(getLedgerRaw(), drafts, {
+    const latestByEntity = new Map<string, number>();
+    getLedgerRaw().forEach((event) => {
+      const id = String(event.related_entity_id || event.metadata?.entity_id || '').trim();
+      const ts = Date.parse(String(event.timestamp || ''));
+      if (!id || !Number.isFinite(ts)) return;
+      latestByEntity.set(id, Math.max(latestByEntity.get(id) || 0, ts));
+    });
+    const orderedDrafts = drafts.map((draft) => {
+      const id = String(draft.related_entity_id || draft.metadata?.entity_id || '').trim();
+      if (!id) return draft;
+      const requested = Date.parse(String(draft.timestamp || ''));
+      const latest = latestByEntity.get(id) || 0;
+      const next = Math.max(Number.isFinite(requested) ? requested : Date.parse(nowIso), latest + 1);
+      latestByEntity.set(id, next);
+      return next === requested ? draft : { ...draft, timestamp: new Date(next).toISOString() };
+    });
+    const result = window.FinanceLedger.appendEvents(getLedgerRaw(), orderedDrafts, {
       ...settings,
       nowIso,
     }, {
@@ -1118,26 +1134,44 @@ export const Store = {
 
   saveDebtPlan(input: {
     id: string;
-    dueDate: string;
-    minimumPayment: number;
+    dueDate?: string;
+    minimumPayment?: number;
     paymentPlanNote: string;
     planType?: 'regular' | 'custom';
+    planStatus?: string;
+    startDate?: string;
+    endDate?: string;
+    customMonthlyPressure?: number | null;
     frequency?: string;
     installments?: Array<{ date: string; amount: number }>;
+    includeInBurnRate?: boolean;
+    includeInSafeToSpend?: boolean;
+    includeInRunway?: boolean;
   }): FinanceEvent[] {
     const debt = (this.getFinancialReadModel().debtAccounts || [])
       .find((entry: Record<string, unknown>) => String(entry.id) === String(input.id || ''));
     if (!debt) throw new Error('This debt item could not be found.');
-    let dueDate = window.FinanceDates?.toDateOnly?.(input.dueDate) || '';
+    const normalizedStatus = String(input.planStatus || debt.planStatus || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+    const planStatus = ['active', 'on_hold', 'starts_later', 'irregular', 'completed', 'archived', 'missing'].includes(normalizedStatus)
+      ? normalizedStatus
+      : (Number(debt.monthlyPressure || debt.minimumPaymentMonthly || debt.minimumPayment) > 0 ? 'active' : 'missing');
+    let dueDate = window.FinanceDates?.toDateOnly?.(input.dueDate || debt.dueDate) || '';
     let minimumPayment = Math.abs(Number(input.minimumPayment));
+    if (!Number.isFinite(minimumPayment)) minimumPayment = Math.abs(Number(debt.paymentAmount || debt.minimumPayment) || 0);
     const planType = input.planType || 'regular';
-    if (planType === 'custom') {
+    const startDate = window.FinanceDates?.toDateOnly?.(input.startDate || debt.startDate || '') || '';
+    const endDate = window.FinanceDates?.toDateOnly?.(input.endDate || debt.endDate || '') || '';
+    const customMonthlyPressure = Number.isFinite(Number(input.customMonthlyPressure))
+      ? Math.max(0, Number(input.customMonthlyPressure))
+      : (Number.isFinite(Number(debt.customMonthlyPressure)) ? Math.max(0, Number(debt.customMonthlyPressure)) : null);
+    if (planStatus === 'starts_later' && !startDate) throw new Error('Choose when this payment plan starts.');
+    if (planType === 'custom' && planStatus === 'active') {
       const installments = Array.isArray(input.installments) ? input.installments : [];
       if (!installments.length) throw new Error('Add at least one installment for a custom plan.');
       const sorted = [...installments].sort((a, b) => a.date.localeCompare(b.date));
       dueDate = window.FinanceDates?.toDateOnly?.(sorted[0].date) || dueDate;
       minimumPayment = Math.abs(Number(sorted[0].amount)) || 0;
-    } else {
+    } else if (planStatus === 'active') {
       if (!dueDate) throw new Error('Choose a debt due date.');
       if (!Number.isFinite(minimumPayment) || minimumPayment <= 0) throw new Error('Add a positive minimum payment.');
     }
@@ -1154,13 +1188,44 @@ export const Store = {
         projectId: projectId(debt.projectId) || undefined,
         dueDate,
         minimumPayment,
+        paymentAmount: minimumPayment,
         paymentPlanNote: String(input.paymentPlanNote || '').trim(),
         planType,
+        planStatus,
+        startDate,
+        endDate,
+        customMonthlyPressure,
+        includeInBurnRate: input.includeInBurnRate !== false,
+        includeInSafeToSpend: input.includeInSafeToSpend !== false,
+        includeInRunway: input.includeInRunway !== false,
         frequency: String(input.frequency || 'monthly'),
+        paymentFrequency: String(input.frequency || 'monthly'),
         installments: input.installments || [],
       },
     }, { source: 'saveDebtPlan' });
     return event ? [event] : [];
+  },
+
+  setDebtPlanStatus(id: string, planStatus: string): FinanceEvent[] {
+    const debt = (this.getFinancialReadModel().debtAccounts || [])
+      .find((entry: Record<string, unknown>) => String(entry.id) === String(id || ''));
+    if (!debt) throw new Error('This debt item could not be found.');
+    return this.saveDebtPlan({
+      id: String(debt.id),
+      dueDate: String(debt.dueDate || ''),
+      minimumPayment: Number(debt.paymentAmount || debt.minimumPayment || 0),
+      paymentPlanNote: String(debt.paymentPlanNote || ''),
+      planType: (String(debt.planType || 'regular') === 'custom' ? 'custom' : 'regular'),
+      planStatus,
+      startDate: String(debt.startDate || ''),
+      endDate: String(debt.endDate || ''),
+      customMonthlyPressure: Number.isFinite(Number(debt.customMonthlyPressure)) ? Number(debt.customMonthlyPressure) : null,
+      frequency: String(debt.paymentFrequency || debt.frequency || 'monthly'),
+      installments: Array.isArray(debt.installments) ? debt.installments as Array<{ date: string; amount: number }> : [],
+      includeInBurnRate: debt.includeInBurnRate !== false,
+      includeInSafeToSpend: debt.includeInSafeToSpend !== false,
+      includeInRunway: debt.includeInRunway !== false,
+    });
   },
 
   deactivateFiatAccount(id: string): FinanceEvent[] {
@@ -1191,6 +1256,10 @@ export const Store = {
 
   deactivateDebtAccount(id: string): FinanceEvent[] {
     return reverseMatching(id, ['debt.added', 'debt.payment_made'], 'deactivateDebtAccount');
+  },
+
+  deleteDebtAccount(id: string): FinanceEvent[] {
+    return reverseMatching(id, ['debt.added', 'debt.payment_made', 'debt.plan_updated'], 'deleteDebtAccount');
   },
 
   markPipelineItemPaid(id: string, context: Record<string, unknown> = {}): FinanceEvent[] {

@@ -1222,6 +1222,141 @@ test('debt payment plans affect monthly burn and are not double-counted when lin
   assert.equal(result.snapshot.runwayMonths, 9.4);
 });
 
+test('debt payment plan status controls current pressure without breaking legacy active plans', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-03T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-main',
+      type: 'asset.account_set',
+      amount: 10000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating', balance: 10000, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'cash-tax',
+      type: 'asset.account_set',
+      amount: 1000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-tax',
+      metadata: { name: 'Tax reserve', balance: 1000, scope: 'business', bucket: 'tax_reserve', reserved: true },
+    },
+    {
+      id: 'rent',
+      type: 'expense.recurring_set',
+      amount: 100,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'rent',
+      metadata: { category: 'Studio rent', monthlyAmount: 100, frequency: 'monthly', dueDay: 15, scope: 'business' },
+    },
+    ...['legacy-active', 'paused', 'future', 'irregular-empty', 'irregular-custom', 'completed', 'archived'].flatMap((id, index) => [{
+      id: `${id}-added`,
+      type: 'debt.added',
+      amount: 1200 + index,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: id,
+      metadata: { name: id, scope: 'business' },
+    }]),
+    {
+      id: 'legacy-active-plan',
+      type: 'debt.plan_updated',
+      amount: 600,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:05:00.000Z',
+      related_entity_id: 'legacy-active',
+      metadata: { name: 'Legacy active', dueDate: '2026-08-15', minimumPayment: 600, frequency: 'quarterly', scope: 'business' },
+    },
+    {
+      id: 'linked-legacy-cost',
+      type: 'expense.recurring_set',
+      amount: 600,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:06:00.000Z',
+      related_entity_id: 'linked-legacy-cost',
+      metadata: { category: 'Legacy active', amount: 600, frequency: 'quarterly', linkedDebtId: 'legacy-active', scope: 'business' },
+    },
+    {
+      id: 'paused-plan',
+      type: 'debt.plan_updated',
+      amount: 100,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:07:00.000Z',
+      related_entity_id: 'paused',
+      metadata: { name: 'Paused', dueDate: '2026-06-20', minimumPayment: 100, frequency: 'monthly', planStatus: 'on_hold', scope: 'business' },
+    },
+    {
+      id: 'future-plan',
+      type: 'debt.plan_updated',
+      amount: 100,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:08:00.000Z',
+      related_entity_id: 'future',
+      metadata: { name: 'Future', dueDate: '2026-07-20', minimumPayment: 100, frequency: 'monthly', planStatus: 'active', startDate: '2026-07-01', scope: 'business' },
+    },
+    {
+      id: 'irregular-empty-plan',
+      type: 'debt.plan_updated',
+      amount: 500,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:09:00.000Z',
+      related_entity_id: 'irregular-empty',
+      metadata: { name: 'Irregular empty', dueDate: '2026-06-20', minimumPayment: 500, frequency: 'monthly', planStatus: 'irregular', scope: 'business' },
+    },
+    {
+      id: 'irregular-custom-plan',
+      type: 'debt.plan_updated',
+      amount: 500,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:10:00.000Z',
+      related_entity_id: 'irregular-custom',
+      metadata: { name: 'Irregular custom', dueDate: '2026-06-20', minimumPayment: 500, frequency: 'monthly', planStatus: 'irregular', customMonthlyPressure: 150, scope: 'business' },
+    },
+    {
+      id: 'completed-plan',
+      type: 'debt.plan_updated',
+      amount: 100,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:11:00.000Z',
+      related_entity_id: 'completed',
+      metadata: { name: 'Completed', dueDate: '2026-06-20', minimumPayment: 100, frequency: 'monthly', planStatus: 'completed', scope: 'business' },
+    },
+    {
+      id: 'archived-plan',
+      type: 'debt.plan_updated',
+      amount: 100,
+      currency: 'EUR',
+      timestamp: '2026-06-03T10:12:00.000Z',
+      related_entity_id: 'archived',
+      metadata: { name: 'Archived', dueDate: '2026-06-20', minimumPayment: 100, frequency: 'monthly', planStatus: 'archived', scope: 'business' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+  const debts = Object.fromEntries(result.readModel.debtAccounts.map((debt) => [debt.id, debt]));
+
+  assert.equal(debts['legacy-active'].planStatus, 'active');
+  assert.equal(debts['legacy-active'].monthlyPressure, 200);
+  assert.equal(debts.paused.monthlyPressure, 0);
+  assert.equal(debts.future.planStatus, 'starts_later');
+  assert.equal(debts.future.monthlyPressure, 0);
+  assert.equal(debts['irregular-empty'].monthlyPressure, 0);
+  assert.equal(debts['irregular-custom'].monthlyPressure, 150);
+  assert.equal(debts.completed.monthlyPressure, 0);
+  assert.equal(debts.archived.monthlyPressure, 0);
+  assert.equal(result.treasury.totalMonthlyBurn, 450);
+  assert.equal(result.treasury.debtPaymentsDueSoon, 350);
+  assert.equal(result.readModel.recurringExpenses.find((entry) => entry.id === 'linked-legacy-cost').monthlyAmount, 200);
+});
+
 test('ledger transaction read model supports explicit income, expense, transfer, and adjustment semantics', () => {
   const finance = loadFinance();
   const nowIso = '2026-06-03T10:00:00.000Z';
