@@ -493,18 +493,18 @@ body.finance-nav-open .finance-master-menu-toggle span:nth-child(3) {
 /* Floating Action Button (FAB) */
 .fin-fab-add {
   position: fixed;
-  bottom: 2.5rem;
-  right: 3rem;
-  width: 64px;
-  height: 64px;
+  bottom: 2rem;
+  right: 2rem;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  background: rgba(168, 230, 207, 0.95);
-  color: #1a2522;
-  border: none;
+  background: rgba(168, 230, 207, 0.88);
+  color: #14201d;
+  border: 1px solid rgba(255, 255, 255, 0.18);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 32px rgba(168, 230, 207, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.26), 0 0 24px rgba(168, 230, 207, 0.18);
   cursor: pointer;
   transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease, background 0.25s ease;
   z-index: 1000;
@@ -513,9 +513,9 @@ body.finance-nav-open .finance-master-menu-toggle span:nth-child(3) {
 }
 
 .fin-fab-add:hover {
-  transform: translateY(-4px) scale(1.04);
-  box-shadow: 0 14px 40px rgba(168, 230, 207, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.2) inset;
-  background: rgba(168, 230, 207, 1);
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34), 0 0 30px rgba(168, 230, 207, 0.24);
+  background: rgba(168, 230, 207, 0.96);
 }
 
 .fin-fab-add:active {
@@ -539,10 +539,16 @@ body.finance-nav-open .finance-master-menu-toggle span:nth-child(3) {
 
 @media (max-width: 900px) {
   .fin-fab-add {
-    bottom: 1.5rem;
-    right: 1.5rem;
-    width: 56px;
-    height: 56px;
+    top: 12px;
+    right: 72px;
+    bottom: auto;
+    width: 44px;
+    height: 44px;
+  }
+
+  .fin-fab-add svg {
+    width: 22px;
+    height: 22px;
   }
 }
 
@@ -600,8 +606,35 @@ body.finance-nav-open .finance-master-menu-toggle span:nth-child(3) {
   height: 0.75rem;
 }
 
+.sag-icon--sm {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.sag-icon--lg {
+  width: 2rem;
+  height: 2rem;
+  stroke-width: 1.45;
+}
+
 .sag-tone-muted {
   color: var(--text-tertiary);
+}
+
+.sag-tone-accent {
+  color: var(--fin-accent, var(--text-accent));
+}
+
+.sag-tone-success {
+  color: var(--fin-safe, var(--text-accent));
+}
+
+.sag-tone-warning {
+  color: var(--fin-stress-med, #e3c46f);
+}
+
+.sag-tone-danger {
+  color: var(--fin-stress-high, #f1b9a7);
 }
 
 .fin-allocation-row,

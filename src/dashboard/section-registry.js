@@ -8,7 +8,7 @@ export function createSectionRenderer(renderers, renderSectionHeading) {
         flow: {
             title: 'Flow',
             copy: 'The timeline and forecast view for upcoming income, obligations, burn, and cash pressure.',
-            sections: ['cashCalendar', 'scenarioOutcomes', 'projection', 'invoices', 'pipelineTabs']
+            sections: ['cashCalendar', 'scenarioOutcomes', 'projection', 'invoices']
         },
         plan: {
             title: 'Plan',

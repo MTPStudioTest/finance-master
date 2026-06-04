@@ -124,15 +124,36 @@ test('roadmap section aliases keep persisted navigation compatible', async ({ pa
   expect(errors).toEqual([]);
 });
 
+test('core boards use the shared row and button primitives', async ({ page }) => {
+  const errors = monitorConsole(page);
+  await gotoApp(page);
+
+  for (const [section, expectedRows] of [
+    ['dashboard', 1],
+    ['flow', 1],
+    ['plan', 1],
+    ['review', 1],
+    ['settings', 1],
+  ] as const) {
+    await page.evaluate((value) => window.FinancialMode?.setSection?.(value), section);
+    await expect(page.locator('#fin-content-area .fin-action-btn')).toHaveCount(0);
+    await expect(page.locator('#fin-content-area .fin-board-list-row:not(.fin-list-row)')).toHaveCount(0);
+    await expect.poll(() => page.locator('#fin-content-area .fin-list-row').count()).toBeGreaterThanOrEqual(expectedRows);
+  }
+
+  expect(errors).toEqual([]);
+});
+
 test('consolidated boards keep clear product boundaries', async ({ page }) => {
   const errors = monitorConsole(page);
   await gotoApp(page);
 
   await page.getByRole('button', { name: 'Decisions', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Decisions', exact: true })).toBeVisible();
-  await expect(page.getByText('Decision Engine', { exact: true })).toBeVisible();
+  await expect(page.getByText('Decision cockpit', { exact: true })).toBeVisible();
   await expect(page.locator('#fin-content-area .fin-board-frame').first()).toBeVisible();
-  await expect(page.getByText('This Week’s Financial Focus', { exact: true })).toBeVisible();
+  await expect(page.getByText('Focus Queue', { exact: true })).toBeVisible();
+  await expect(page.getByText('Why This Board Exists', { exact: true })).toBeVisible();
   await expect(page.getByText('Decision Cards', { exact: true })).toBeVisible();
   await expect(page.getByText('Pressure Timeline', { exact: true })).toBeVisible();
   await expect(page.getByText('Scenario Shortcuts', { exact: true })).toBeVisible();
@@ -174,17 +195,21 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
   await expect(page.locator('[data-debt-group="no_plan"]')).toBeVisible();
   await expect(page.locator('[data-fin-collapsible="treasury-debt-details"]')).toHaveCount(0);
   for (const [key, label] of [
-    ['actualCash', 'Actual cash formula'],
-    ['protectedCash', 'Protected cash formula'],
-    ['availableCash', 'Available cash formula'],
-    ['monthlyBurnRate', 'Monthly burn rate formula'],
-    ['runway', 'Runway formula'],
-    ['debtPressure', 'Debt pressure formula'],
+    ['actualCash', 'Actual Cash'],
+    ['protectedCash', 'Protected Cash'],
+    ['availableCash', 'Available Cash'],
+    ['monthlyBurnRate', 'Monthly Burn Rate'],
+    ['runway', 'Runway'],
+    ['debtPressure', 'Debt Pressure'],
   ] as const) {
     const explainer = page.locator(`[data-fin-explainer="${key}"]`).first();
     await expect(explainer).toBeVisible();
-    await explainer.getByText('How calculated', { exact: true }).click();
-    await expect(explainer.getByLabel(label)).toBeVisible();
+    await explainer.getByRole('button', { name: new RegExp(`Explain ${label}`, 'i') }).click();
+    const dialog = page.getByRole('dialog', { name: label });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Formula', { exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
   }
 
   await page.getByRole('button', { name: 'Review', exact: true }).click();
@@ -218,7 +243,7 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Radar', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Radar', exact: true })).toBeVisible();
-  await expect(page.getByText('Radar Diagnosis', { exact: true })).toBeVisible();
+  await expect(page.getByText('Radar status', { exact: true })).toBeVisible();
   await expect(page.locator('#fin-content-area .fin-board-frame').first()).toBeVisible();
   await expect(page.getByText('Risk Radar', { exact: true })).toBeVisible();
   await expect(page.getByText('Pattern Memory', { exact: true })).toBeVisible();
@@ -246,10 +271,10 @@ test('decisions board presents ranked guidance without mutating finance data', a
   await expect.poll(() => focusItems.count()).toBeLessThanOrEqual(3);
   const firstCard = page.locator('[data-decision-card]').first();
   await expect(firstCard).toBeVisible();
-  await expect(firstCard.getByText('Why', { exact: true })).toBeVisible();
-  await expect(firstCard.getByText('Source metric', { exact: true })).toBeVisible();
-  await expect(firstCard.getByText('Impact', { exact: true })).toBeVisible();
+  await expect(firstCard.getByText('Meaning', { exact: true })).toBeVisible();
+  await expect(firstCard.locator('.fin-decision-evidence span').first()).toBeVisible();
   await expect(firstCard.getByRole('button')).toBeVisible();
+  await expect(page.locator('[data-decision-opportunity]').first()).toBeVisible();
   await expect(page.locator('[data-decision-timeline="7d"]')).toBeVisible();
   await expect(page.locator('[data-decision-timeline="30d"]')).toBeVisible();
   await expect(page.locator('[data-decision-timeline="90d"]')).toBeVisible();
@@ -298,7 +323,7 @@ test('insights diagnosis and scenario lab 2.0 previews and saves without mutatin
   await gotoApp(page);
   await page.getByRole('button', { name: 'Radar', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Radar', exact: true })).toBeVisible();
-  await expect(page.getByText('Radar Diagnosis', { exact: true })).toBeVisible();
+  await expect(page.getByText('Radar status', { exact: true })).toBeVisible();
   await expect(page.getByText('Main risk', { exact: true })).toBeVisible();
   await expect(page.getByText('Main lever', { exact: true })).toBeVisible();
   await expect(page.getByText('Main opportunity', { exact: true })).toBeVisible();
@@ -616,15 +641,21 @@ test('overview prioritizes the money picture cockpit', async ({ page }) => {
   await expect(content.getByText('Next Obligations', { exact: true })).toBeVisible();
   await expect(content.getByText('Financial Weather', { exact: true })).toBeVisible();
   await expect(content.getByText('Tiny Trend Strip', { exact: true })).toBeVisible();
-  await content.getByText('How this is calculated', { exact: true }).click();
-  await expect(content.locator('.fin-safe-breakdown-details').first().getByLabel('Safe-to-Spend formula')).toBeVisible();
-  const safeExplainer = content.locator('[data-fin-explainer="safeToSpend"]').first();
-  await expect(safeExplainer).toBeVisible();
-  await safeExplainer.getByText('How calculated', { exact: true }).click();
-  await expect(safeExplainer.getByLabel('Safe-to-Spend formula')).toBeVisible();
-  await expect(content.getByText('Actual cash', { exact: true })).toBeVisible();
-  await expect(content.getByText('Protected cash', { exact: true })).toBeVisible();
-  await expect(content.getByText('Confirmed obligations', { exact: true })).toBeVisible();
+  await expect(content.locator('.obligation-row .fin-list-row-title').first()).toBeVisible();
+  await expect(content.locator('.obligation-row .fin-list-row-meta').first()).toBeVisible();
+  await expect(content.locator('.obligation-row .fin-list-row-amount').first()).toBeVisible();
+  await expect(content.locator('.fin-financial-weather .fin-weather-icon-shell')).toBeVisible();
+  await expect(content.locator('.fin-financial-weather .fin-weather-recommendation')).toBeVisible();
+  await expect(content.locator('.fin-financial-weather .fin-weather-signal-icon').first()).toBeVisible();
+  await expect(content.getByText('How this is calculated', { exact: true })).toHaveCount(0);
+  await expect(content.getByText('How calculated', { exact: true })).toHaveCount(0);
+  await content.getByRole('button', { name: 'Explain Safe-to-Spend' }).click();
+  await expect(content.getByRole('dialog', { name: 'Safe-to-Spend' })).toBeVisible();
+  await expect(content.getByLabel('Safe-to-Spend formula')).toBeVisible();
+  await content.getByRole('button', { name: 'Close information' }).click();
+  await expect(content.getByText('Actual cash', { exact: true })).toHaveCount(0);
+  await expect(content.getByText('Protected cash', { exact: true })).toHaveCount(0);
+  await expect(content.getByText('Confirmed obligations', { exact: true })).toHaveCount(0);
   await expect(content.getByText('Today’s Financial Decision', { exact: true })).toHaveCount(0);
   await expect(content.getByText('Next Actions', { exact: true })).toHaveCount(0);
   await expect(content.getByText('Attention Queue', { exact: true })).toHaveCount(0);
@@ -640,8 +671,8 @@ test('overview prioritizes the money picture cockpit', async ({ page }) => {
   expect(order.every((value) => value >= 0)).toBe(true);
   expect(order).toEqual([...order].sort((a, b) => a - b));
 
-  for (const key of ['safeToSpend', 'actualCash', 'protectedCash', 'availableCash', 'runway'] as const) {
-    await expect(content.locator(`[data-fin-explainer="${key}"]`).first()).toBeVisible();
+  for (const label of ['Safe-to-Spend', 'Current cash', 'Runway', 'Today’s Finance Focus', 'Next Money In', 'Next Obligations', 'Financial Weather'] as const) {
+    await expect(content.getByRole('button', { name: `Explain ${label}` }).first()).toBeVisible();
   }
 
   await openFlowButton.click();
@@ -1222,7 +1253,7 @@ test('dark visual modes keep ledger and monthly review surfaces readable', async
   await expectDarkLocalSurfaces(page, '.fin-treasury-pulse-grid > div');
 
   await page.getByRole('button', { name: 'Radar', exact: true }).click();
-  await expect(page.getByText('Radar Diagnosis', { exact: true })).toBeVisible();
+  await expect(page.getByText('Radar status', { exact: true })).toBeVisible();
   await expectDarkLocalSurfaces(page, '.fin-insights-hero');
   await expectDarkLocalSurfaces(page, '.fin-insights-risk-row');
   expect(errors).toEqual([]);
@@ -1316,7 +1347,7 @@ test('mobile and tablet capture surfaces avoid horizontal overflow', async ({ pa
     const menuToggle = page.locator('[data-action="FinancialMode.toggleMobileNav"]');
     if (await menuToggle.isVisible()) await menuToggle.click();
     await page.getByRole('button', { name: 'Radar', exact: true }).click();
-    await expect(page.getByText('Radar Diagnosis', { exact: true })).toBeVisible();
+    await expect(page.getByText('Radar status', { exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
   expect(errors).toEqual([]);
