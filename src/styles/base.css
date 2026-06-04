@@ -831,6 +831,10 @@ body.finance-nav-open .finance-master-menu-toggle span:nth-child(3) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.modal-grid-span {
+  grid-column: 1 / -1;
+}
+
 .modal-grid-three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }

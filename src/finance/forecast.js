@@ -102,6 +102,14 @@ function isRetainerLike(deal) {
   return type === 'retainer' || type === 'recurring';
 }
 
+function recurrenceLimit(deal) {
+  const unit = String(deal && deal.durationUnit || '').toLowerCase();
+  const value = Number(deal && deal.durationValue);
+  if (!Number.isFinite(value) || value <= 0) return Infinity;
+  if (unit === 'months' || unit === 'times') return Math.max(1, Math.floor(value));
+  return Infinity;
+}
+
 function recurrenceCountInWindow(deal, today, horizonEnd) {
   if (!isRetainerLike(deal)) return 1;
   const start = dateOnly(deal && deal.expectedDateISO) || today;
@@ -110,7 +118,15 @@ function recurrenceCountInWindow(deal, today, horizonEnd) {
   const startTs = Date.parse(`${first}T00:00:00.000Z`);
   const endTs = Date.parse(`${horizonEnd}T00:00:00.000Z`);
   if (!Number.isFinite(startTs) || !Number.isFinite(endTs) || endTs < startTs) return 0;
-  return Math.max(1, Math.floor((endTs - startTs) / (30 * 24 * 60 * 60 * 1000)) + 1);
+  const windowCount = Math.max(1, Math.floor((endTs - startTs) / (30 * 24 * 60 * 60 * 1000)) + 1);
+  const limit = recurrenceLimit(deal);
+  if (!Number.isFinite(limit)) return windowCount;
+  const originalStartTs = Date.parse(`${start}T00:00:00.000Z`);
+  const todayTs = Date.parse(`${today}T00:00:00.000Z`);
+  const elapsed = start < today && Number.isFinite(originalStartTs) && Number.isFinite(todayTs)
+    ? Math.max(0, Math.floor((todayTs - originalStartTs) / (30 * 24 * 60 * 60 * 1000)))
+    : 0;
+  return Math.max(0, Math.min(windowCount, limit - elapsed));
 }
 
 function scenarioIncomeTotal(deals, scenario, today, horizonEnd) {

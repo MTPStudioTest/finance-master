@@ -1112,7 +1112,7 @@ window.FinancialMode = (function () {
                         <div class="fin-transaction-row-frame">
                             <span>
                                 <strong>${escapeHtml(deal && deal.title || 'Expected income')}</strong>
-                                <small>${escapeHtml([formatShortDate(deal && deal.expectedDateISO), incomeReliabilityLabel({ status, dueState: incomeDueStateFromDeal(deal, status), incomeType: deal && deal.incomeType })].filter(Boolean).join(' · '))}</small>
+                                <small>${escapeHtml([formatShortDate(deal && deal.expectedDateISO), incomeDurationLabel(deal), incomeReliabilityLabel({ status, dueState: incomeDueStateFromDeal(deal, status), incomeType: deal && deal.incomeType })].filter(Boolean).join(' · '))}</small>
                                 ${vatAmount > 0 ? `<small>VAT ${formatCurrency(vatAmount)} (${escapeHtml(String(vatRate || 0))}%) on top</small>` : ''}
                             </span>
                             <span class="fin-transaction-row-primary">
@@ -1269,7 +1269,7 @@ window.FinancialMode = (function () {
                         <button class="fin-tab-btn ${view === 'work' ? 'active' : ''}" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="work">Review Needed</button>
                     </div>
                     <div class="fin-ledger-workspace-grid">
-                        <div class="fin-tab-panel">
+                        <div class="fin-tab-panel fin-tab-panel--flush">
                             ${panelHtml}
                         </div>
                         ${renderLedgerDetailDrawer(selectedTransaction)}
@@ -3068,6 +3068,18 @@ window.FinancialMode = (function () {
         return project ? String(project.name || '') : 'Project plan';
     }
 
+    function incomeDurationLabel(deal) {
+        const type = String(deal && deal.incomeType || '').toLowerCase();
+        if (type !== 'retainer' && type !== 'recurring') return '';
+        const value = Number(deal && deal.durationValue);
+        const unit = String(deal && deal.durationUnit || '').toLowerCase();
+        if (!Number.isFinite(value) || value <= 0 || !['months', 'hours', 'times'].includes(unit)) return '';
+        const rounded = Math.round(value * 10) / 10;
+        const singular = unit === 'months' ? 'month' : unit === 'hours' ? 'hour' : 'time';
+        const label = rounded === 1 ? singular : unit;
+        return `${rounded} ${label}`;
+    }
+
     function incomeReliabilityLabel(row) {
         const status = String(row && row.status || '');
         const dueState = String(row && row.dueState || '');
@@ -3103,6 +3115,8 @@ window.FinancialMode = (function () {
                     expectedDateISO: deal && deal.expectedDateISO,
                     settlementAccount: String(deal && deal.destinationAccountName || deal && deal.destinationAccountId || ''),
                     incomeType: String(deal && deal.incomeType || 'one_off'),
+                    durationValue: deal && deal.durationValue,
+                    durationUnit: deal && deal.durationUnit,
                     status,
                     dueState: incomeDueStateFromDeal(deal, status),
                     projectLabel: incomeProjectLabel(deal && deal.projectId)
@@ -3160,7 +3174,7 @@ window.FinancialMode = (function () {
                             <tbody>
                                 ${displayRows.map((row) => `
                                     <tr>
-                                        <td>${escapeHtml(row.title)}<small>${escapeHtml([row.incomeType === 'retainer' ? 'retainer' : row.incomeType === 'recurring' ? 'recurring' : '', row.projectLabel, row.settlementAccount].filter(Boolean).join(' · '))}</small>${Number(row.vatAmount) > 0 ? `<small>VAT ${formatCurrency(row.vatAmount)} (${escapeHtml(String(row.vatRate || 0))}%) on top</small>` : ''}</td>
+                                        <td>${escapeHtml(row.title)}<small>${escapeHtml([row.incomeType === 'retainer' ? 'retainer' : row.incomeType === 'recurring' ? 'recurring' : '', incomeDurationLabel(row), row.projectLabel, row.settlementAccount].filter(Boolean).join(' · '))}</small>${Number(row.vatAmount) > 0 ? `<small>VAT ${formatCurrency(row.vatAmount)} (${escapeHtml(String(row.vatRate || 0))}%) on top</small>` : ''}</td>
                                         <td>${renderStatusPill(row.status)}</td>
                                         <td>${renderStatusPill(row.dueState)}</td>
                                         <td>${row.expectedDateISO ? formatShortDate(row.expectedDateISO) : 'No date'}</td>
@@ -4255,7 +4269,7 @@ window.FinancialMode = (function () {
                 <div class="fin-widget-body fin-widget-body--list">
                     ${renderFinancialListRow({
                         title: deal.title || 'Expected income',
-                        meta: `${formatShortDate(deal.expectedDateISO)} · ${status} · ${probability}% reliable`,
+                        meta: [formatShortDate(deal.expectedDateISO), incomeDurationLabel(deal), status, `${probability}% reliable`].filter(Boolean).join(' · '),
                         amount: formatCurrency(Number(deal.value) || 0),
                         amountClass: 'fin-val-pos',
                         iconHtml: renderSAGGlyph('money-in', { size: 'sm', tone: 'success' })
@@ -4638,6 +4652,7 @@ window.FinancialMode = (function () {
                                         <tr>
                                             <td>
                                                 ${escapeHtml(entry.title)}
+                                                ${incomeDurationLabel(entry) ? `<small>${escapeHtml(incomeDurationLabel(entry))}</small>` : ''}
                                                 ${Number(entry.vatAmount) > 0 ? `<small>VAT ${formatCurrency(entry.vatAmount)} (${escapeHtml(String(entry.vatRate || 0))}%) on top</small>` : ''}
                                             </td>
                                             <td>${renderStatusPill(entry.status)}</td>
@@ -5224,7 +5239,7 @@ window.FinancialMode = (function () {
                                 const projectLabel = incomeProjectLabel(deal.projectId);
                                 return `
                                 <tr>
-                                    <td>${escapeHtml(deal.title || 'Pipeline item')}<small>${escapeHtml([deal.incomeType === 'retainer' ? 'retainer' : deal.incomeType === 'recurring' ? 'recurring' : '', projectLabel].filter(Boolean).join(' · '))}</small></td>
+                                    <td>${escapeHtml(deal.title || 'Pipeline item')}<small>${escapeHtml([deal.incomeType === 'retainer' ? 'retainer' : deal.incomeType === 'recurring' ? 'recurring' : '', incomeDurationLabel(deal), projectLabel].filter(Boolean).join(' · '))}</small></td>
                                     <td>${renderStatusPill(status)}</td>
                                     <td>${renderStatusPill(dueState)}</td>
                                     <td>${deal.expectedDateISO ? formatShortDate(deal.expectedDateISO) : 'No date'}</td>

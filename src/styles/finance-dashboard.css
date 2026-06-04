@@ -1553,6 +1553,14 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     background: rgba(255, 255, 255, 0.02);
 }
 
+#dashboard-financial #fin-content-area .fin-tab-panel--flush {
+    margin-top: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
 #dashboard-financial #fin-content-area .fin-ledger-workspace-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(280px, 0.38fr);
@@ -4218,6 +4226,11 @@ body.settings-reduced-motion #dashboard-financial #fin-content-area .fin-tile {
 :root:is([data-appearance='bright-editorial'], [data-appearance='bright-minimal']) #dashboard-financial #fin-content-area .fin-chart-container--subtle {
     border-color: rgba(43, 88, 81, 0.12);
     background: rgba(255, 255, 255, 0.42);
+}
+
+:root:is([data-appearance='bright-editorial'], [data-appearance='bright-minimal']) #dashboard-financial #fin-content-area .fin-tab-panel--flush {
+    border-color: transparent;
+    background: transparent;
 }
 
 :root:is([data-appearance='bright-editorial'], [data-appearance='bright-minimal']) #dashboard-financial #fin-content-area .fin-ledger-status-strip > div {

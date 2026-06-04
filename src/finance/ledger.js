@@ -143,6 +143,17 @@
         } else if (!Object.prototype.hasOwnProperty.call(target, 'grossAmount')) {
             target.grossAmount = fallbackValue;
         }
+        if (Object.prototype.hasOwnProperty.call(metadata, 'durationValue')) {
+            target.durationValue = Number.isFinite(Number(metadata.durationValue)) ? Math.max(0, Number(metadata.durationValue)) : null;
+        } else if (!Object.prototype.hasOwnProperty.call(target, 'durationValue')) {
+            target.durationValue = null;
+        }
+        if (Object.prototype.hasOwnProperty.call(metadata, 'durationUnit')) {
+            var durationUnit = String(metadata.durationUnit || '').toLowerCase();
+            target.durationUnit = ['months', 'hours', 'times'].indexOf(durationUnit) !== -1 ? durationUnit : '';
+        } else if (!Object.prototype.hasOwnProperty.call(target, 'durationUnit')) {
+            target.durationUnit = '';
+        }
     }
 
     function classifyIncomeDueState(deal, nowIso) {

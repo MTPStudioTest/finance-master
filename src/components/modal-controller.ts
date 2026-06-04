@@ -692,6 +692,10 @@ function renderIncome(id = ''): string {
   const probability = item?.probability ?? INCOME_PROBABILITY_DEFAULTS[status] ?? 0.6;
   const amount = item && Number.isFinite(Number(item.netAmount)) ? item.netAmount : item?.value;
   const vatRate = item && Number.isFinite(Number(item.vatRate)) ? item.vatRate : '';
+  const incomeType = String(item?.incomeType || 'one_off');
+  const isTermBasedIncome = incomeType === 'retainer' || incomeType === 'recurring';
+  const durationValue = item && Number.isFinite(Number(item.durationValue)) ? Number(item.durationValue) : '';
+  const durationUnit = String(item?.durationUnit || 'months');
   return `
     <div class="modal-form">
       <h2 id="modal-title">${item ? 'Edit income' : 'Add income'}</h2>
@@ -704,7 +708,11 @@ function renderIncome(id = ''): string {
         <div class="form-group"><label for="modal-income-probability">Probability</label><input id="modal-income-probability" type="number" min="0" max="1" step="0.05" value="${escapeHtml(probability)}" /></div>
         <div class="form-group"><label for="modal-income-date">Expected date</label><input id="modal-income-date" type="date" value="${escapeHtml(item?.expectedDateISO || today())}" /></div>
         <div class="form-group"><label for="modal-income-status">Status</label><select id="modal-income-status">${INCOME_STATUSES.map((entry) => `<option value="${entry}"${status === entry ? ' selected' : ''}>${entry}</option>`).join('')}</select></div>
-        <div class="form-group"><label for="modal-income-type">Income type</label><select id="modal-income-type">${['one_off', 'retainer', 'recurring'].map((entry) => `<option value="${entry}"${String(item?.incomeType || 'one_off') === entry ? ' selected' : ''}>${entry.replace('_', ' ')}</option>`).join('')}</select></div>
+        <div class="form-group"><label for="modal-income-type">Income type</label><select id="modal-income-type" onchange="const wrap=document.getElementById('modal-income-duration-wrap'); if (wrap) wrap.hidden = !(this.value === 'retainer' || this.value === 'recurring');">${['one_off', 'retainer', 'recurring'].map((entry) => `<option value="${entry}"${incomeType === entry ? ' selected' : ''}>${entry.replace('_', ' ')}</option>`).join('')}</select></div>
+        <div id="modal-income-duration-wrap" class="modal-grid-two modal-grid-span" ${isTermBasedIncome ? '' : 'hidden'}>
+          <div class="form-group"><label for="modal-income-duration-value">Duration / quantity <span class="fin-text-med">(optional)</span></label><input id="modal-income-duration-value" type="number" min="0" step="1" value="${escapeHtml(durationValue)}" placeholder="6" /></div>
+          <div class="form-group"><label for="modal-income-duration-unit">Unit</label><select id="modal-income-duration-unit">${['months', 'hours', 'times'].map((entry) => `<option value="${entry}"${durationUnit === entry ? ' selected' : ''}>${entry}</option>`).join('')}</select></div>
+        </div>
         <div class="form-group"><label for="modal-income-scenario">Scenario Inclusion</label><select id="modal-income-scenario">${['realistic', 'conservative', 'optimistic', 'all'].map((scenario) => `<option${(item?.scenarioInclusion || 'realistic') === scenario ? ' selected' : ''}>${scenario}</option>`).join('')}</select></div>
         <div class="form-group"><label for="modal-income-scope">Scope</label><select id="modal-income-scope">${scopeOptions(String(item?.scope || 'business'))}</select></div>
         <div class="form-group"><label for="modal-income-project">Project plan</label><select id="modal-income-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
@@ -1444,13 +1452,24 @@ function saveFinanceModal(type: string): void {
     const vatRateRaw = String(value('modal-income-vat-rate') || '').trim();
     const vatRate = vatRateRaw ? Number(vatRateRaw) : 0;
     const probability = Number(value('modal-income-probability'));
+    const incomeType = value('modal-income-type') || 'one_off';
+    const durationRaw = String(value('modal-income-duration-value') || '').trim();
+    const durationValue = durationRaw ? Number(durationRaw) : null;
+    const durationUnit = value('modal-income-duration-unit') || 'months';
     if (!value('modal-income-title') || !Number.isFinite(amount) || amount === 0 || !Number.isFinite(probability) || probability < 0 || probability > 1 || !Number.isFinite(vatRate) || vatRate < 0 || vatRate > 100) {
       showModalError('Add an income source, a non-zero amount, an optional VAT rate between 0 and 100, and a probability between 0 and 1.');
+      return;
+    }
+    if ((incomeType === 'retainer' || incomeType === 'recurring') && durationRaw && (!Number.isFinite(Number(durationValue)) || Number(durationValue) <= 0 || !['months', 'hours', 'times'].includes(durationUnit))) {
+      showModalError('For retainer or recurring income, duration must be a positive number with months, hours, or times.');
       return;
     }
     const netAmount = Math.abs(amount);
     const vatAmount = Math.round((netAmount * (vatRate / 100)) * 100) / 100;
     const grossAmount = Math.round((netAmount + vatAmount) * 100) / 100;
+    const termMetadata = (incomeType === 'retainer' || incomeType === 'recurring') && durationValue
+      ? { durationValue, durationUnit }
+      : {};
     append({
       type: 'pipeline.created',
       amount: grossAmount,
@@ -1468,7 +1487,8 @@ function saveFinanceModal(type: string): void {
         status: value('modal-income-status'),
         stage: value('modal-income-status'),
         scenarioInclusion: value('modal-income-scenario') || 'realistic',
-        incomeType: value('modal-income-type') || 'one_off',
+        incomeType,
+        ...termMetadata,
         expectedDateISO: value('modal-income-date'),
         destinationAccountId: value('modal-income-account'),
         scope: value('modal-income-scope'),
