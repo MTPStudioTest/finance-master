@@ -1,28 +1,28 @@
 export function createSectionRenderer(renderers, renderSectionHeading) {
     const pages = {
         ledger: {
-            title: 'Cash Movement',
-            copy: 'Transactions, expected income, review work, matching, and evidence in one workspace.',
+            title: 'Flow',
+            copy: 'The working inbox for money movement: records, expected income, matching, and review work.',
             sections: ['ledger']
         },
         review: {
-            title: 'Month Close',
-            copy: 'Reconcile accounts, resolve open items, confirm obligations and income, then close the month.',
+            title: 'Logbook',
+            copy: 'Saved checkpoints, review notes, account checks, and the history that unlocks pattern memory.',
             sections: ['reviewQueue', 'obligationReview', 'tensionSignals', 'weeklyReview']
         },
         reports: {
-            title: 'Insights',
-            copy: 'Patterns across cash rhythm, reserves, income concentration, and financial health.',
+            title: 'Signals',
+            copy: 'Interpretation, diagnosis, risks, patterns, and decision simulations from current local data.',
             sections: ['reports']
         },
         data: {
-            title: 'System',
-            copy: 'Imports, backups, restore, reset, sample data, and app preferences.',
+            title: 'Settings',
+            copy: 'Data safety, imports, backups, restore, reset, local app health, and app-level preferences.',
             sections: ['data', 'settings']
         },
         reserves: {
-            title: 'Treasury',
-            copy: 'Cash accounts, protected money, reserve targets, obligations, burn, and debt plans.',
+            title: 'Map',
+            copy: 'Accounts, reserves, obligations, recurring burn, debts, payment plans, goals, and allocation structure.',
             sections: ['reserves']
         }
     };
@@ -32,7 +32,7 @@ export function createSectionRenderer(renderers, renderSectionHeading) {
         if (!page) {
             return [
                 `<div class="fin-dashboard-main">`,
-                renderSectionHeading('Overview', 'Your local-first treasury cockpit.'),
+                renderSectionHeading('Pulse', 'The live financial cockpit for Safe-to-Spend, runway, pressure, and the next move.'),
                 renderers.observatoryHeader(),
                 renderers.dashboardCockpit(),
                 `</div>`

@@ -522,6 +522,10 @@ body.finance-nav-open .finance-master-menu-toggle span:nth-child(3) {
   transform: translateY(2px) scale(0.96);
 }
 
+.fin-fab-add--hidden {
+  display: none;
+}
+
 :root:is([data-appearance='bright-editorial'], [data-appearance='bright-minimal']) .fin-fab-add {
   background: #1a2522;
   color: rgba(168, 230, 207, 0.95);

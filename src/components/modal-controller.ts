@@ -164,7 +164,7 @@ function renderDestructiveConfirm(): string {
     <div class="modal-form">
       <h2 id="modal-title">${escapeHtml(config.title)}</h2>
       <p class="modal-copy">${escapeHtml(config.copy)}</p>
-      <p class="modal-copy"><strong>Recommended first:</strong> export a backup from Import & Backup if you may need this data later.</p>
+      <p class="modal-copy"><strong>Recommended first:</strong> export a backup from Settings if you may need this data later.</p>
       <div class="form-group">
         <label for="modal-destructive-phrase">Type ${escapeHtml(config.phrase)} to continue</label>
         <input id="modal-destructive-phrase" data-autofocus autocomplete="off" spellcheck="false" />
@@ -406,12 +406,12 @@ function renderWeeklyReview(): string {
     ['matchPayments', '2. Match payments', true, 'Link incoming cash to expected invoices.'],
     ['confirmObligations', '3. Confirm obligations', snapshot.attentionQueue ? snapshot.attentionQueue.filter((q: any) => q.type === 'Due soon' || q.type === 'Overdue').length === 0 : true, 'Mark due costs as paid or deferred.'],
     ['reviewSignals', '4. Review signals', Number(snapshot.runwayMonths) >= 3, 'Inspect runway, low points, and missing inputs.'],
-    ['closeMonth', '5. Close month', true, 'Lock the prior month and reset operating cycle.'],
+    ['closeMonth', '5. Save checkpoint', true, 'Save the current review and reset the operating cycle.'],
   ];
   return `
     <div class="modal-form">
       <h2 id="modal-title">Monthly review</h2>
-      <p class="modal-copy">A 5-step flow to verify your treasury.</p>
+      <p class="modal-copy">A 5-step flow to verify your financial map.</p>
       <div class="modal-section">
         <div class="ui-title">Reconcile account balances</div>
         <div class="review-grid">
@@ -667,8 +667,8 @@ function renderProjectProfile(id = ''): string {
   const item = (Store.getFinancialReadModel().projectProfiles || []).find((entry: Record<string, unknown>) => String(entry.id) === id);
   return `
     <div class="modal-form">
-      <h2 id="modal-title">${item ? 'Edit project treasury' : 'Add project treasury'}</h2>
-      <p class="modal-copy">Project treasuries group wallets, reserves, obligations, income, and transactions without creating separate books.</p>
+      <h2 id="modal-title">${item ? 'Edit project map' : 'Add project map'}</h2>
+      <p class="modal-copy">Project maps group wallets, reserves, obligations, income, and transactions without creating separate books.</p>
       <input id="modal-project-id" type="hidden" value="${escapeHtml(item?.id || '')}" />
       <div class="form-group"><label for="modal-project-name">Name</label><input id="modal-project-name" value="${escapeHtml(item?.name || '')}" placeholder="Client launch or studio project" /></div>
       <div class="modal-grid-two">
@@ -677,7 +677,7 @@ function renderProjectProfile(id = ''): string {
           ${['mint', 'blue', 'gold', 'rose', 'slate'].map((entry) => `<option value="${entry}"${String(item?.color || 'mint') === entry ? ' selected' : ''}>${entry}</option>`).join('')}
         </select></div>
       </div>
-      <div class="form-group"><label for="modal-project-notes">Notes <span class="fin-text-med">(optional)</span></label><textarea id="modal-project-notes" rows="3" placeholder="What this treasury is for">${escapeHtml(item?.notes || '')}</textarea></div>
+      <div class="form-group"><label for="modal-project-notes">Notes <span class="fin-text-med">(optional)</span></label><textarea id="modal-project-notes" rows="3" placeholder="What this map is for">${escapeHtml(item?.notes || '')}</textarea></div>
       <div class="modal-actions">${item ? '<button class="btn-secondary ui-btn ui-btn--secondary" type="button" data-action="archiveProjectProfile">Archive</button>' : ''}<span class="modal-actions-spacer"></span>${formActions('projectProfile', Boolean(item)).replace('<div class="modal-actions">', '').replace('</div>', '')}</div>
     </div>
   `;
@@ -704,7 +704,7 @@ function renderIncome(id = ''): string {
         <div class="form-group"><label for="modal-income-type">Income type</label><select id="modal-income-type">${['one_off', 'retainer', 'recurring'].map((entry) => `<option value="${entry}"${String(item?.incomeType || 'one_off') === entry ? ' selected' : ''}>${entry.replace('_', ' ')}</option>`).join('')}</select></div>
         <div class="form-group"><label for="modal-income-scenario">Scenario Inclusion</label><select id="modal-income-scenario">${['realistic', 'conservative', 'optimistic', 'all'].map((scenario) => `<option${(item?.scenarioInclusion || 'realistic') === scenario ? ' selected' : ''}>${scenario}</option>`).join('')}</select></div>
         <div class="form-group"><label for="modal-income-scope">Scope</label><select id="modal-income-scope">${scopeOptions(String(item?.scope || 'business'))}</select></div>
-        <div class="form-group"><label for="modal-income-project">Project treasury</label><select id="modal-income-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
+        <div class="form-group"><label for="modal-income-project">Project map</label><select id="modal-income-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
       </div>
       <div class="form-group"><label for="modal-income-account">Settlement account</label><select id="modal-income-account">${accountOptions(String(item?.destinationAccountId || ''))}</select></div>
       ${formActions('income', Boolean(item))}
@@ -722,7 +722,7 @@ function renderFiatAccount(id = ''): string {
       <div class="form-group"><label for="modal-fiat-balance">Balance</label><input id="modal-fiat-balance" type="number" step="0.01" value="${escapeHtml(item?.balance || '')}" /></div>
       <div class="modal-grid-two">
         <div class="form-group"><label for="modal-fiat-scope">Scope</label><select id="modal-fiat-scope">${scopeOptions(String(item?.scope || 'business'))}</select></div>
-        <div class="form-group"><label for="modal-fiat-project">Project treasury</label><select id="modal-fiat-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
+        <div class="form-group"><label for="modal-fiat-project">Project map</label><select id="modal-fiat-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
         <div class="form-group"><label for="modal-fiat-bucket">Bucket</label><select id="modal-fiat-bucket">
           ${[
             ['available', 'Available cash'],
@@ -763,7 +763,7 @@ function renderReserveBucket(id = '') {
           ].map(([val, label]) => `<option value="${val}"${String(item?.purpose || 'tax_reserve') === val ? ' selected' : ''}>${label}</option>`).join('')}
         </select></div>
         <div class="form-group"><label for="modal-reserve-scope">Scope</label><select id="modal-reserve-scope">${scopeOptions(String(item?.scope || 'shared'))}</select></div>
-        <div class="form-group"><label for="modal-reserve-project">Project treasury</label><select id="modal-reserve-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
+        <div class="form-group"><label for="modal-reserve-project">Project map</label><select id="modal-reserve-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
         <div class="form-group"><label for="modal-reserve-priority">Priority</label><select id="modal-reserve-priority">
           ${[
             ['critical', 'Critical (Must fill)'],
@@ -822,7 +822,7 @@ function renderExpense(id = ''): string {
       <div class="modal-grid-two">
         <div class="form-group"><label for="modal-expense-due-day">Due day</label><input id="modal-expense-due-day" type="number" min="1" max="28" value="${escapeHtml(item?.dueDay || 1)}" /></div>
         <div class="form-group"><label for="modal-expense-scope">Scope</label><select id="modal-expense-scope">${scopeOptions(String(item?.scope || 'personal'))}</select></div>
-        <div class="form-group"><label for="modal-expense-project">Project treasury</label><select id="modal-expense-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
+        <div class="form-group"><label for="modal-expense-project">Project map</label><select id="modal-expense-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
       </div>
       <label class="settings-check"><input id="modal-expense-essential" type="checkbox"${item?.essential ? ' checked' : ''} /><span>Essential expense</span></label>
       <div class="modal-actions">${deactivateButton('deactivateRecurringExpense', Boolean(item))}<span class="modal-actions-spacer"></span>${formActions('expense', Boolean(item)).replace('<div class="modal-actions">', '').replace('</div>', '')}</div>
@@ -863,7 +863,7 @@ function renderDebt(type: 'debtAdd' | 'debtPayment', id = ''): string {
       <div class="form-group"><label for="modal-debt-name">Name</label><input id="modal-debt-name" value="${escapeHtml(item?.name || '')}" placeholder="Credit line" /></div>
       <div class="form-group"><label for="modal-debt-amount">${item ? 'Additional amount' : 'Amount'}</label><input id="modal-debt-amount" type="number" step="0.01" /></div>
       <div class="form-group"><label for="modal-debt-scope">Scope</label><select id="modal-debt-scope">${scopeOptions(String(item?.scope || 'business'))}</select></div>
-      <div class="form-group"><label for="modal-debt-project">Project treasury</label><select id="modal-debt-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
+      <div class="form-group"><label for="modal-debt-project">Project map</label><select id="modal-debt-project">${projectOptions(item ? String(item.projectId || '') : undefined)}</select></div>
       <div class="modal-actions">${deactivateButton('deactivateDebtAccount', Boolean(item))}<span class="modal-actions-spacer"></span>${formActions('debtAdd', Boolean(item)).replace('<div class="modal-actions">', '').replace('</div>', '')}</div>
     </div>
   `;
@@ -1492,7 +1492,7 @@ function saveFinanceModal(type: string): void {
       });
       closeModal();
     } catch (error) {
-      showModalError(error instanceof Error ? error.message : 'Could not save this project treasury.');
+      showModalError(error instanceof Error ? error.message : 'Could not save this project map.');
     }
     return;
   }
@@ -1823,9 +1823,9 @@ Object.assign(window, {
     openDestructiveConfirmation({
       action: 'archiveProjectProfile',
       targetId: id,
-      title: 'Archive project treasury',
-      copy: 'This hides the project treasury from active profile choices while keeping all tagged finance history intact.',
-      phrase: 'ARCHIVE PROJECT TREASURY',
+      title: 'Archive project map',
+      copy: 'This hides the project map from active profile choices while keeping all tagged finance history intact.',
+      phrase: 'ARCHIVE PROJECT MAP',
       buttonLabel: 'Archive project',
       renderAfter: true,
     });
@@ -2034,7 +2034,7 @@ Object.assign(window, {
       } else if (config.action === 'deleteDemoData') {
         Store.deleteSampleData();
       } else if (config.action === 'archiveProjectProfile') {
-        if (!config.targetId) throw new Error('Choose a project treasury before archiving.');
+        if (!config.targetId) throw new Error('Choose a project map before archiving.');
         Store.archiveProjectProfile(config.targetId);
       } else if (config.action === 'deactivateFiatAccount' || config.action === 'deactivateReserveBucket' || config.action === 'deactivateRecurringExpense' || config.action === 'deactivateDebtAccount') {
         if (!config.targetId) throw new Error('Choose an item before deactivating.');

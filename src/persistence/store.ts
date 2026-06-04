@@ -449,7 +449,7 @@ export const Store = {
     status?: 'active' | 'archived';
   }): FinanceEvent[] {
     const name = String(input.name || '').trim();
-    if (!name) throw new Error('Add a project treasury name.');
+    if (!name) throw new Error('Add a project map name.');
     const existing = (this.getFinancialReadModel().projectProfiles || [])
       .find((entry: Record<string, unknown>) => String(entry.id || '') === String(input.id || ''));
     const id = String(input.id || existing?.id || entityId('project'));
@@ -476,10 +476,10 @@ export const Store = {
   archiveProjectProfile(id: string): FinanceEvent[] {
     const profile = (this.getFinancialReadModel().projectProfiles || [])
       .find((entry: Record<string, unknown>) => String(entry.id || '') === String(id || ''));
-    if (!profile) throw new Error('This project treasury could not be found.');
+    if (!profile) throw new Error('This project map could not be found.');
     return this.saveProjectProfile({
       id: String(profile.id),
-      name: String(profile.name || 'Project treasury'),
+      name: String(profile.name || 'Project map'),
       clientOrPurpose: String(profile.clientOrPurpose || ''),
       color: String(profile.color || 'mint'),
       notes: String(profile.notes || ''),

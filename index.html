@@ -39,36 +39,28 @@
         </div>
         <nav class="finance-master-nav" id="primary-finance-navigation" aria-label="Primary finance navigation">
           <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'dashboard'" data-fin-nav="dashboard">
-            Overview
+            Pulse
           </button>
-          
-          <div class="fin-nav-group-label" style="margin-top: 1rem;">Operate</div>
           <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'ledger'" data-fin-nav="ledger">
-            Cash Movement
+            Flow
           </button>
           <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'review'" data-fin-nav="review">
-            Month Close
+            Logbook
           </button>
-
-          <div class="fin-nav-group-label" style="margin-top: 1rem;">Plan</div>
           <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'reserves'" data-fin-nav="reserves">
-            Treasury
+            Map
           </button>
-          
-          <div class="fin-nav-group-label" style="margin-top: 1rem;">Understand</div>
           <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'reports'" data-fin-nav="reports">
-            Insights
+            Signals
           </button>
-          
-          <div class="fin-nav-group-label" style="margin-top: 1rem;">System</div>
           <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'data'" data-fin-nav="data">
-            System
+            Settings
           </button>
         </nav>
         <div class="finance-master-sidebar-foot">
           <span>Local data</span>
           <strong>Private browser storage</strong>
-          <span>Currency follows System</span>
+          <span>Currency follows Settings</span>
         </div>
       </aside>
 
@@ -86,12 +78,6 @@
         </svg>
       </button>
       <div class="fin-quick-action-menu" id="quick-action-menu" aria-hidden="true">
-        <button type="button" data-action="openEditModal" data-action-args="'transaction', 'expense'"><strong>Add transaction</strong><span>Income, expense, or transfer</span></button>
-        <button type="button" data-action="openEditModal" data-action-args="'income'"><strong>Add expected income</strong><span>Invoice, retainer, or likely payment</span></button>
-        <button type="button" data-action="openEditModal" data-action-args="'expense'"><strong>Add obligation</strong><span>Recurring cost that affects runway</span></button>
-        <button type="button" data-action="openEditModal" data-action-args="'reserveBucket'"><strong>Add reserve</strong><span>Protect tax, VAT, health, or buffer cash</span></button>
-        <button type="button" data-action="openEditModal" data-action-args="'debtPlan'"><strong>Add payment plan</strong><span>Confirm recurring debt pressure</span></button>
-        <button type="button" data-action="openEditModal" data-action-args="'csvImport'"><strong>Import CSV</strong><span>Bring in local transaction records</span></button>
       </div>
 
     </div>

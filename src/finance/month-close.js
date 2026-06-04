@@ -43,18 +43,18 @@ function reserveMovementLabel(entry, accounts = []) {
 }
 
 function classifyRisk({ unresolvedItems, runwayNow, monthlyBurn, protectedCash, forecastWarning }) {
-  if (unresolvedItems > 0) return 'Open items need review before the close is fully reliable.';
+  if (unresolvedItems > 0) return 'Open items need review before the checkpoint is fully reliable.';
   if (forecastWarning) return forecastWarning;
   if (runwayNow != null && runwayNow < 3) return 'Runway is below three months.';
   if (monthlyBurn > 0 && protectedCash <= 0) return 'No protected cash is recorded for upcoming reserves.';
-  return 'No major close risk detected.';
+  return 'No major checkpoint risk detected.';
 }
 
 function classifyAction({ unresolvedItems, runwayNow, protectedCash, forecastWarning }) {
-  if (unresolvedItems > 0) return 'Resolve open items in Cash Movement.';
-  if (forecastWarning) return 'Review the forecast before closing next month.';
+  if (unresolvedItems > 0) return 'Resolve open items in Flow.';
+  if (forecastWarning) return 'Review the forecast before saving the next checkpoint.';
   if (runwayNow != null && runwayNow < 3) return 'Review burn pressure and upcoming income.';
-  if (protectedCash <= 0) return 'Review reserve targets in Treasury.';
+  if (protectedCash <= 0) return 'Review reserve targets in Map.';
   return 'Keep next month reviewed on the same cadence.';
 }
 

@@ -316,7 +316,7 @@
             if (event.type === 'project.profile_set') {
                 projectById[relatedId] = {
                     id: relatedId,
-                    name: String(metadata.name || 'Project treasury'),
+                    name: String(metadata.name || 'Project map'),
                     clientOrPurpose: String(metadata.clientOrPurpose || metadata.purpose || ''),
                     status: String(metadata.status || 'active').toLowerCase() === 'archived' ? 'archived' : 'active',
                     color: String(metadata.color || 'mint'),
