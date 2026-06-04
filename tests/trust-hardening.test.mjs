@@ -410,6 +410,11 @@ test('month close summary is deterministic and uses existing ledger evidence', (
   assert.match(summary.forecastWarning, /Expected forecast/);
   assert.equal(forecast.warnings.some((warning) => warning.includes('Reserve targets')), true);
   assert.match(summary.mainRisk, /Open items/);
+  assert.equal(summary.mainAction, 'Resolve open items in Records.');
+  assert.equal(buildMonthCloseSummary({
+    nowIso: '2026-06-15T10:00:00.000Z',
+    treasury: { protectedCash: 0 },
+  }).mainAction, 'Review reserve targets in Money Plan.');
 });
 
 test('finance forecast builds deterministic horizon scenarios from canonical inputs', () => {

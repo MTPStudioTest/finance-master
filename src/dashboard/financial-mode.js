@@ -341,46 +341,28 @@ window.FinancialMode = (function () {
         const button = document.querySelector('.fin-fab-add');
         const menu = document.getElementById('quick-action-menu');
         if (!button || !menu) return;
-        const actionsBySection = {
-            dashboard: [
-                { label: 'Add transaction', copy: 'Record cash movement', action: 'openEditModal', args: "'transaction', 'expense'" },
-                { label: 'Add expected income', copy: 'Sharpen the next 30 days', action: 'openEditModal', args: "'income'" },
-                { label: 'Open Cash Timeline', copy: 'Review the forecast timeline', action: 'FinancialMode.setSection', args: "'flow'" }
-            ],
-            decisions: [
-                { label: 'Open Reality Check', copy: 'Act on this week’s focus', action: 'FinancialMode.setSection', args: "'review'" },
-                { label: 'Open Cash Timeline', copy: 'Inspect timing behind the decision', action: 'FinancialMode.setSection', args: "'flow'" },
-                { label: 'Open Money Plan', copy: 'Adjust the structure behind pressure', action: 'FinancialMode.setSection', args: "'plan'" }
-            ],
-            flow: [
-                { label: 'Add expected income', copy: 'Invoice, retainer, or likely payment', action: 'openEditModal', args: "'income'" },
-                { label: 'Add recurring cost', copy: 'Update baseline burn', action: 'openEditModal', args: "'expense'" },
-                { label: 'Open Records', copy: 'Inspect raw transaction records', action: 'FinancialMode.setSection', args: "'logbook'" }
-            ],
-            logbook: [
-                { label: 'Add transaction', copy: 'Income, expense, or transfer', action: 'openEditModal', args: "'transaction', 'expense'" },
-                { label: 'Import CSV', copy: 'Bring in local transaction records', action: 'openEditModal', args: "'csvImport'" }
-            ],
-            plan: [
-                { label: 'Add cash account', copy: 'Track a real liquid balance', action: 'openEditModal', args: "'fiatAccount'" },
-                { label: 'Add recurring cost', copy: 'Add pressure to monthly burn', action: 'openEditModal', args: "'expense'" },
-                { label: 'Add debt item', copy: 'Track liability and payment plan', action: 'FinancialMode.openAddModal', args: "'debtAdd'" },
-                { label: 'Add reserve bucket', copy: 'Protect tax, VAT, health, or buffer cash', action: 'openEditModal', args: "'reserveBucket'" }
-            ],
-            radar: [
-                { label: 'Open Reality Check', copy: 'Resolve the most important signal', action: 'FinancialMode.setSection', args: "'review'" },
-                { label: 'Open Money Plan', copy: 'Adjust structure behind the signal', action: 'FinancialMode.setSection', args: "'plan'" }
-            ],
-            review: [
-                { label: 'Save checkpoint', copy: 'Review accounts and leave a note', action: 'FinancialMode.setSection', args: "'review'" },
-                { label: 'Add transaction', copy: 'Resolve an unclear item', action: 'openEditModal', args: "'transaction', 'expense'" }
-            ],
-            settings: [
-                { label: 'Import CSV', copy: 'Bring in local transaction records', action: 'openEditModal', args: "'csvImport'" },
-                { label: 'Restore backup', copy: 'Preview before replacing local data', action: 'openEditModal', args: "'backupRestore'" }
-            ]
+        const globalActions = [
+            { key: 'transaction', label: 'Add transaction', copy: 'Record income, expense, or transfer', action: 'openEditModal', args: "'transaction', 'expense'" },
+            { key: 'income', label: 'Add expected income', copy: 'Invoice, retainer, or likely payment', action: 'openEditModal', args: "'income'" },
+            { key: 'cash', label: 'Add cash account', copy: 'Track a real liquid balance', action: 'openEditModal', args: "'fiatAccount'" },
+            { key: 'cost', label: 'Add recurring cost', copy: 'Add pressure to monthly burn', action: 'openEditModal', args: "'expense'" },
+            { key: 'debt', label: 'Add debt item', copy: 'Track liability and payment plan', action: 'FinancialMode.openAddModal', args: "'debtAdd'" },
+            { key: 'reserve', label: 'Add reserve bucket', copy: 'Protect tax, VAT, health, or buffer cash', action: 'openEditModal', args: "'reserveBucket'" },
+            { key: 'import', label: 'Import CSV', copy: 'Bring in local transaction records', action: 'openEditModal', args: "'csvImport'" }
+        ];
+        const priorityBySection = {
+            dashboard: ['transaction', 'income', 'cash', 'cost', 'debt', 'reserve', 'import'],
+            decisions: ['income', 'cost', 'debt', 'reserve', 'transaction', 'cash', 'import'],
+            flow: ['income', 'cost', 'transaction', 'import', 'cash', 'debt', 'reserve'],
+            logbook: ['transaction', 'import', 'income', 'cash', 'cost', 'debt', 'reserve'],
+            plan: ['cash', 'cost', 'debt', 'reserve', 'income', 'transaction', 'import'],
+            radar: ['debt', 'reserve', 'income', 'cost', 'cash', 'transaction', 'import'],
+            review: ['transaction', 'income', 'cost', 'debt', 'reserve', 'cash', 'import'],
+            settings: ['import', 'transaction', 'income', 'cash', 'cost', 'debt', 'reserve']
         };
-        const actions = actionsBySection[section] || [];
+        const order = priorityBySection[section] || priorityBySection.dashboard;
+        const rank = new Map(order.map((key, index) => [key, index]));
+        const actions = globalActions.slice().sort((a, b) => (rank.get(a.key) ?? 99) - (rank.get(b.key) ?? 99));
         button.classList.toggle('fin-fab-add--hidden', actions.length === 0);
         button.setAttribute('aria-hidden', actions.length === 0 ? 'true' : 'false');
         button.tabIndex = actions.length === 0 ? -1 : 0;
@@ -1951,7 +1933,6 @@ window.FinancialMode = (function () {
                             <div class="fin-compact-empty">${dataHealth.issues.map((entry) => `${escapeHtml(entry.label)}: ${escapeHtml(entry.message)}`).join('<br>')}</div>
                         ` : ''}
                         <div class="fin-action-row">
-                            ${renderFinanceButton({ label: 'Restore backup', action: 'openEditModal', args: "'backupRestore'" })}
                             ${renderFinanceButton({ label: 'Reset local data', action: 'resetLocalFinanceData', variant: 'danger' })}
                         </div>
                     </div>

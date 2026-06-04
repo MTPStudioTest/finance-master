@@ -10,7 +10,7 @@ Finance Master is a local-first Vite app with a TypeScript entry point, mostly J
 
 The current codebase is already partially aligned with the roadmap's foundation: actual cash, protected cash, available cash, Safe-to-Spend, monthly burn, runway, income scenarios, debt pressure, backup validation, data health checks, and restore previews are implemented in shared modules rather than only in UI widgets.
 
-The main near-term roadmap gap is not missing foundations from scratch. It is consolidation: visible board labels still use the older abstract names, `src/dashboard/financial-mode.js` is very large, some Settings actions are duplicated, the global plus button is semantically unclear, and several roadmap-known UI issues still need focused implementation phases.
+The main near-term roadmap gap is not missing foundations from scratch. It is consolidation: `src/dashboard/financial-mode.js` is very large, some roadmap Quick Add options are intentionally deferred because no standalone workflow exists yet, and several roadmap-known UI issues still need focused implementation phases.
 
 ## Framework, Build, And App Entry
 
@@ -262,9 +262,9 @@ Current coverage includes:
 
 - Visible board labels completed the Phase 2 rename to Money Status, Decision Lab, Cash Timeline, Money Plan, Risk Radar, Reality Check, Records, and Settings.
 - `src/dashboard/financial-mode.js` is very large and mixes rendering, routing, presentation logic, UI state, and action handling.
-- The global plus button exists on every board and needs a predictable Quick Add role or removal.
+- The global plus button now opens a predictable creation-focused Quick Add menu on every board. It uses existing workflows for transactions, income, cash accounts, recurring costs, debt items, reserve buckets, and CSV import; standalone obligation and decision-scenario creation remain deferred until product workflows exist.
 - Decision Lab layout/readability is a known roadmap-critical area to verify visually.
-- Settings currently shows Restore Backup in more than one place and includes import/add-entry adjacency that may belong closer to Records over time.
+- Settings now keeps one in-page Restore Backup action in Imports and Backups; import/add-entry adjacency may still belong closer to Records over time.
 - `Store.seedDemoIfNeeded` can repopulate an empty deployed app even after a stale `deleted` demo flag; this is intentional per comment but should be reviewed against the roadmap's sample-data separation rule before changing behavior.
 - Schema migration has a registry but no historical migrations beyond current-shape clone.
 - Backup restore validation is strong, but future schema additions must update backup validation and migration fixtures.
@@ -280,11 +280,11 @@ Current coverage includes:
 
 ## Recommended Next Chunk
 
-### Phase 2 — Navigation rename and board responsibility cleanup
+### Phase 3 — Decision Lab responsiveness and Records drawer audit
 
-- Goal: Rename visible board labels and headings to the roadmap names while keeping internal route IDs stable.
-- Files likely affected: `index.html`, `src/dashboard/section-registry.js`, `tests/e2e/finance-master.spec.ts`, possibly `README.md` and docs references.
-- Implementation steps: update nav labels, section titles, subtitles, visible old-name references, and e2e expectations; preserve `dashboard`, `decisions`, `flow`, `plan`, `radar`, `review`, `logbook`, and `settings` IDs.
-- Tests: `npm run typecheck`, `npm test`, targeted e2e navigation if practical.
-- Acceptance criteria: visible navigation and board headers use the new names; existing routes and aliases still work.
-- Risks / notes: avoid renaming localStorage keys or route IDs in this phase.
+- Goal: Fix immediately visible layout issues before feature work, starting with Decision Lab readability at desktop/tablet widths and Records detail drawer behavior.
+- Files likely affected: `src/styles/finance-dashboard.css`, `src/dashboard/financial-mode.js`, and `tests/e2e/finance-master.spec.ts`.
+- Implementation steps: inspect Decision Lab grid/card rules at 1440px, 1024px, and 768px; add minimum widths or stacking breakpoints where text collapses; verify Records detail drawer opens, fits, and does not half-render.
+- Tests: targeted Playwright viewport checks plus `npm run test:e2e`; run `npm run typecheck`, `npm test`, and `npm run build` if code changes.
+- Acceptance criteria: Decision Lab cards remain readable; no text collapses into word columns; Records detail drawer behaves intentionally at common desktop/tablet widths.
+- Risks / notes: keep this to layout/responsiveness only; do not redesign board logic or add new feature behavior in this chunk.

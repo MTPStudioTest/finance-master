@@ -5228,16 +5228,23 @@ body.settings-reduced-motion #dashboard-financial #fin-content-area .fin-tile {
 #dashboard-financial #fin-content-area .fin-decision-timeline-grid,
 #dashboard-financial #fin-content-area .fin-decision-shortcut-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1rem;
 }
 
+#dashboard-financial #fin-content-area .fin-decisions-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+}
+
 #dashboard-financial #fin-content-area .fin-decision-card-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
 }
 
 #dashboard-financial #fin-content-area .fin-decision-timeline-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+}
+
+#dashboard-financial #fin-content-area .fin-decision-shortcut-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }
 
 #dashboard-financial #fin-content-area .fin-decision-focus-item,
@@ -5504,10 +5511,6 @@ body.settings-reduced-motion #dashboard-financial #fin-content-area .fin-tile {
     #dashboard-financial #fin-content-area .fin-decision-timeline-grid,
     #dashboard-financial #fin-content-area .fin-scenario-lab-grid {
         grid-template-columns: 1fr;
-    }
-
-    #dashboard-financial #fin-content-area .fin-decision-card-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     #dashboard-financial #fin-content-area .fin-treasury-burn-grid,

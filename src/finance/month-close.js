@@ -51,10 +51,10 @@ function classifyRisk({ unresolvedItems, runwayNow, monthlyBurn, protectedCash, 
 }
 
 function classifyAction({ unresolvedItems, runwayNow, protectedCash, forecastWarning }) {
-  if (unresolvedItems > 0) return 'Resolve open items in Logbook.';
+  if (unresolvedItems > 0) return 'Resolve open items in Records.';
   if (forecastWarning) return 'Review the forecast before saving the next checkpoint.';
   if (runwayNow != null && runwayNow < 3) return 'Review burn pressure and upcoming income.';
-  if (protectedCash <= 0) return 'Review reserve targets in Plan.';
+  if (protectedCash <= 0) return 'Review reserve targets in Money Plan.';
   return 'Keep next month reviewed on the same cadence.';
 }
 

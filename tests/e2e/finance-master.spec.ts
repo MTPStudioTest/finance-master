@@ -237,7 +237,7 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Import CSV', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Export backup', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Restore backup', exact: true }).first()).toBeVisible();
+  await expect(page.locator('#fin-content-area').getByRole('button', { name: 'Restore backup', exact: true })).toHaveCount(1);
   await expect(page.getByText('App Preferences', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Risk Radar', exact: true }).click();
@@ -314,6 +314,110 @@ test('decisions board presents ranked guidance without mutating finance data', a
       transactions: window.Store.getFinancialReadModel().transactions,
     },
   }) === before, storedBefore)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('decision lab and records drawer stay readable at desktop and tablet widths', async ({ page }) => {
+  const errors = monitorConsole(page);
+  for (const viewport of [
+    { width: 1440, height: 1000 },
+    { width: 1024, height: 900 },
+    { width: 768, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await gotoApp(page);
+    await page.evaluate(() => window.FinancialMode?.setSection?.('decisions'));
+    await expect(page.getByRole('heading', { name: 'Decision Lab', exact: true })).toBeVisible();
+    const decisionLayout = await page.evaluate(() => {
+      const cards = [...document.querySelectorAll('[data-decision-card]')] as HTMLElement[];
+      const timelineColumns = [...document.querySelectorAll('[data-decision-timeline]')] as HTMLElement[];
+      const narrowText = [...document.querySelectorAll('.fin-decision-card-main > strong, .fin-decision-card-main p, .fin-decision-meaning strong')] as HTMLElement[];
+      return {
+        scrollWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+        minCardWidth: Math.min(...cards.map((card) => card.getBoundingClientRect().width)),
+        minTimelineWidth: Math.min(...timelineColumns.map((column) => column.getBoundingClientRect().width)),
+        unreadableTextBlocks: narrowText
+          .filter((node) => node.textContent && node.textContent.trim().length > 18)
+          .filter((node) => node.getBoundingClientRect().width < 180)
+          .length,
+      };
+    });
+    expect(decisionLayout.scrollWidth).toBeLessThanOrEqual(decisionLayout.viewportWidth);
+    expect(decisionLayout.minCardWidth).toBeGreaterThanOrEqual(260);
+    expect(decisionLayout.minTimelineWidth).toBeGreaterThanOrEqual(260);
+    expect(decisionLayout.unreadableTextBlocks).toBe(0);
+
+    await page.evaluate(() => window.FinancialMode?.setSection?.('logbook'));
+    await expect(page.getByRole('heading', { name: 'Records', exact: true })).toBeVisible();
+    const firstRecord = page.locator('.fin-ledger-workspace-card .fin-transaction-row[role="button"]').first();
+    await expect(firstRecord).toBeVisible();
+    await firstRecord.click();
+    await expect(page.getByLabel('Record detail drawer')).toBeVisible();
+    const drawerLayout = await page.evaluate(() => {
+      const drawer = document.querySelector('[aria-label="Record detail drawer"]') as HTMLElement | null;
+      const rect = drawer?.getBoundingClientRect();
+      return {
+        scrollWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+        drawerWidth: rect?.width || 0,
+        drawerRight: rect?.right || 0,
+      };
+    });
+    expect(drawerLayout.scrollWidth).toBeLessThanOrEqual(drawerLayout.viewportWidth);
+    expect(drawerLayout.drawerWidth).toBeGreaterThanOrEqual(260);
+    expect(drawerLayout.drawerRight).toBeLessThanOrEqual(drawerLayout.viewportWidth);
+  }
+  expect(errors).toEqual([]);
+});
+
+test('all boards avoid horizontal overflow and tiny major cards at desktop and tablet widths', async ({ page }) => {
+  const errors = monitorConsole(page);
+  const sections = [
+    ['dashboard', 'Money Status'],
+    ['decisions', 'Decision Lab'],
+    ['flow', 'Cash Timeline'],
+    ['plan', 'Money Plan'],
+    ['radar', 'Risk Radar'],
+    ['review', 'Reality Check'],
+    ['logbook', 'Records'],
+    ['settings', 'Settings'],
+  ] as const;
+  for (const viewport of [
+    { width: 1440, height: 1000 },
+    { width: 1024, height: 900 },
+    { width: 768, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await gotoApp(page);
+    for (const [section, heading] of sections) {
+      await page.evaluate((value) => window.FinancialMode?.setSection?.(value), section);
+      await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
+      const layout = await page.evaluate(() => {
+        const frames = [...document.querySelectorAll('#fin-content-area .fin-board-frame, #fin-content-area .fin-settings-card')] as HTMLElement[];
+        const visibleFrames = frames.filter((frame) => {
+          const rect = frame.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        });
+        const crampedLongText = ([...document.querySelectorAll('#fin-content-area .fin-board-frame p, #fin-content-area .fin-board-frame .fin-helper-text')] as HTMLElement[])
+          .filter((node) => node.textContent && node.textContent.trim().length > 26)
+          .filter((node) => {
+            const rect = node.getBoundingClientRect();
+            return rect.width > 0 && rect.width < 160;
+          })
+          .length;
+        return {
+          scrollWidth: document.documentElement.scrollWidth,
+          viewportWidth: window.innerWidth,
+          minFrameWidth: Math.min(...visibleFrames.map((frame) => frame.getBoundingClientRect().width)),
+          crampedLongText,
+        };
+      });
+      expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewportWidth);
+      expect(layout.minFrameWidth).toBeGreaterThanOrEqual(260);
+      expect(layout.crampedLongText).toBe(0);
+    }
+  }
   expect(errors).toEqual([]);
 });
 
@@ -436,7 +540,13 @@ test('treasury cash accounts and reserve buckets can be edited and persist', asy
   await reserveModal.locator('#modal-reserve-purpose').selectOption('tax_reserve');
   await reserveModal.locator('#modal-reserve-scope').selectOption('business');
   await reserveModal.locator('#modal-reserve-priority').selectOption('critical');
-  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(reserveModal.locator('#modal-reserve-name')).toHaveValue('Client tax reserve');
+  await expect(reserveModal.locator('#modal-reserve-target')).toHaveValue('2000');
+  await expect(reserveModal.locator('#modal-reserve-current')).toHaveValue('350');
+  await expect(reserveModal.locator('#modal-reserve-purpose')).toHaveValue('tax_reserve');
+  await expect(reserveModal.locator('#modal-reserve-scope')).toHaveValue('business');
+  await expect(reserveModal.locator('#modal-reserve-priority')).toHaveValue('critical');
+  await reserveModal.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
   await expect(page.locator('.fin-treasury-reserve-card').filter({ hasText: 'Client tax reserve' })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (
@@ -592,7 +702,8 @@ test('treasury project profiles filter wallets and reserve buckets without separ
   await reserveModal.getByLabel('Current amount', { exact: true }).fill('250');
   await reserveModal.getByLabel('Scope', { exact: true }).selectOption('business');
   await reserveModal.getByLabel('Purpose', { exact: true }).selectOption('custom');
-  await reserveModal.getByLabel('Project plan', { exact: true }).selectOption(String(projectId));
+  await reserveModal.locator('#modal-reserve-project').selectOption(String(projectId));
+  await expect(reserveModal.locator('#modal-reserve-project')).toHaveValue(String(projectId));
   await reserveModal.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
   await expect(page.locator('.fin-treasury-reserve-card').filter({ hasText: 'Studio Launch Reserve' })).toBeVisible();
@@ -686,13 +797,22 @@ test('overview prioritizes the money picture cockpit', async ({ page }) => {
 
 test('floating quick add opens a lightweight action menu with focused creation entry points', async ({ page }) => {
   const errors = monitorConsole(page);
+  const quickActionLabels = [
+    /Add transaction/,
+    /Add expected income/,
+    /Add cash account/,
+    /Add recurring cost/,
+    /Add debt item/,
+    /Add reserve bucket/,
+    /Import CSV/,
+  ];
   await gotoApp(page);
   await openQuickAdd(page);
   await expect(page.getByRole('heading', { name: 'New Entry', exact: true })).toHaveCount(0);
-  for (const label of [/Add transaction/, /Add expected income/, /Open Cash Timeline/]) {
+  for (const label of quickActionLabels) {
     await expect(page.locator('#quick-action-menu').getByRole('button', { name: label })).toBeVisible();
   }
-  await expect(page.locator('#quick-action-menu').getByRole('button', { name: /Add reserve/ })).toHaveCount(0);
+  await expect(page.locator('#quick-action-menu').getByRole('button', { name: /Open Cash Timeline|Open Records|Open Reality Check|Open Money Plan|Restore backup/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(page.locator('#quick-action-menu')).not.toHaveClass(/active/);
 
@@ -708,6 +828,8 @@ test('floating quick add opens a lightweight action menu with focused creation e
 
   for (const [label, heading] of [
     [/Add expected income/, 'Add income'],
+    [/Add cash account/, 'Add cash account'],
+    [/Add reserve bucket/, 'Add reserve bucket'],
   ] as const) {
     await openQuickAdd(page);
     await chooseQuickAction(page, label);
@@ -715,39 +837,15 @@ test('floating quick add opens a lightweight action menu with focused creation e
     await page.keyboard.press('Escape');
   }
 
-  await page.getByRole('button', { name: 'Cash Timeline', exact: true }).click();
-  await openQuickAdd(page);
-  for (const label of [/Add expected income/, /Add recurring cost/, /Open Records/]) {
-    await expect(page.locator('#quick-action-menu').getByRole('button', { name: label })).toBeVisible();
+  for (const section of ['Decision Lab', 'Cash Timeline', 'Records', 'Money Plan', 'Risk Radar', 'Reality Check', 'Settings'] as const) {
+    await page.getByRole('button', { name: section, exact: true }).click();
+    await openQuickAdd(page);
+    for (const label of quickActionLabels) {
+      await expect(page.locator('#quick-action-menu').getByRole('button', { name: label })).toBeVisible();
+    }
+    await expect(page.locator('#quick-action-menu').getByRole('button', { name: /Open Cash Timeline|Open Records|Open Reality Check|Open Money Plan|Restore backup/ })).toHaveCount(0);
+    await page.keyboard.press('Escape');
   }
-  await page.keyboard.press('Escape');
-
-  await page.getByRole('button', { name: 'Records', exact: true }).click();
-  await openQuickAdd(page);
-  for (const label of [/Add transaction/, /Import CSV/]) {
-    await expect(page.locator('#quick-action-menu').getByRole('button', { name: label })).toBeVisible();
-  }
-  await page.keyboard.press('Escape');
-
-  await page.getByRole('button', { name: 'Money Plan', exact: true }).click();
-  await openQuickAdd(page);
-  for (const label of [/Add cash account/, /Add recurring cost/, /Add debt item/, /Add reserve bucket/]) {
-    await expect(page.locator('#quick-action-menu').getByRole('button', { name: label })).toBeVisible();
-  }
-  await page.keyboard.press('Escape');
-
-  await page.getByRole('button', { name: 'Risk Radar', exact: true }).click();
-  await openQuickAdd(page);
-  for (const label of [/Open Reality Check/, /Open Money Plan/]) {
-    await expect(page.locator('#quick-action-menu').getByRole('button', { name: label })).toBeVisible();
-  }
-  await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await openQuickAdd(page);
-  for (const label of [/Import CSV/, /Restore backup/]) {
-    await expect(page.locator('#quick-action-menu').getByRole('button', { name: label })).toBeVisible();
-  }
-  await page.keyboard.press('Escape');
   expect(errors).toEqual([]);
 });
 
@@ -1174,7 +1272,8 @@ test('backup restore uses a validated in-app preview and rejects malformed JSON'
   const path = await download.path();
   expect(path).toBeTruthy();
 
-  await page.getByRole('button', { name: 'Restore backup', exact: true }).first().click();
+  await expect(page.locator('#fin-content-area').getByRole('button', { name: 'Restore backup', exact: true })).toHaveCount(1);
+  await page.locator('#fin-content-area').getByRole('button', { name: 'Restore backup', exact: true }).click();
   await page.locator('#modal-backup-file').setInputFiles(path as string);
   await expect(page.getByRole('heading', { name: 'Restore Finance Master backup' })).toBeVisible();
   const restoreModal = page.locator('#modal-body');
@@ -1188,7 +1287,8 @@ test('backup restore uses a validated in-app preview and rejects malformed JSON'
   await page.getByRole('button', { name: 'Replace current data', exact: true }).click();
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('button', { name: 'Restore backup', exact: true }).first().click();
+  await expect(page.locator('#fin-content-area').getByRole('button', { name: 'Restore backup', exact: true })).toHaveCount(1);
+  await page.locator('#fin-content-area').getByRole('button', { name: 'Restore backup', exact: true }).click();
   await page.locator('#modal-backup-file').setInputFiles({
     name: 'invalid-backup.json',
     mimeType: 'application/json',
@@ -1208,6 +1308,8 @@ test('local data safety and appearance controls live on pages', async ({ page })
   await expect(page.getByText('Storage', { exact: true })).toBeVisible();
   await expect(page.getByText('Last backup', { exact: true })).toBeVisible();
   await expect(page.getByText('Schema', { exact: true })).toBeVisible();
+  await expect(page.locator('#fin-content-area').getByRole('button', { name: 'Restore backup', exact: true })).toHaveCount(1);
+  await expect(page.locator('.fin-card').filter({ hasText: 'Local Data Health' }).getByRole('button', { name: 'Restore backup', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Reset local data', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Reset local data', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Reset local finance data', exact: true })).toBeVisible();
@@ -1402,7 +1504,7 @@ test('savings goal progress and weekly reconciliation complete the operating rit
   await chooseQuickAction(page, /Add transaction/);
   await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
   await openQuickAdd(page);
-  await chooseQuickAction(page, /Save checkpoint/);
+  await expect(page.locator('#quick-action-menu').getByRole('button', { name: /Save checkpoint/ })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Reality Check', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
 
