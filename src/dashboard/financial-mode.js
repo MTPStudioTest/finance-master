@@ -956,6 +956,11 @@ window.FinancialMode = (function () {
                 ['Source', sourceHuman],
                 ['Review', reviewState === 'needs_review' ? 'Needs review' : 'Reviewed']
             ];
+            const rowClasses = [
+                'fin-transaction-row',
+                mode === 'review' ? 'fin-transaction-row--review' : '',
+                linkedItem ? 'fin-transaction-row--linked' : ''
+            ].filter(Boolean).join(' ');
             const technicalRows = [
                 ...evidence,
                 ['Raw source key', entry.source || ''],
@@ -967,7 +972,7 @@ window.FinancialMode = (function () {
             ].filter((item, index, list) => String(item[1] || '').trim()
                 && list.findIndex((candidate) => candidate[0] === item[0] && candidate[1] === item[1]) === index);
             return `
-                <div class="fin-transaction-row ${mode === 'review' ? 'fin-transaction-row--review' : ''}" data-fin-transaction-id="${escapeHtml(id)}">
+                <div class="${rowClasses}" data-fin-transaction-id="${escapeHtml(id)}">
                     <div class="fin-transaction-row-main">
                         <div class="fin-transaction-row-frame">
                             <span>
@@ -983,9 +988,11 @@ window.FinancialMode = (function () {
                         <p class="fin-transaction-human-copy">${escapeHtml(explanation)}</p>
                         ${linkedItem ? `
                             <div class="fin-transaction-link-card">
-                                <span>${escapeHtml(linkedItem.label)}</span>
-                                <strong>${escapeHtml(linkedItem.title)}</strong>
-                                <small>${escapeHtml(linkedItem.copy)}</small>
+                                <div>
+                                    <span>${escapeHtml(linkedItem.label)}</span>
+                                    <strong>${escapeHtml(linkedItem.title)}</strong>
+                                    <small>${escapeHtml(linkedItem.copy)}</small>
+                                </div>
                                 ${linkedItem.action ? `<button class="fin-mini-btn" type="button" data-action="${escapeHtml(linkedItem.action)}" data-action-args="${escapeHtml(linkedItem.args || '')}">${escapeHtml(linkedItem.actionLabel || 'Open')}</button>` : ''}
                             </div>
                         ` : ''}

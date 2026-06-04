@@ -1141,7 +1141,7 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     min-height: 74px;
     display: block;
     border-bottom: 1px solid rgba(255, 255, 255, 0.065);
-    padding: 12px 2px;
+    padding: 10px 2px;
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-row[role="button"] {
@@ -1166,11 +1166,15 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
 #dashboard-financial #fin-content-area .fin-transaction-row-main {
     min-width: 0;
     display: grid;
-    gap: 10px;
-    padding: 12px;
+    gap: 11px;
+    padding: 15px 16px;
     border: 1px solid var(--ds-mode-surface-border);
     border-radius: var(--ds-radius-sm);
     background: var(--fin-local-row-bg);
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-row--linked .fin-transaction-row-main {
+    border-color: color-mix(in srgb, var(--fin-stress-low) 18%, var(--ds-mode-surface-border));
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-row-side {
@@ -1186,7 +1190,7 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 12px;
+    gap: 18px;
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-row-primary {
@@ -1201,17 +1205,24 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     max-width: 68ch;
     margin: 0;
     color: var(--text-secondary);
-    font-size: 0.84rem;
+    font-size: 0.86rem;
     line-height: 1.45;
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-link-card {
-    display: grid;
-    gap: 3px;
-    padding: 10px 11px;
-    border: 1px solid color-mix(in srgb, var(--fin-stress-low) 34%, transparent);
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 10px 9px 12px;
+    border: 1px solid color-mix(in srgb, var(--fin-stress-low) 22%, transparent);
     border-radius: var(--ds-radius-sm);
-    background: color-mix(in srgb, var(--fin-stress-low) 8%, transparent);
+    background: color-mix(in srgb, var(--fin-stress-low) 5%, transparent);
+}
+
+#dashboard-financial #fin-content-area .fin-transaction-link-card > div {
+    min-width: 0;
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-link-card span,
@@ -1227,14 +1238,14 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-link-card .fin-mini-btn {
-    justify-self: start;
-    margin-top: 4px;
+    flex-shrink: 0;
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-compact-details {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 8px 18px;
+    gap: 7px 18px;
+    padding-top: 3px;
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-compact-details > div {
@@ -1248,12 +1259,12 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
 
 #dashboard-financial #fin-content-area .fin-transaction-technical {
     border-top: 1px solid var(--ds-mode-surface-border);
-    padding-top: 8px;
+    padding-top: 7px;
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-technical summary {
     cursor: pointer;
-    color: var(--text-secondary);
+    color: var(--text-tertiary);
     font-size: 0.78rem;
 }
 
@@ -1284,7 +1295,7 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     justify-content: space-between;
     gap: 10px;
     border-top: 1px solid var(--ds-mode-surface-border);
-    padding-top: 8px;
+    padding-top: 9px;
 }
 
 #dashboard-financial #fin-content-area .fin-transaction-actions > div {
@@ -3354,6 +3365,11 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     #dashboard-financial #fin-content-area .fin-transaction-row-frame,
     #dashboard-financial #fin-content-area .fin-transaction-actions {
         align-items: stretch;
+        flex-direction: column;
+    }
+
+    #dashboard-financial #fin-content-area .fin-transaction-link-card {
+        align-items: flex-start;
         flex-direction: column;
     }
 
