@@ -486,10 +486,11 @@ test('transactions page is the primary ledger workspace', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Inspect transaction', exact: true })).toHaveCount(0);
   const seedRow = workspace.locator('.fin-transaction-row').filter({ hasText: 'Ledger workspace review seed' });
   await expect(seedRow).toContainText('This record needs your eyes before it can support the forecast.');
-  await expect(seedRow).toContainText('Category');
-  await expect(seedRow).toContainText('Added manually');
+  await expect(seedRow.getByText('Category', { exact: true })).not.toBeVisible();
   await expect(seedRow.getByText('Record ID', { exact: true })).not.toBeVisible();
-  await expect(seedRow.getByText('Technical details', { exact: true })).toBeVisible();
+  await seedRow.getByText('Technical details', { exact: true }).click();
+  await expect(seedRow.getByText('Category', { exact: true })).toBeVisible();
+  await expect(seedRow.getByText('Added manually', { exact: true })).toBeVisible();
   await expect(seedRow.getByRole('button', { name: 'Edit transaction review', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'More filters', exact: true }).click();
@@ -503,6 +504,9 @@ test('transactions page is the primary ledger workspace', async ({ page }) => {
   await expect(page.locator('.fin-review-summary-line')).toContainText('need category');
   await expect(page.locator('.fin-review-summary-line')).toContainText('filtered records');
   await expect(page.getByRole('button', { name: 'Edit transaction review', exact: true }).first()).toBeVisible();
+  const reviewCardSettings = page.locator('.fin-transaction-row--review').first().getByText('Card settings', { exact: true });
+  await expect(reviewCardSettings).toBeVisible();
+  await reviewCardSettings.click();
   await expect(page.locator('.fin-transaction-row--review').first().locator('.fin-transaction-danger-actions').getByRole('button', { name: 'Reverse transaction', exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -529,7 +533,12 @@ test('ledger filters and inline categorization work without a full-ledger modal'
   await page.locator('#modal-body').getByRole('button', { name: 'software', exact: true }).click();
   await expect(page.locator('#modal-body').getByLabel('Category', { exact: true })).toHaveValue('software');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page.locator('#fin-content-area').getByText('software', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Inbox', exact: true }).click();
+  await page.getByLabel('Search records').fill('Software cleanup item');
+  await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
+  const updatedRow = page.locator('.fin-tab-panel .fin-transaction-row').filter({ hasText: 'Software cleanup item' });
+  await updatedRow.getByText('Technical details', { exact: true }).click();
+  await expect(updatedRow.getByText('software', { exact: true }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -767,9 +776,9 @@ test('CSV import previews accepted, duplicate, and rejected rows and remains rev
   await page.getByLabel('Search records').fill('Release deposit');
   await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
   const releaseRow = page.locator('.fin-transaction-row').filter({ hasText: 'Release deposit' });
-  await expect(releaseRow.getByText('Imported from CSV', { exact: true })).toBeVisible();
   await expect(releaseRow.getByText('CSV batch', { exact: true })).not.toBeVisible();
   await releaseRow.getByText('Technical details', { exact: true }).click();
+  await expect(releaseRow.getByText('Imported from CSV', { exact: true })).toBeVisible();
   await expect(releaseRow.getByText('CSV batch', { exact: true })).toBeVisible();
   await expect(releaseRow.getByText('2 imported · 1 duplicate (duplicates skipped) · 1 rejected', { exact: true })).toBeVisible();
   await expect(releaseRow.getByText('Batch totals', { exact: true })).toBeVisible();
@@ -977,8 +986,9 @@ test('review queue actions categorize, match, update pipeline, and add debt plan
   await page.getByLabel('Search records').fill('Matchable rent payment');
   await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
   const matchedRow = page.locator('.fin-transaction-row').filter({ hasText: 'Matchable rent payment' });
-  await expect(matchedRow.locator('.fin-transaction-link-card').getByText('Linked to', { exact: true })).toBeVisible();
-  await expect(matchedRow.getByText('Payment matched to monthly obligation.', { exact: true })).toBeVisible();
+  await expect(matchedRow.locator('.fin-transaction-link-line').getByText('Linked to', { exact: true })).toBeVisible();
+  await expect(matchedRow.getByRole('button', { name: 'Match / link', exact: true })).toBeVisible();
+  await expect(matchedRow.getByText('Payment matched to monthly obligation.', { exact: true })).not.toBeVisible();
   await expect(matchedRow.getByText('Record ID', { exact: true })).not.toBeVisible();
   await expect(matchedRow.getByText('Technical details', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'More filters', exact: true }).click();

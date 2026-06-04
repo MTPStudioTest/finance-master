@@ -948,20 +948,19 @@ window.FinancialMode = (function () {
                 entry.scope || 'shared',
             ].filter(Boolean);
             const primaryEdit = ledgerNeedsMatch(entry)
-                ? financeIconButton({ action: 'openEditModal', args: `'paymentMatch', '${escapeActionArg(id)}'`, label: 'Edit payment match', icon: 'success', tone: 'success' })
+                ? financeIconButton({ action: 'openEditModal', args: `'paymentMatch', '${escapeActionArg(id)}'`, label: 'Edit payment match', icon: 'link', tone: 'success' })
                 : financeIconButton({ action: 'openEditModal', args: `'transactionReview', '${escapeActionArg(id)}'`, label: 'Edit transaction review' });
-            const facts = [
-                ['Category', categoryLabel],
-                ['Scope', entry.scope || 'shared'],
-                ['Source', sourceHuman],
-                ['Review', reviewState === 'needs_review' ? 'Needs review' : 'Reviewed']
-            ];
+            const matchLinkButton = ledgerNeedsMatch(entry) ? '' : financeIconButton({ action: 'openEditModal', args: `'paymentMatch', '${escapeActionArg(id)}'`, label: 'Match / link', icon: 'link', tone: linkedItem ? 'success' : 'muted' });
             const rowClasses = [
                 'fin-transaction-row',
                 mode === 'review' ? 'fin-transaction-row--review' : '',
                 linkedItem ? 'fin-transaction-row--linked' : ''
             ].filter(Boolean).join(' ');
             const technicalRows = [
+                ['Category', categoryLabel],
+                ['Scope', entry.scope || 'shared'],
+                ['Source', sourceHuman],
+                ['Review', reviewState === 'needs_review' ? 'Needs review' : 'Reviewed'],
                 ...evidence,
                 ['Raw source key', entry.source || ''],
                 ['Internal linked obligation ID', entry.obligationId || ''],
@@ -981,26 +980,21 @@ window.FinancialMode = (function () {
                             </span>
                             <span class="fin-transaction-row-primary">
                                 <strong class="${signed >= 0 ? 'fin-val-pos' : 'fin-val-neg'}">${signed >= 0 ? '+' : '-'}${formatCurrency(Math.abs(signed), entry.currency)}</strong>
+                                ${matchLinkButton}
                                 ${primaryEdit}
                             </span>
                         </div>
                         <div class="fin-chip-row">${chips.map((chip) => `<span class="fin-status-pill">${escapeHtml(chip)}</span>`).join('')}</div>
                         <p class="fin-transaction-human-copy">${escapeHtml(explanation)}</p>
                         ${linkedItem ? `
-                            <div class="fin-transaction-link-card">
-                                <div>
+                            <button class="fin-transaction-link-line" type="button" data-action="${escapeHtml(linkedItem.action || 'openEditModal')}" data-action-args="${escapeHtml(linkedItem.args || `'paymentMatch', '${escapeActionArg(id)}'`)}" aria-label="${escapeHtml(linkedItem.actionLabel || `Open ${linkedItem.title}`)}">
+                                ${renderSAGGlyph('link', { size: 'xs', tone: 'success' })}
+                                <span>
                                     <span>${escapeHtml(linkedItem.label)}</span>
                                     <strong>${escapeHtml(linkedItem.title)}</strong>
-                                    <small>${escapeHtml(linkedItem.copy)}</small>
-                                </div>
-                                ${linkedItem.action ? `<button class="fin-mini-btn" type="button" data-action="${escapeHtml(linkedItem.action)}" data-action-args="${escapeHtml(linkedItem.args || '')}">${escapeHtml(linkedItem.actionLabel || 'Open')}</button>` : ''}
-                            </div>
+                                </span>
+                            </button>
                         ` : ''}
-                        <div class="fin-transaction-compact-details">
-                            ${facts.map(([label, value]) => `
-                                <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
-                            `).join('')}
-                        </div>
                         ${matchSuggestions.length ? `
                             <div class="fin-transaction-suggestion">
                                 <span class="fin-eyebrow">Suggested match</span>
@@ -1019,14 +1013,12 @@ window.FinancialMode = (function () {
                                 ${technicalRows.map(([label, value]) => `<p><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></p>`).join('')}
                             </div>
                         </details>
-                        <div class="fin-transaction-actions">
-                            <div>
-                                ${ledgerNeedsMatch(entry) ? '' : `<button class="fin-mini-btn" type="button" data-action="openEditModal" data-action-args="'paymentMatch', '${escapeActionArg(id)}'">Match / link</button>`}
-                            </div>
+                        <details class="fin-transaction-card-settings">
+                            <summary>Card settings</summary>
                             <div class="fin-transaction-danger-actions">
                                 <button class="fin-mini-btn fin-mini-btn--danger" type="button" data-fin-action="reverse-ledger-transaction" data-fin-transaction-id="${escapeHtml(id)}">Reverse transaction</button>
                             </div>
-                        </div>
+                        </details>
                     </div>
                 </div>
             `;
