@@ -694,7 +694,12 @@ function renderIncome(id = ''): string {
   const vatRate = item && Number.isFinite(Number(item.vatRate)) ? item.vatRate : '';
   const incomeType = String(item?.incomeType || 'one_off');
   const isTermBasedIncome = incomeType === 'retainer' || incomeType === 'recurring';
-  const durationValue = item && Number.isFinite(Number(item.durationValue)) ? Number(item.durationValue) : '';
+  const hasDurationValue = item
+    && item.durationValue !== null
+    && item.durationValue !== undefined
+    && String(item.durationValue).trim() !== ''
+    && Number.isFinite(Number(item.durationValue));
+  const durationValue = hasDurationValue ? Number(item.durationValue) : '';
   const durationUnit = String(item?.durationUnit || 'months');
   return `
     <div class="modal-form">

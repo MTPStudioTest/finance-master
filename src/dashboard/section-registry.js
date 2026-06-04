@@ -1,33 +1,33 @@
 export function createSectionRenderer(renderers, renderSectionHeading) {
     const pages = {
         decisions: {
-            title: 'Decisions',
-            copy: 'A deterministic decision board for focus, pressure, opportunities, and what can safely wait.',
+            title: 'Decision Lab',
+            copy: 'Test spending, payment, income, and project decisions before acting.',
             sections: ['decisionBoard']
         },
         flow: {
-            title: 'Flow',
-            copy: 'The timeline and forecast view for upcoming income, obligations, burn, and cash pressure.',
+            title: 'Cash Timeline',
+            copy: 'Upcoming income, obligations, payment plans, low points, and runway over time.',
             sections: ['cashCalendar', 'scenarioOutcomes', 'projection', 'invoices']
         },
         plan: {
-            title: 'Plan',
-            copy: 'The structural money map: accounts, reserves, baseline costs, debts, payment plans, goals, and project cash.',
+            title: 'Money Plan',
+            copy: 'Accounts, reserves, recurring costs, debts, payment plans, and project cash.',
             sections: ['reserves']
         },
         radar: {
-            title: 'Radar',
-            copy: 'Actionable risks, opportunities, concentration, reserve health, and scenario suggestions.',
+            title: 'Risk Radar',
+            copy: 'Early warnings, weak assumptions, concentration risks, and opportunities.',
             sections: ['reports']
         },
         review: {
-            title: 'Review',
-            copy: 'A lightweight maintenance loop for keeping the financial picture trustworthy without turning it into homework.',
+            title: 'Reality Check',
+            copy: 'A lightweight loop to confirm the numbers still reflect reality.',
             sections: ['reviewQueue', 'obligationReview', 'paymentReview', 'tensionSignals', 'weeklyReview']
         },
         logbook: {
-            title: 'Logbook',
-            copy: 'The raw record utility for transactions, imported rows, matching evidence, cleanup, and detail inspection.',
+            title: 'Records',
+            copy: 'Imports, transactions, matching evidence, cleanup, and detailed records.',
             sections: ['ledger']
         },
         settings: {
@@ -42,7 +42,7 @@ export function createSectionRenderer(renderers, renderSectionHeading) {
         if (!page) {
             return [
                 `<div class="fin-dashboard-main">`,
-                renderSectionHeading('Pulse', 'The live financial cockpit for Safe-to-Spend, runway, pressure, and the next move.'),
+                renderSectionHeading('Money Status', 'Your current financial condition, safe-to-spend, runway, and next move.'),
                 renderers.observatoryHeader(),
                 renderers.dashboardCockpit(),
                 renderers.todaysDecision(),

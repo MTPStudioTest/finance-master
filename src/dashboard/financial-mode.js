@@ -345,17 +345,17 @@ window.FinancialMode = (function () {
             dashboard: [
                 { label: 'Add transaction', copy: 'Record cash movement', action: 'openEditModal', args: "'transaction', 'expense'" },
                 { label: 'Add expected income', copy: 'Sharpen the next 30 days', action: 'openEditModal', args: "'income'" },
-                { label: 'Open Flow', copy: 'Review the forecast timeline', action: 'FinancialMode.setSection', args: "'flow'" }
+                { label: 'Open Cash Timeline', copy: 'Review the forecast timeline', action: 'FinancialMode.setSection', args: "'flow'" }
             ],
             decisions: [
-                { label: 'Open Review', copy: 'Act on this week’s focus', action: 'FinancialMode.setSection', args: "'review'" },
-                { label: 'Open Flow', copy: 'Inspect timing behind the decision', action: 'FinancialMode.setSection', args: "'flow'" },
-                { label: 'Open Plan', copy: 'Adjust the structure behind pressure', action: 'FinancialMode.setSection', args: "'plan'" }
+                { label: 'Open Reality Check', copy: 'Act on this week’s focus', action: 'FinancialMode.setSection', args: "'review'" },
+                { label: 'Open Cash Timeline', copy: 'Inspect timing behind the decision', action: 'FinancialMode.setSection', args: "'flow'" },
+                { label: 'Open Money Plan', copy: 'Adjust the structure behind pressure', action: 'FinancialMode.setSection', args: "'plan'" }
             ],
             flow: [
                 { label: 'Add expected income', copy: 'Invoice, retainer, or likely payment', action: 'openEditModal', args: "'income'" },
                 { label: 'Add recurring cost', copy: 'Update baseline burn', action: 'openEditModal', args: "'expense'" },
-                { label: 'Open Logbook', copy: 'Inspect raw transaction records', action: 'FinancialMode.setSection', args: "'logbook'" }
+                { label: 'Open Records', copy: 'Inspect raw transaction records', action: 'FinancialMode.setSection', args: "'logbook'" }
             ],
             logbook: [
                 { label: 'Add transaction', copy: 'Income, expense, or transfer', action: 'openEditModal', args: "'transaction', 'expense'" },
@@ -368,8 +368,8 @@ window.FinancialMode = (function () {
                 { label: 'Add reserve bucket', copy: 'Protect tax, VAT, health, or buffer cash', action: 'openEditModal', args: "'reserveBucket'" }
             ],
             radar: [
-                { label: 'Open Review', copy: 'Resolve the most important signal', action: 'FinancialMode.setSection', args: "'review'" },
-                { label: 'Open Plan', copy: 'Adjust structure behind the signal', action: 'FinancialMode.setSection', args: "'plan'" }
+                { label: 'Open Reality Check', copy: 'Resolve the most important signal', action: 'FinancialMode.setSection', args: "'review'" },
+                { label: 'Open Money Plan', copy: 'Adjust structure behind the signal', action: 'FinancialMode.setSection', args: "'plan'" }
             ],
             review: [
                 { label: 'Save checkpoint', copy: 'Review accounts and leave a note', action: 'FinancialMode.setSection', args: "'review'" },
@@ -1018,7 +1018,7 @@ window.FinancialMode = (function () {
                         label: 'Reserve movement',
                         title: reserveMovement,
                         copy: 'This movement affects protected cash.',
-                        actionLabel: 'Open Plan',
+                        actionLabel: 'Open Money Plan',
                         action: 'FinancialMode.setSection',
                         args: "'plan'",
                     };
@@ -1199,7 +1199,7 @@ window.FinancialMode = (function () {
             </div>
         `;
         const utilityStrip = `
-            <div class="fin-logbook-utility-grid" aria-label="Logbook utilities">
+            <div class="fin-logbook-utility-grid" aria-label="Records utilities">
                 <div class="fin-logbook-utility-card fin-board-panel">
                     <span class="fin-eyebrow">Import / Add Entry</span>
                     <strong>${allTransactions.length} records</strong>
@@ -1262,7 +1262,7 @@ window.FinancialMode = (function () {
                     ${utilityStrip}
                     ${statusStrip}
                     ${filtersHtml}
-                    <div class="fin-tabs" role="tablist" aria-label="Logbook zones">
+                    <div class="fin-tabs" role="tablist" aria-label="Records zones">
                         <button class="fin-tab-btn ${view === 'clean' ? 'active' : ''}" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="clean">Inbox</button>
                         <button class="fin-tab-btn ${view === 'expected' ? 'active' : ''}" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="expected">Expected</button>
                         <button class="fin-tab-btn ${view === 'matched' ? 'active' : ''}" type="button" data-fin-action="set-ledger-view" data-fin-ledger-view="matched">Matched</button>
@@ -1711,7 +1711,7 @@ window.FinancialMode = (function () {
                     <div class="fin-section-heading-row">
                         <div>
                             <div class="widget-title ui-title">${reviewDue ? 'Checkpoint recommended' : 'Checkpoint saved'}</div>
-                            <div class="fin-helper-text">Keep Flow updated weekly. Save checkpoints when you want history, pattern memory, or a review note.</div>
+                            <div class="fin-helper-text">Keep Cash Timeline updated weekly. Save checkpoints when you want history, pattern memory, or a review note.</div>
                             <div class="fin-operating-meta">Last reviewed ${formatShortDate(currentReview && currentReview.lastReviewedAt)}</div>
                         </div>
                         <button class="fin-mini-btn fin-mini-btn--primary" type="button" data-fin-action="complete-monthly-review-inline">Save checkpoint</button>
@@ -1742,7 +1742,7 @@ window.FinancialMode = (function () {
                         <div class="fin-section-heading-row">
                             <div>
                                 <div class="fin-eyebrow">This week’s focus</div>
-                                <div class="fin-helper-text">Choose one focus from Decisions before saving the checkpoint.</div>
+                                <div class="fin-helper-text">Choose one focus from Decision Lab before saving the checkpoint.</div>
                             </div>
                             <span class="fin-status-pill">${focusItems.length}</span>
                         </div>
@@ -1751,7 +1751,7 @@ window.FinancialMode = (function () {
                                 <span><strong>${escapeHtml(focus.title || 'Weekly focus')}</strong><small>${escapeHtml(focus.reason || '')}</small></span>
                                 <span>${escapeHtml(focus.actionLabel || 'Review')}</span>
                             </button>
-                        `).join('') : renderCompactEmpty('No urgent focus from Decisions. Save the checkpoint with the operating loop current.')}
+                        `).join('') : renderCompactEmpty('No urgent focus from Decision Lab. Save the checkpoint with the operating loop current.')}
                     </div>
                     <div class="fin-monthly-review-grid">
                         <div class="fin-monthly-review-panel" aria-label="Income review preview">
@@ -2228,7 +2228,7 @@ window.FinancialMode = (function () {
         if (selected !== rawSelected) setTreasuryProjectView(selected);
         const isProjectView = selected !== 'all';
         const label = selected === 'all'
-            ? 'All Plan'
+            ? 'All Money Plan'
             : (selected === 'unassigned' ? 'Unassigned' : String(project?.name || 'Project plan'));
         const filter = (items) => safeArray(items).filter((entry) => treasuryProjectMatches(entry, selected));
         const fiatAccounts = filter(currentData?.fiatAccounts);
@@ -2270,16 +2270,16 @@ window.FinancialMode = (function () {
                 <div class="widget ui-card glass fin-card fin-board-frame fin-treasury-profiles">
                     <div class="fin-section-heading-row">
                         <div>
-                            <div class="widget-title ui-title">Plan Profiles</div>
-                            <div class="fin-helper-text">Tagged views for projects, clients, and individual wallets. The full Plan stays canonical.</div>
+                            <div class="widget-title ui-title">Money Plan Profiles</div>
+                            <div class="fin-helper-text">Tagged views for projects, clients, and individual wallets. The full Money Plan stays canonical.</div>
                         </div>
                         <div class="fin-treasury-profile-actions">
                             ${context?.project && selected !== 'unassigned' ? financeIconButton({ action: 'openEditModal', args: `'projectProfile', '${escapeActionArg(context.project.id)}'`, label: `Edit ${context.project.name || 'project plan'}` }) : ''}
                             ${renderFinanceButton({ label: 'Add project', action: 'openEditModal', args: "'projectProfile'", variant: 'primary' })}
                         </div>
                     </div>
-                    <div class="fin-treasury-profile-strip" role="list" aria-label="Plan profile views">
-                        ${profileButton('all', 'All Plan', 'Full system')}
+                    <div class="fin-treasury-profile-strip" role="list" aria-label="Money Plan profile views">
+                        ${profileButton('all', 'All Money Plan', 'Full system')}
                         ${projects.map((profile) => profileButton(String(profile.id), profile.name || 'Project plan', profile.clientOrPurpose || 'Project view')).join('')}
                         ${profileButton('unassigned', 'Unassigned', 'No project tag')}
                     </div>
@@ -2337,7 +2337,7 @@ window.FinancialMode = (function () {
         if (projectContext.isProjectView) {
             goals = safeArray(goals).filter((goal) => safeArray(goal.linkedAccountIds).some((id) => projectContext.accountIds.has(String(id))));
         }
-        let pulseStatus = { label: 'Stable', className: 'is-stable', copy: 'Plan has breathing room.' };
+        let pulseStatus = { label: 'Stable', className: 'is-stable', copy: 'Money Plan has breathing room.' };
         if (availableCash < 0 || flowResult < 0) {
             pulseStatus = { label: 'Critical shortfall', className: 'is-critical', copy: 'Near-term obligations need coverage before future goals.' };
         } else if (Number.isFinite(runway) && runway < 2) {
@@ -2348,9 +2348,9 @@ window.FinancialMode = (function () {
             pulseStatus = { label: 'Needs protection', className: 'is-watch', copy: 'Reserve targets are not fully protected yet.' };
         }
         let nextMove = {
-            title: 'Keep Plan reviewed',
+            title: 'Keep Money Plan reviewed',
             body: 'Your main structure is in shape. Keep the checkpoint loop current.',
-            primaryLabel: 'Open Review',
+            primaryLabel: 'Open Reality Check',
             primaryAction: 'FinancialMode.setSection',
             primaryArgs: "'review'",
             secondary: []
@@ -2540,7 +2540,7 @@ window.FinancialMode = (function () {
                     <div class="fin-goals-heading">
                         <div>
                             <div class="widget-title ui-title">Savings & Future Goals</div>
-                            <div class="fin-helper-text">${availableCash < 0 ? 'Pause future goals until the current shortfall is covered.' : 'Future goals sit below immediate Plan pressure.'}</div>
+                            <div class="fin-helper-text">${availableCash < 0 ? 'Pause future goals until the current shortfall is covered.' : 'Future goals sit below immediate Money Plan pressure.'}</div>
                         </div>
                         ${renderFinanceButton({ label: goals.length ? 'Manage goals' : 'Add goal', action: 'openEditModal', args: `'${goals.length ? 'goals' : 'goal'}'` })}
                     </div>
@@ -2557,7 +2557,7 @@ window.FinancialMode = (function () {
                                 </div>
                             `).join('')}
                         </div>
-                    ` : renderCompactEmpty('Set one useful future goal after the current Plan pressure is understood.')}
+                    ` : renderCompactEmpty('Set one useful future goal after the current Money Plan pressure is understood.')}
                 </div>
             </section>
 
@@ -2566,7 +2566,7 @@ window.FinancialMode = (function () {
                     ${renderCollapsible('treasury-accounts', 'Account Details', `${formatCurrency(actualCash)} across ${pluralize(fiatAccounts.length, 'cash account')}`, `
                         <div class="fin-section-heading-row">
                             <div>
-                                <div class="fin-helper-text">Manage real-world cash accounts without letting rows dominate Plan.</div>
+                                <div class="fin-helper-text">Manage real-world cash accounts without letting rows dominate Money Plan.</div>
                             </div>
                             ${renderFinanceButton({ label: 'Add cash account', action: 'openEditModal', args: "'fiatAccount'" })}
                         </div>
@@ -2908,7 +2908,7 @@ window.FinancialMode = (function () {
                 sections: [
                     { label: 'What it means', body: 'Money that exists but is reserved for taxes, VAT, debt, buffer, or another named purpose.' },
                     { label: 'Data sources', body: 'Active reserve buckets and protected account allocations.' },
-                    { label: 'Check if wrong', body: 'Review reserve bucket balances, targets, and active status in Plan.' }
+                    { label: 'Check if wrong', body: 'Review reserve bucket balances, targets, and active status in Money Plan.' }
                 ]
             },
             availableCash: {
@@ -2935,7 +2935,7 @@ window.FinancialMode = (function () {
                 sections: [
                     { label: 'What it means', body: 'The monthly burn added by active debt payment plans.' },
                     { label: 'Why it matters', body: 'Debt balances are liabilities, but active payment plans also affect monthly operating pressure.' },
-                    { label: 'Check if wrong', body: 'Open Plan and confirm every active debt has the right payment cadence and amount.' }
+                    { label: 'Check if wrong', body: 'Open Money Plan and confirm every active debt has the right payment cadence and amount.' }
                 ]
             },
             forecastConfidence: {
@@ -2983,15 +2983,15 @@ window.FinancialMode = (function () {
                 sections: [
                     { label: 'What it means', body: 'The single most useful next move based on cash pressure, overdue items, missing plans, and review cadence.' },
                     { label: 'How it is chosen', body: 'Projected gaps, overdue obligations, missing payment plans, review readiness, and missing inputs are prioritized.' },
-                    { label: 'Check if wrong', body: 'Open Review, Flow, or Plan to clear stale records and confirm upcoming money movement.' }
+                    { label: 'Check if wrong', body: 'Open Reality Check, Cash Timeline, or Money Plan to clear stale records and confirm upcoming money movement.' }
                 ]
             },
             nextMoneyIn: {
                 title: 'Next Money In',
                 sections: [
                     { label: 'What it means', body: 'The next active expected income item that is more concrete than a lead or risky proposal.' },
-                    { label: 'Data sources', body: 'Flow income records, expected dates, status, and probability.' },
-                    { label: 'Check if wrong', body: 'Update the income status, expected date, amount, or reliability in Flow.' }
+                    { label: 'Data sources', body: 'Cash Timeline income records, expected dates, status, and probability.' },
+                    { label: 'Check if wrong', body: 'Update the income status, expected date, amount, or reliability in Cash Timeline.' }
                 ]
             },
             nextObligations: {
@@ -2999,7 +2999,7 @@ window.FinancialMode = (function () {
                 sections: [
                     { label: 'What it means', body: 'Upcoming costs already spoken for, including recurring obligations and debt payment plan pressure.' },
                     { label: 'How it is ordered', body: 'Unpaid obligations are sorted by due date, with the closest items shown first.' },
-                    { label: 'Check if wrong', body: 'Open Plan to update recurring costs, due dates, payment plans, or paid/deferred status.' }
+                    { label: 'Check if wrong', body: 'Open Money Plan to update recurring costs, due dates, payment plans, or paid/deferred status.' }
                 ]
             },
             financialWeather: {
@@ -3469,7 +3469,7 @@ window.FinancialMode = (function () {
             forces.push(fallback);
         }
 
-        let mainLever = 'Keep Flow and Plan current';
+        let mainLever = 'Keep Cash Timeline and Money Plan current';
         if (availableCash < 0) mainLever = 'Cover near-term obligations';
         else if (debt.monthlyPressure > expenseGravity.flexibleTotal && debt.monthlyPressure > 0) mainLever = 'Debt plan + flexible cost reduction';
         else if (reserve.coverage < 50) mainLever = 'Protect priority reserves';
@@ -3534,7 +3534,7 @@ window.FinancialMode = (function () {
         const moves = [];
         const availableCash = treasuryNumber('availableCash', Number(currentSnapshot && currentSnapshot.availableCash) || 0);
         if (availableCash < 0 || risks.some((risk) => risk.name === 'Liquidity risk' && insightsLevelRank(risk.level) >= 2)) {
-            moves.push({ title: 'Stabilize the next 30 days', why: 'Available cash is under near-term pressure.', effect: 'Reduces immediate liquidity risk.', label: 'Open Plan', action: 'FinancialMode.setSection', args: "'plan'" });
+            moves.push({ title: 'Stabilize the next 30 days', why: 'Available cash is under near-term pressure.', effect: 'Reduces immediate liquidity risk.', label: 'Open Money Plan', action: 'FinancialMode.setSection', args: "'plan'" });
         }
         if (debt.monthlyPressure > 0 && insightsLevelRank((risks.find((risk) => risk.name === 'Debt pressure') || {}).level) >= 1) {
             moves.push({ title: 'Review debt pressure', why: 'Debt plans are part of monthly burn.', effect: `Pressure visible: ${formatCurrency(debt.monthlyPressure)} / month.`, label: 'Open debt planner', action: 'FinancialMode.setSection', args: "'plan'" });
@@ -3543,13 +3543,13 @@ window.FinancialMode = (function () {
             moves.push({ title: 'Build a €500 micro-buffer', why: 'A small protected buffer makes delayed invoices less disruptive.', effect: 'Improves reserve discipline.', label: 'Add reserve bucket', action: 'FinancialMode.openAddModal', args: "'reserveBucket'" });
         }
         if (dependency.top && dependency.top.pct >= 55) {
-            moves.push({ title: 'Diversify income over 90 days', why: `${dependency.top.source} carries ${dependency.top.pct}% of tracked income.`, effect: 'Lowers concentration risk.', label: 'Open Flow', action: 'FinancialMode.setSection', args: "'flow'" });
+            moves.push({ title: 'Diversify income over 90 days', why: `${dependency.top.source} carries ${dependency.top.pct}% of tracked income.`, effect: 'Lowers concentration risk.', label: 'Open Cash Timeline', action: 'FinancialMode.setSection', args: "'flow'" });
         }
         if (!safeArray(currentReview && currentReview.history).length) {
-            moves.push({ title: 'Save your first checkpoint', why: 'Pattern detection starts after a saved checkpoint.', effect: 'Unlocks cash rhythm and trend memory.', label: 'Open Review', action: 'FinancialMode.setSection', args: "'review'" });
+            moves.push({ title: 'Save your first checkpoint', why: 'Pattern detection starts after a saved checkpoint.', effect: 'Unlocks cash rhythm and trend memory.', label: 'Open Reality Check', action: 'FinancialMode.setSection', args: "'review'" });
         }
         if (!moves.length) {
-            moves.push({ title: 'Keep the operating loop current', why: 'The current diagnosis has no urgent imbalance.', effect: scenario.health, label: 'Open Review', action: 'FinancialMode.setSection', args: "'review'" });
+            moves.push({ title: 'Keep the operating loop current', why: 'The current diagnosis has no urgent imbalance.', effect: scenario.health, label: 'Open Reality Check', action: 'FinancialMode.setSection', args: "'review'" });
         }
         return moves.slice(0, 5);
     }
@@ -3672,9 +3672,9 @@ window.FinancialMode = (function () {
     function renderDecisionOpportunityRow(card, index = 0) {
         return renderFinancialListRow({
             title: card && card.title || 'Revenue opportunity',
-            meta: `${card && card.sourceData || 'Flow opportunity'} · ${card && card.metricImpact || 'Runway impact'}${card && card.optionalScenario ? ' · scenario-ready' : ''}`,
+            meta: `${card && card.sourceData || 'Cash Timeline opportunity'} · ${card && card.metricImpact || 'Runway impact'}${card && card.optionalScenario ? ' · scenario-ready' : ''}`,
             iconHtml: renderSAGGlyph('money-in', { size: 'sm', tone: 'success' }),
-            actionHtml: decisionActionButton(card && card.actionLabel || 'Open Flow', card && card.actionRoute || 'flow'),
+            actionHtml: decisionActionButton(card && card.actionLabel || 'Open Cash Timeline', card && card.actionRoute || 'flow'),
             extraClass: 'fin-board-list-row fin-decision-opportunity-row',
             attrs: `data-decision-opportunity="${escapeHtml(card && card.id || `opportunity-${index}`)}"`
         });
@@ -3751,7 +3751,7 @@ window.FinancialMode = (function () {
                     </div>
                     <div class="widget ui-card glass fin-card fin-board-frame fin-decisions-safe">
                         <div class="widget-title ui-title">Why This Board Exists</div>
-                        <div class="fin-helper-text">Decisions turns local cash, runway, obligations, reserves, and review state into an action queue. Formula detail stays in the help layer.</div>
+                        <div class="fin-helper-text">Decision Lab turns local cash, runway, obligations, reserves, and review state into an action queue. Formula detail stays in the help layer.</div>
                         ${renderMetricExplanation('safeToSpend') || renderCompactEmpty('Safe-to-Spend explanation is unavailable until treasury data exists.')}
                     </div>
                 </div>
@@ -3764,7 +3764,7 @@ window.FinancialMode = (function () {
                             <div class="widget-title ui-title">Decision Cards</div>
                             <div class="fin-helper-text">Signals grouped as actions, risks, and opportunities. Open the source board only when you need to act.</div>
                         </div>
-                        ${decisionActionButton('Open Radar', 'radar')}
+                        ${decisionActionButton('Open Risk Radar', 'radar')}
                     </div>
                     <div class="fin-decision-card-grid">
                         ${cards.length ? cards.map((card, index) => renderDecisionCard(card, index)).join('') : renderCompactEmpty('No decision cards for the current local data.')}
@@ -3779,7 +3779,7 @@ window.FinancialMode = (function () {
                             <div class="widget-title ui-title">Pressure Timeline</div>
                             <div class="fin-helper-text">Upcoming costs, debt starts, expected income, and pressure signals grouped by horizon.</div>
                         </div>
-                        ${decisionActionButton('Open Flow', 'flow')}
+                        ${decisionActionButton('Open Cash Timeline', 'flow')}
                     </div>
                     <div class="fin-decision-timeline-grid">
                         ${renderDecisionTimelineColumn('7d', 'Next 7 days')}
@@ -3799,10 +3799,10 @@ window.FinancialMode = (function () {
                         </div>
                     </div>
                     <div class="widget ui-card glass fin-card fin-board-frame fin-decisions-opportunities">
-                        <div class="widget-title ui-title">Opportunity Radar</div>
+                        <div class="widget-title ui-title">Opportunity Signals</div>
                         <div class="fin-helper-text">Revenue opportunities ranked by runway and safety impact.</div>
                         <div class="fin-decision-opportunity-list">
-                            ${opportunities.length ? opportunities.map((card, index) => renderDecisionOpportunityRow(card, index)).join('') : renderCompactEmpty('Add dated opportunities in Flow to see runway impact.')}
+                            ${opportunities.length ? opportunities.map((card, index) => renderDecisionOpportunityRow(card, index)).join('') : renderCompactEmpty('Add dated opportunities in Cash Timeline to see runway impact.')}
                         </div>
                     </div>
                 </div>
@@ -3926,7 +3926,7 @@ window.FinancialMode = (function () {
             <section class="fin-section">
                 <div class="widget ui-card glass fin-card fin-board-frame fin-insights-hero">
                     <div class="fin-insights-hero-main">
-                        <span class="fin-eyebrow">Radar status</span>
+                        <span class="fin-eyebrow">Risk Radar status</span>
                         <strong>${escapeHtml(diagnosis.mainRisk)}</strong>
                         <span class="fin-insights-hero-state">${escapeHtml(diagnosis.headline)}</span>
                         <p>${escapeHtml((risks[0] && risks[0].explanation) || 'Your local finance picture is ready for review.')}</p>
@@ -3977,7 +3977,7 @@ window.FinancialMode = (function () {
                                 <div class="fin-insights-locked-rows">
                                     ${['Cash rhythm', 'Burn trend', 'Income reliability', 'Debt velocity', 'Reserve discipline'].map((label) => `<div><span>${escapeHtml(label)}</span><small>Locked</small></div>`).join('')}
                                 </div>
-                                ${renderFinanceButton({ label: 'Open Review', action: 'FinancialMode.setSection', args: "'review'" })}
+                                ${renderFinanceButton({ label: 'Open Reality Check', action: 'FinancialMode.setSection', args: "'review'" })}
                             </div>
                         `}
                     </div>
@@ -4255,7 +4255,7 @@ window.FinancialMode = (function () {
                 <div class="fin-pulse-mini-card fin-widget">
                     ${header}
                     <div class="fin-widget-body">
-                    ${renderCompactEmpty('Add confirmed or expected income in Flow.')}
+                    ${renderCompactEmpty('Add confirmed or expected income in Cash Timeline.')}
                     </div>
                     ${renderWidgetFooter(renderFinanceButton({ label: 'Add income', action: 'FinancialMode.openAddModal', args: "'income'", variant: 'primary' }))}
                 </div>
@@ -4276,7 +4276,7 @@ window.FinancialMode = (function () {
                     })}
                     <p class="fin-widget-interpretation">Expected income supports the forecast, but does not count as actual cash until received.</p>
                 </div>
-                ${renderWidgetFooter(renderFinanceButton({ label: 'Open Flow', action: 'FinancialMode.setSection', args: "'flow'" }))}
+                ${renderWidgetFooter(renderFinanceButton({ label: 'Open Cash Timeline', action: 'FinancialMode.setSection', args: "'flow'" }))}
             </div>
         `;
     }
@@ -4303,9 +4303,9 @@ window.FinancialMode = (function () {
                             })}
                         `).join('')}
                     </div>
-                ` : renderCompactEmpty('Add fixed costs or debt payment plans in Plan.')}
+                ` : renderCompactEmpty('Add fixed costs or debt payment plans in Money Plan.')}
                 </div>
-                ${renderWidgetFooter(renderFinanceButton({ label: 'Open Plan', action: 'FinancialMode.setSection', args: "'plan'" }))}
+                ${renderWidgetFooter(renderFinanceButton({ label: 'Open Money Plan', action: 'FinancialMode.setSection', args: "'plan'" }))}
             </div>
         `;
     }
@@ -4412,7 +4412,7 @@ window.FinancialMode = (function () {
                                 <strong>${runwayLabel}<small> months</small></strong>
                                 <div class="fin-runway-pill"><span></span>${escapeHtml(runwayStatus.label)}</div>
                                 <p>${escapeHtml(runwayCopy)}</p>
-                                ${renderWidgetFooter(renderFinanceButton({ label: 'Open Flow', action: 'FinancialMode.setSection', args: "'flow'" }))}
+                                ${renderWidgetFooter(renderFinanceButton({ label: 'Open Cash Timeline', action: 'FinancialMode.setSection', args: "'flow'" }))}
                             </div>
                         </div>
                     </div>
@@ -4430,7 +4430,7 @@ window.FinancialMode = (function () {
         let decision = {
             title: 'No urgent decision',
             body: 'The cockpit is steady. A short checkpoint will keep it that way.',
-            buttons: [{ label: 'Open Review', action: 'FinancialMode.setSection', args: "'review'" }]
+            buttons: [{ label: 'Open Reality Check', action: 'FinancialMode.setSection', args: "'review'" }]
         };
 
         if (expectedMonthEnd < 0) {
@@ -4440,14 +4440,14 @@ window.FinancialMode = (function () {
                 buttons: [
                     { label: 'Review income', action: 'FinancialMode.setSection', args: "'flow'" },
                     { label: 'Adjust reserves', action: 'FinancialMode.setSection', args: "'plan'" },
-                    { label: 'Open Flow', action: 'FinancialMode.setSection', args: "'flow'" }
+                    { label: 'Open Cash Timeline', action: 'FinancialMode.setSection', args: "'flow'" }
                 ]
             };
         } else if (overdue) {
             decision = {
                 title: overdue.title,
                 body: overdue.reason,
-                buttons: [{ label: 'Open Review', action: 'FinancialMode.setSection', args: "'review'" }]
+                buttons: [{ label: 'Open Reality Check', action: 'FinancialMode.setSection', args: "'review'" }]
             };
         } else if (missingPlan) {
             decision = {
@@ -4555,7 +4555,7 @@ window.FinancialMode = (function () {
                                 <div class="fin-weather-signal">
                                     <div class="fin-weather-signal-icon">${renderSAGGlyph(weatherSignalIcon(signal), { size: 'sm', tone: String(signal.severity || '').toLowerCase() === 'critical' ? 'danger' : 'muted' })}</div>
                                     <div>
-                                        <span>${escapeHtml(signal.source || 'Radar')} · ${escapeHtml(signal.severity || 'info')}</span>
+                                        <span>${escapeHtml(signal.source || 'Risk Radar')} · ${escapeHtml(signal.severity || 'info')}</span>
                                         <strong>${escapeHtml(signal.title)}</strong>
                                         <small>${escapeHtml(signal.reason)}</small>
                                     </div>
@@ -4689,7 +4689,7 @@ window.FinancialMode = (function () {
                             <div class="widget-title ui-title">Obligations</div>
                             <div class="fin-helper-text">Costs that are already spoken for. Overdue first, then the next 90 days.</div>
                         </div>
-                        ${renderFinanceButton({ label: 'Open Review', action: 'FinancialMode.setSection', args: "'review'" })}
+                        ${renderFinanceButton({ label: 'Open Reality Check', action: 'FinancialMode.setSection', args: "'review'" })}
                     </div>
                     <div class="fin-status-grid">
                         <div class="fin-status-card">${renderStatusPill('overdue')}<strong>${overdue.length}</strong><span>${formatCurrency(overdue.reduce((sum, item) => sum + Number(item.amount || 0), 0))}</span></div>
@@ -4706,7 +4706,7 @@ window.FinancialMode = (function () {
                             extraClass: 'fin-board-list-row'
                         })}
                     `).join('') : renderCompactEmpty('Add fixed costs to see what is due next.')}
-                    ${overdue.length + dueSoon.length + upcoming.length > obligations.length ? '<div class="fin-helper-text">Open Review to resolve the full obligation queue.</div>' : ''}
+                    ${overdue.length + dueSoon.length + upcoming.length > obligations.length ? '<div class="fin-helper-text">Open Reality Check to resolve the full obligation queue.</div>' : ''}
                 </div>
             </section>
         `;
@@ -4723,7 +4723,7 @@ window.FinancialMode = (function () {
                             <div class="widget-title ui-title">Review Queue</div>
                             <div class="fin-helper-text">${unresolvedCount} unresolved · Only items that need a classification, decision, or check.</div>
                         </div>
-                        ${renderFinanceButton({ label: 'Open Logbook', action: 'FinancialMode.setSection', args: "'logbook'" })}
+                        ${renderFinanceButton({ label: 'Open Records', action: 'FinancialMode.setSection', args: "'logbook'" })}
                     </div>
                     ${queue.length ? queue.map((item) => renderReviewRow(item, renderReviewQueueActions(item))).join('') : renderCompactEmpty('All items reviewed and reconciled.')}
                 </div>
@@ -4825,7 +4825,7 @@ window.FinancialMode = (function () {
                             <div class="widget-title ui-title">Scenario Pressure</div>
                             <div class="fin-helper-text">Conservative, expected, and optimistic cash paths using current obligations, payment plans, reserves, and expected income.</div>
                         </div>
-                        ${renderFinanceButton({ label: 'Edit Plan inputs', action: 'FinancialMode.setSection', args: "'plan'" })}
+                        ${renderFinanceButton({ label: 'Edit Money Plan inputs', action: 'FinancialMode.setSection', args: "'plan'" })}
                     </div>
                     <div class="fin-status-grid fin-flow-scenario-grid">
                         ${horizons.map((entry) => `
@@ -4959,7 +4959,7 @@ window.FinancialMode = (function () {
                     <div class="fin-liquidity-copy">${horizonText}</div>
                     <div class="fin-liquidity-actions">
                         ${renderFinanceButton({ label: 'Review recurring costs', action: 'FinancialMode.openAddModal', args: "'expense'" })}
-                        ${renderFinanceButton({ label: 'Open Review', action: 'FinancialMode.setSection', args: "'review'" })}
+                        ${renderFinanceButton({ label: 'Open Reality Check', action: 'FinancialMode.setSection', args: "'review'" })}
                     </div>
                 </div>
                 ${reviewDue ? `
@@ -5051,7 +5051,7 @@ window.FinancialMode = (function () {
                 <div class="widget ui-card glass fin-card fin-board-frame fin-calendar-card fin-flow-timeline-card">
                     <div class="fin-section-heading-row">
                         <div>
-                            <div class="widget-title ui-title">Flow Timeline</div>
+                            <div class="widget-title ui-title">Cash Timeline</div>
                             <div class="fin-helper-text">Upcoming income, obligations, payment plans, and low points from the current forecast.</div>
                         </div>
                         <span class="fin-runway-pill"><span></span>${escapeHtml(weather.state || 'Stable')}</span>
@@ -5082,7 +5082,7 @@ window.FinancialMode = (function () {
                                 extraClass: `fin-calendar-event fin-board-list-row is-${flowEventTone(entry)}`,
                                 attrs: `data-flow-timeline-item="${escapeHtml(entry.sourceId || entry.id || '')}"`
                             })}
-                        `).join('') : renderCompactEmpty('Add dated income, recurring costs, or payment plans to shape the Flow timeline.')}
+                        `).join('') : renderCompactEmpty('Add dated income, recurring costs, or payment plans to shape the Cash Timeline.')}
                     </div>
                 </div>
             </section>
@@ -5296,7 +5296,7 @@ window.FinancialMode = (function () {
                 <div class="widget ui-card glass fin-card fin-board-frame fin-projection-card">
                     <div class="drag-handle">⋮⋮</div>
                     <div class="widget-title ui-title">Runway Projection</div>
-                    <div class="fin-helper-text">A 12-month visual forecast. Use Flow for timing and Plan for the structural inputs behind the line.</div>
+                    <div class="fin-helper-text">A 12-month visual forecast. Use Cash Timeline for timing and Money Plan for the structural inputs behind the line.</div>
                     <div id="fin-projection-chart" class="fin-chart-container fin-chart-container--subtle">
                         <svg id="fin-projection-svg" width="100%" height="100%" viewBox="0 0 960 280" preserveAspectRatio="none"></svg>
                     </div>

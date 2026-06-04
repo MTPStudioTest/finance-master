@@ -68,16 +68,16 @@ function probabilityFor(deal) {
 }
 
 function routeForSource(source) {
-  if (source === 'Plan') return 'plan';
-  if (source === 'Flow') return 'flow';
-  if (source === 'Radar') return 'radar';
-  if (source === 'Review') return 'review';
+  if (source === 'Plan' || source === 'Money Plan') return 'plan';
+  if (source === 'Flow' || source === 'Cash Timeline') return 'flow';
+  if (source === 'Radar' || source === 'Risk Radar') return 'radar';
+  if (source === 'Review' || source === 'Reality Check') return 'review';
   return 'decisions';
 }
 
 function makeCard(input) {
   const severity = input.severity || 'info';
-  const source = input.source || 'Decisions';
+  const source = input.source || 'Decision Lab';
   return {
     id: input.id,
     title: input.title,
@@ -194,11 +194,11 @@ export function buildDecisionEngine({
       why: 'The current cash position cannot cover the visible near-term commitments.',
       sourceData: `Safe-to-Spend ${round(safeToSpend)} · Available cash ${round(availableCash)}`,
       suggestedAction: 'Protect liquidity before optional spending.',
-      actionLabel: 'Open Plan',
+      actionLabel: 'Open Money Plan',
       actionRoute: 'plan',
       metricImpact: `${round(Math.min(safeToSpend, availableCash))}`,
       trigger: 'negative-safe-to-spend-or-available-cash',
-      source: 'Plan',
+      source: 'Money Plan',
     }));
   }
 
@@ -212,11 +212,11 @@ export function buildDecisionEngine({
       why: 'Runway below one month leaves little room for delayed income or surprise obligations.',
       sourceData: `${round(runway)} months`,
       suggestedAction: 'Reduce burn or collect confirmed revenue this week.',
-      actionLabel: 'Open Flow',
+      actionLabel: 'Open Cash Timeline',
       actionRoute: 'flow',
       metricImpact: `${round(runway)} months`,
       trigger: 'runway-under-one-month',
-      source: 'Flow',
+      source: 'Cash Timeline',
     }));
   }
 
@@ -230,11 +230,11 @@ export function buildDecisionEngine({
       why: 'Available cash may cover the next 30 days while recurring pressure still drains the next months.',
       sourceData: `Safe-to-Spend ${round(safeToSpend)} · runway ${round(runway)} months`,
       suggestedAction: 'Favor cash-preserving choices until runway is above two months.',
-      actionLabel: 'Open Flow',
+      actionLabel: 'Open Cash Timeline',
       actionRoute: 'flow',
       metricImpact: `${round(runway)} months`,
       trigger: 'safe-to-spend-positive-runway-under-two',
-      source: 'Flow',
+      source: 'Cash Timeline',
     }));
   }
 
@@ -248,11 +248,11 @@ export function buildDecisionEngine({
       why: 'The month needs a liquidity decision before new optional spending.',
       sourceData: `${round(obligations30)} due · ${round(safeToSpend)} safe`,
       suggestedAction: 'Delay optional spending or pull confirmed income forward.',
-      actionLabel: 'Open Review',
+      actionLabel: 'Open Reality Check',
       actionRoute: 'review',
       metricImpact: `${round(obligations30 - Math.max(0, safeToSpend))} gap`,
       trigger: 'thirty-day-obligations-exceed-safe-cash',
-      source: 'Review',
+      source: 'Reality Check',
     }));
   }
 
@@ -316,7 +316,7 @@ export function buildDecisionEngine({
           metricImpact: `+${round(pressure)} monthly pressure`,
           sourceIds: [debt && debt.id],
           trigger: 'debt-starts-within-thirty-days',
-          source: 'Plan',
+          source: 'Money Plan',
           optionalScenario: true,
         }));
       }
@@ -336,7 +336,7 @@ export function buildDecisionEngine({
         metricImpact: `${round(pressure)} hidden monthly pressure`,
         sourceIds: [debt && debt.id],
         trigger: 'paused-debt-hidden-pressure',
-        source: 'Plan',
+        source: 'Money Plan',
       }));
     }
     if (status === 'irregular' && pressure <= 0) {
@@ -354,7 +354,7 @@ export function buildDecisionEngine({
         metricImpact: 'Hidden pressure',
         sourceIds: [debt && debt.id],
         trigger: 'irregular-debt-without-pressure',
-        source: 'Plan',
+        source: 'Money Plan',
       }));
     }
     if (status === 'missing') {
@@ -372,7 +372,7 @@ export function buildDecisionEngine({
         metricImpact: 'Unknown monthly pressure',
         sourceIds: [debt && debt.id],
         trigger: 'missing-debt-payment-plan',
-        source: 'Plan',
+        source: 'Money Plan',
       }));
     }
   });
@@ -388,11 +388,11 @@ export function buildDecisionEngine({
       why: 'Unreserved tax money can make cash look safer than it is.',
       sourceData: `${round(taxReserve.current)} protected · ${round(taxReserve.target)} target`,
       suggestedAction: 'Allocate part of incoming business revenue to tax/VAT reserve.',
-      actionLabel: 'Open Plan',
+      actionLabel: 'Open Money Plan',
       actionRoute: 'plan',
       metricImpact: `${round(taxReserve.gap)} reserve gap`,
       trigger: 'business-income-with-tax-reserve-gap',
-      source: 'Plan',
+      source: 'Money Plan',
     }));
   }
 
@@ -406,11 +406,11 @@ export function buildDecisionEngine({
       why: 'The current balance may hide a weak operating structure.',
       sourceData: `${round(monthlyBurn)} burn · ${round(expectedIncome30)} expected income`,
       suggestedAction: 'Review recurring burn and near-term revenue coverage.',
-      actionLabel: 'Open Radar',
+      actionLabel: 'Open Risk Radar',
       actionRoute: 'radar',
       metricImpact: `${round(monthlyBurn - expectedIncome30)} monthly structure gap`,
       trigger: 'positive-cash-high-burn-relative-revenue',
-      source: 'Radar',
+      source: 'Risk Radar',
     }));
   }
 
@@ -443,12 +443,12 @@ export function buildDecisionEngine({
         why: solvesPressure ? 'This opportunity helps the current pressure point.' : 'The opportunity meaningfully improves the runway picture.',
         sourceData: `${round(expectedValue)} expected value · ${Math.round(probability * 100)}% confidence`,
         suggestedAction: 'Follow up while it can still affect the forecast.',
-        actionLabel: 'Open Flow',
+        actionLabel: 'Open Cash Timeline',
         actionRoute: 'flow',
         metricImpact: `+${runwayImpact.toFixed(1)} months runway`,
         sourceIds: [deal && deal.id],
         trigger: 'opportunity-runway-impact',
-        source: 'Flow',
+        source: 'Cash Timeline',
         optionalScenario: true,
       }));
     }
@@ -465,11 +465,11 @@ export function buildDecisionEngine({
       why: 'Manual finance data stays trustworthy when cash accounts and assumptions are reviewed.',
       sourceData: 'No saved checkpoint',
       suggestedAction: 'Run the weekly review and choose this week’s focus.',
-      actionLabel: 'Open Review',
+      actionLabel: 'Open Reality Check',
       actionRoute: 'review',
       metricImpact: 'Improves confidence',
       trigger: 'weekly-review-not-current',
-      source: 'Review',
+      source: 'Reality Check',
     }));
   }
 

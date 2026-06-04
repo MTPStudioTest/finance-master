@@ -305,7 +305,7 @@ export function buildDangerZoneForecast(forecast = {}) {
     ? 'Pull confirmed income forward or reduce near-term obligations.'
     : outgoing > incoming
       ? 'Review upcoming obligations and expected income timing.'
-      : 'Keep Flow current and watch the next forecast low.';
+      : 'Keep Cash Timeline current and watch the next forecast low.';
   return {
     status: lowestAmount < 0 ? 'shortfall' : lowestAmount < Math.max(250, outgoing * 0.1) ? 'tight' : 'clear',
     lowestAmount,
@@ -342,7 +342,7 @@ export function buildFinancialWeather({ snapshot = {}, treasury = {}, forecast =
   } else if (warnings.length || reserve.status === 'partial') {
     state = 'Stable';
     reason = warnings[0] || 'Core cash is steady, with one planning gap to watch.';
-    suggestedAction = 'Keep Plan and Flow current.';
+    suggestedAction = 'Keep Money Plan and Cash Timeline current.';
   }
 
   return {
@@ -363,7 +363,7 @@ export function buildTopSignals({ readModel = {}, snapshot = {}, treasury = {}, 
       severity: signal.severity || 'info',
       reason: String(signal.reason || ''),
       recommendedAction: String(signal.recommendedAction || 'Review this item.'),
-      source: signal.source || 'Pulse',
+      source: signal.source || 'Money Status',
     });
   };
 
@@ -373,7 +373,7 @@ export function buildTopSignals({ readModel = {}, snapshot = {}, treasury = {}, 
       severity: danger.status === 'shortfall' ? 'critical' : 'warning',
       reason: danger.cause,
       recommendedAction: danger.suggestedAction,
-      source: 'Flow',
+      source: 'Cash Timeline',
     });
   }
   if (reserve.status === 'thin' || reserve.status === 'partial' || reserve.status === 'unconfigured') {
@@ -383,8 +383,8 @@ export function buildTopSignals({ readModel = {}, snapshot = {}, treasury = {}, 
       reason: reserve.status === 'unconfigured'
         ? 'No active reserve target is configured.'
         : `${reserve.coveragePercent}% of reserve targets are funded.`,
-      recommendedAction: 'Review reserve targets in Plan.',
-      source: 'Plan',
+      recommendedAction: 'Review reserve targets in Money Plan.',
+      source: 'Money Plan',
     });
   }
   if (safeArray(readModel && readModel.debtAccounts).some((debt) => (Number(debt && debt.outstanding) || 0) > 0 && String(debt && debt.planStatus || (Number(debt && debt.minimumPaymentMonthly) > 0 ? 'active' : 'missing')) === 'missing')) {
@@ -393,7 +393,7 @@ export function buildTopSignals({ readModel = {}, snapshot = {}, treasury = {}, 
       severity: 'warning',
       reason: 'A debt item has outstanding balance without a normalized payment plan.',
       recommendedAction: 'Add a payment plan so burn and runway stay accurate.',
-      source: 'Plan',
+      source: 'Money Plan',
     });
   }
   const openReviewCount = safeArray(treasury && treasury.reviewQueue).length || safeArray(snapshot && snapshot.attentionQueue).length;
@@ -402,8 +402,8 @@ export function buildTopSignals({ readModel = {}, snapshot = {}, treasury = {}, 
       title: 'Open review items',
       severity: openReviewCount >= 5 ? 'warning' : 'info',
       reason: `${openReviewCount} item${openReviewCount === 1 ? '' : 's'} need classification, matching, or a decision.`,
-      recommendedAction: 'Clear the most important items in Review.',
-      source: 'Review',
+      recommendedAction: 'Clear the most important items in Reality Check.',
+      source: 'Reality Check',
     });
   }
   if (!signals.length) {
@@ -412,7 +412,7 @@ export function buildTopSignals({ readModel = {}, snapshot = {}, treasury = {}, 
       severity: 'info',
       reason: 'The current local data does not show an urgent imbalance.',
       recommendedAction: 'Keep the weekly review cadence.',
-      source: 'Radar',
+      source: 'Risk Radar',
     });
   }
 

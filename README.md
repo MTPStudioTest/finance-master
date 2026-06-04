@@ -35,8 +35,8 @@ npm run build
 - Scan overdue, due-soon, and upcoming obligations.
 - Classify future income as confirmed, expected, or risky.
 - Use Conservative, Expected, and Optimistic scenarios to understand the next 90 days.
-- Use Transactions as a searchable raw log, not the emotional center of the app.
-- Use Review to resolve unclear, overdue, risky, or uncategorized items.
+- Use Records as a searchable raw log, not the emotional center of the app.
+- Use Reality Check to resolve unclear, overdue, risky, or uncategorized items.
 - Use Settings only for currency, forecast horizon, entities by scope, cash accounts, reserve buckets, recurring costs, debt, local import/export, and reset.
 
 ## Included
@@ -45,7 +45,7 @@ npm run build
 - Reserves: tax reserve, VAT reserve, health insurance, debt repayment, buffer
 - Income Pipeline: confirmed, expected, risky
 - Obligations: overdue, due soon, upcoming
-- Review Queue for unclear, risky, overdue, or uncategorized items
+- Reality Check queue for unclear, risky, overdue, or uncategorized items
 - Scenario outcomes: Conservative, Expected, Optimistic
 - Local-first IndexedDB persistence
 - Local CSV transaction import with duplicate/rejected row preview
