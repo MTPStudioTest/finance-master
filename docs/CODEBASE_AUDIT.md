@@ -266,10 +266,12 @@ Current coverage includes:
 - Decision Lab layout/readability is a known roadmap-critical area to verify visually.
 - Settings now keeps backup/restore/reset/sample data and app preferences. CSV import actions, import history, and saved CSV profiles live with Records, where raw transaction utility belongs.
 - Records now has one header action cluster for Import CSV, Export, and Add transaction; duplicate utility-card import/add buttons were removed to improve action hierarchy.
+- Money Plan now labels protected account allocations and reserve bucket balances separately, uses readable debt plan counts, and gives Protected Money one primary creation action.
+- Money Status now raises Financial Weather directly below the Safe-to-Spend cockpit, keeps weather signals compact, and makes the daily focus action primary.
 - `Store.seedDemoIfNeeded` can repopulate an empty deployed app even after a stale `deleted` demo flag; this is intentional per comment but should be reviewed against the roadmap's sample-data separation rule before changing behavior.
 - Schema migration has a registry but no historical migrations beyond current-shape clone.
 - Backup restore validation is strong, but future schema additions must update backup validation and migration fixtures.
-- Protected cash can come from protected accounts/reserve buckets; Money Plan must explain sources clearly when explicit reserve buckets are zero but protected cash exists.
+- Central protected cash can come from protected account allocations while explicit reserve buckets are tracked separately; future calculation work should decide whether reserve bucket balances should become canonical protected cash inputs or remain planning containers.
 - Debt/payment-plan UI still needs explicit lifecycle affordances and labels even though the calculation layer has status support.
 
 ## Phase 1 Acceptance Criteria

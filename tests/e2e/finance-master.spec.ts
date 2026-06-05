@@ -181,6 +181,14 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
   await expect(page.getByText('Payment plan rule', { exact: true })).toBeVisible();
   await expect(page.getByText('Cash Structure', { exact: true })).toBeVisible();
   await expect(page.getByText('Protected Money', { exact: true })).toBeVisible();
+  await expect(page.getByText('Protected cash can come from account allocations and reserve buckets. This money has a job; it is not spare.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Protected account allocations', { exact: true })).toBeVisible();
+  await expect(page.getByText('Reserve bucket balances', { exact: true })).toBeVisible();
+  await expect(page.getByText('Debt plans confirmed', { exact: true })).toBeVisible();
+  await expect(page.locator('.fin-treasury-pulse-grid').getByText(/of/)).toBeVisible();
+  const protectedMoney = page.locator('.fin-treasury-vault');
+  await expect(protectedMoney.getByRole('button', { name: 'Add reserve bucket', exact: true })).toHaveClass(/fin-button--primary/);
+  await expect(protectedMoney.getByRole('button', { name: 'Allocate cash', exact: true })).toHaveClass(/fin-button--secondary/);
   await expect(page.getByText('Recurring Burn', { exact: true })).toBeVisible();
   await expect(page.getByText('Debt & Payment Plans', { exact: true })).toBeVisible();
   await expect(page.getByText('Savings & Future Goals', { exact: true })).toBeVisible();
@@ -483,6 +491,8 @@ test('treasury cash accounts and reserve buckets can be edited and persist', asy
   await expect(page.getByText('Payment plan rule', { exact: true })).toBeVisible();
   await expect(page.getByText('Cash Structure', { exact: true })).toBeVisible();
   await expect(page.getByText('Protected Money', { exact: true })).toBeVisible();
+  await expect(page.getByText('Protected account allocations', { exact: true })).toBeVisible();
+  await expect(page.getByText('Reserve bucket balances', { exact: true })).toBeVisible();
   await expect(page.getByText('Recurring Burn', { exact: true })).toBeVisible();
   await expect(page.getByText('Debt & Payment Plans', { exact: true })).toBeVisible();
   await expect(page.getByText('Savings & Future Goals', { exact: true })).toBeVisible();
@@ -781,11 +791,13 @@ test('overview prioritizes the money picture cockpit', async ({ page }) => {
   await expect(openFlowButton).toBeVisible();
 
   const order = await content.evaluate((root) => {
-    const labels = ['Safe-to-Spend', 'Today’s Finance Focus', 'Next Money In', 'Financial Weather', 'Tiny Trend Strip'];
+    const labels = ['Safe-to-Spend', 'Financial Weather', 'Today’s Finance Focus', 'Next Money In', 'Tiny Trend Strip'];
     return labels.map((label) => root.textContent?.indexOf(label) ?? -1);
   });
   expect(order.every((value) => value >= 0)).toBe(true);
   expect(order).toEqual([...order].sort((a, b) => a - b));
+  await expect(content.locator('.fin-financial-weather .fin-weather-signal')).toHaveCount(2);
+  await expect(content.locator('.fin-today-decision .fin-button--primary').first()).toBeVisible();
 
   for (const label of ['Safe-to-Spend', 'Current cash', 'Runway', 'Today’s Finance Focus', 'Next Money In', 'Next Obligations', 'Financial Weather'] as const) {
     await expect(content.getByRole('button', { name: `Explain ${label}` }).first()).toBeVisible();

@@ -2309,10 +2309,16 @@ window.FinancialMode = (function () {
             : Number(currentTreasury?.runwayMonths ?? currentSnapshot?.runwayMonths);
         const runwayLabel = Number.isFinite(runway) ? `${runway.toFixed(1)} months` : 'Unknown';
         const activeDebts = debts.filter((debt) => Math.max(0, Number(debt && debt.outstanding) || 0) > 0);
+        const protectedAccountCash = sumMoney(fiatAccounts.filter((account) => {
+            const bucket = String(account && account.bucket || 'available');
+            return Boolean(account && account.reserved) || bucket !== 'available';
+        }), (account) => account.balance);
+        const reserveBucketCash = sumMoney(buckets, (bucket) => bucket.currentAmount);
         const totalDebt = projectContext.isProjectView
             ? activeDebts.reduce((sum, debt) => sum + (Number(debt.outstanding) || 0), 0)
             : treasuryNumber('debtRemaining', explanationNumber('debtBurden', activeDebts.reduce((sum, debt) => sum + (Number(debt.outstanding) || 0), 0)));
         const missingPlans = activeDebts.filter((debt) => String(debt && debt.planStatus || '') === 'missing' || !treasuryDebtHasPlan(debt));
+        const confirmedDebtPlans = Math.max(0, activeDebts.length - missingPlans.length);
         const reserveTarget = buckets.reduce((sum, bucket) => sum + Math.max(0, Number(bucket.targetAmount) || 0), 0);
         const reserveGap = treasuryReserveGap(buckets);
         const flowResult = availableCash - essentialTotal - flexibleTotal - debtMonthlyPressure;
@@ -2418,7 +2424,7 @@ window.FinancialMode = (function () {
                             <div><span>Cash accounts</span><strong>${fiatAccounts.length}</strong></div>
                             <div><span>Recurring costs</span><strong>${expenses.length}</strong></div>
                             <div><span>Reserve buckets</span><strong>${buckets.length}</strong></div>
-                            <div><span>Debt plans</span><strong>${activeDebts.length - missingPlans.length}/${activeDebts.length}</strong></div>
+                            <div><span>Debt plans confirmed</span><strong>${confirmedDebtPlans} of ${activeDebts.length}</strong></div>
                             <div><span>Protected</span><strong>${formatCurrency(protectedCash)}</strong>${renderMetricExplanation('protectedCash')}</div>
                             <div><span>Monthly burn</span><strong>${formatCurrency(monthlyBurn)}</strong>${renderMetricExplanation('monthlyBurnRate')}</div>
                         </div>
@@ -2464,15 +2470,17 @@ window.FinancialMode = (function () {
                     <div class="fin-section-heading-row">
                         <div>
                             <div class="widget-title ui-title">Protected Money</div>
-                            <div class="fin-helper-text">Reserve buckets are money with a job. They should feel protected, not spare.</div>
+                            <div class="fin-helper-text">Protected cash can come from account allocations and reserve buckets. This money has a job; it is not spare.</div>
                         </div>
                         <div class="fin-action-row">
                             ${renderFinanceButton({ label: 'Allocate cash', action: 'openEditModal', args: "'allocateReserves'" })}
-                            ${renderFinanceButton({ label: 'Add reserve bucket', action: 'openEditModal', args: "'reserveBucket'" })}
+                            ${renderFinanceButton({ label: 'Add reserve bucket', action: 'openEditModal', args: "'reserveBucket'", variant: 'primary' })}
                         </div>
                     </div>
                     <div class="fin-treasury-vault-summary">
                         <div><span>Total protected</span><strong>${formatCurrency(protectedCash)}</strong></div>
+                        <div><span>Protected account allocations</span><strong>${formatCurrency(protectedAccountCash)}</strong></div>
+                        <div><span>Reserve bucket balances</span><strong>${formatCurrency(reserveBucketCash)}</strong></div>
                         <div><span>Reserve target</span><strong>${formatCurrency(reserveTarget)}</strong></div>
                         <div><span>Still to protect</span><strong>${formatCurrency(reserveGap)}</strong></div>
                     </div>
@@ -4459,7 +4467,7 @@ window.FinancialMode = (function () {
             label: button.label,
             action: button.action,
             args: button.args,
-            variant: index === 0 ? 'secondary' : 'ghost'
+            variant: index === 0 ? 'primary' : 'ghost'
         })).join('');
 
         return `
@@ -4514,7 +4522,7 @@ window.FinancialMode = (function () {
 
     function renderNextActions() {
         const weather = currentRoadmapMetrics?.financialWeather || { state: 'Stable', reason: 'The current local finance picture is ready for review.', suggestedAction: 'Keep the weekly review cadence.' };
-        const signals = safeArray(currentRoadmapMetrics?.topSignals).slice(0, 3);
+        const signals = safeArray(currentRoadmapMetrics?.topSignals).slice(0, 2);
         const view = weatherViewModel(weather);
         return `
             <section class="fin-section">

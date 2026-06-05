@@ -45,9 +45,9 @@ export function createSectionRenderer(renderers, renderSectionHeading) {
                 renderSectionHeading('Money Status', 'Your current financial condition, safe-to-spend, runway, and next move.'),
                 renderers.observatoryHeader(),
                 renderers.dashboardCockpit(),
+                renderers.nextActions(),
                 renderers.todaysDecision(),
                 renderers.next30Days(),
-                renderers.nextActions(),
                 renderers.strategicPicture(),
                 `</div>`
             ];
