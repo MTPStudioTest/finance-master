@@ -239,6 +239,9 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
   await expect(page.locator('#fin-content-area .fin-board-frame').first()).toBeVisible();
   await expect(page.getByText('Obligation Review', { exact: true })).toBeVisible();
   await expect(page.getByText('Payment Matching', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-review-check="obligations"]')).toBeVisible();
+  await expect(page.locator('[data-review-check="payments"]')).toBeVisible();
+  await expect(page.locator('[data-review-check] .fin-review-row')).toHaveCount(0);
   await expect(page.getByText('Review Signals', { exact: true })).toBeVisible();
   await expect(page.getByText(/This week.s focus/)).toBeVisible();
   await expect(page.getByText('Income review', { exact: true })).toBeVisible();
@@ -259,8 +262,10 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
   await expect(page.locator('#fin-content-area').getByRole('button', { name: 'Import CSV', exact: true })).toHaveCount(0);
   await expect(page.locator('#fin-content-area').getByLabel('Records import history')).toHaveCount(0);
+  await expect(page.getByText('Backup & Restore', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Export backup', exact: true })).toBeVisible();
   await expect(page.locator('#fin-content-area').getByRole('button', { name: 'Restore backup', exact: true })).toHaveCount(1);
+  await expect(page.getByText('Data safety actions', { exact: true })).toBeVisible();
   await expect(page.getByText('App Preferences', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Risk Radar', exact: true }).click();
@@ -479,6 +484,9 @@ test('insights diagnosis and scenario lab 2.0 previews and saves without mutatin
   await expect(page.getByText('Main lever', { exact: true })).toBeVisible();
   await expect(page.getByText('Main opportunity', { exact: true })).toBeVisible();
   await expect(page.locator('.fin-insights-risk-row')).toHaveCount(7);
+  await expect(page.locator('.fin-insights-risk-row > div:first-child small')).toHaveCount(7);
+  await expect(page.locator('.fin-insights-risk-row .fin-button')).toHaveCount(7);
+  await expect(page.locator('.fin-insights-risk-row').filter({ hasText: 'Cashflow rhythm' }).getByText('Trend memory needs more checkpoints before it can be trusted.', { exact: true })).toBeVisible();
   await expect(page.locator('[data-pattern-memory="locked"]')).toBeVisible();
   await expect(page.getByText('Save 3 checkpoints to unlock trend memory.', { exact: true })).toBeVisible();
   await expect(page.locator('.fin-insights-locked-rows')).toHaveCount(0);
@@ -923,6 +931,10 @@ test('transactions page is the primary ledger workspace', async ({ page }) => {
   await expect(page.getByText('Category Cleanup', { exact: true })).toBeVisible();
   await expect(page.getByText('Recurring Detection', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Search records')).toBeVisible();
+  await expect(page.getByLabel('Common record filters').getByRole('button', { name: 'All records', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Common record filters').getByRole('button', { name: 'Needs review', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Common record filters').getByRole('button', { name: 'Linked', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Filter records by category')).toHaveCount(0);
   await expect(workspace.locator('.fin-status-grid')).toHaveCount(0);
   await expect(workspace.getByLabel('Record status').getByText('Records', { exact: true })).toBeVisible();
   await expect(workspace.getByText('Net movement', { exact: true })).toBeVisible();
@@ -961,9 +973,14 @@ test('transactions page is the primary ledger workspace', async ({ page }) => {
 
   await page.getByRole('button', { name: 'More filters', exact: true }).click();
   await expect(page.getByLabel('Filter records by type')).toBeVisible();
+  await expect(page.getByLabel('Filter records by category')).toBeVisible();
   await page.getByLabel('Filter records by category').fill('software');
   await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
   await expect(page.getByLabel('Active record filters').getByText('Category: software', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Clear all', exact: true }).click();
+
+  await page.getByLabel('Common record filters').getByRole('button', { name: 'Needs review', exact: true }).click();
+  await expect(page.getByLabel('Active record filters').getByText('Review: needs review', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Clear all', exact: true }).click();
 
   await page.getByRole('button', { name: 'Review Needed', exact: true }).click();
@@ -1372,11 +1389,21 @@ test('local data safety and appearance controls live on pages', async ({ page })
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByText('Local Data Health', { exact: true })).toBeVisible();
   await expect(page.getByText('Local finance data is readable and backup-ready.', { exact: true })).toBeVisible();
-  await expect(page.getByText('Storage', { exact: true })).toBeVisible();
-  await expect(page.getByText('Last backup', { exact: true })).toBeVisible();
-  await expect(page.getByText('Schema', { exact: true })).toBeVisible();
+  await expect(page.getByText('Backup & Restore', { exact: true })).toBeVisible();
+  const backupReadiness = page.getByLabel('Backup readiness');
+  const localDataHealth = page.locator('.fin-card').filter({ hasText: 'Local Data Health' });
+  await expect(backupReadiness).toBeVisible();
+  await expect(backupReadiness.getByText('Last backup', { exact: true })).toBeVisible();
+  await expect(backupReadiness.getByText('Finance events', { exact: true })).toBeVisible();
+  await expect(localDataHealth.getByText('Storage', { exact: true })).toBeVisible();
+  await expect(localDataHealth.getByText('Last backup', { exact: true })).toBeVisible();
+  await expect(localDataHealth.getByText('Schema', { exact: true })).toBeVisible();
   await expect(page.locator('#fin-content-area').getByRole('button', { name: 'Restore backup', exact: true })).toHaveCount(1);
-  await expect(page.locator('.fin-card').filter({ hasText: 'Local Data Health' }).getByRole('button', { name: 'Restore backup', exact: true })).toHaveCount(0);
+  await expect(localDataHealth.getByRole('button', { name: 'Restore backup', exact: true })).toHaveCount(0);
+  await expect(localDataHealth.getByRole('button', { name: 'Reset local data', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Destructive data actions')).toBeVisible();
+  await expect(page.getByLabel('Destructive data actions').getByRole('button', { name: 'Reset local data', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Destructive data actions').getByRole('button', { name: 'Delete sample data', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Reset local data', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Reset local data', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Reset local finance data', exact: true })).toBeVisible();
@@ -1385,6 +1412,24 @@ test('local data safety and appearance controls live on pages', async ({ page })
   await page.getByLabel('Type DELETE LOCAL FINANCE DATA to continue').fill('DELETE LOCAL FINANCE DATA'.slice(0, -1));
   await expect(resetModal.getByRole('button', { name: 'Reset local data', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByLabel('Destructive data actions').getByRole('button', { name: 'Delete sample data', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Delete sample data', exact: true })).toBeVisible();
+  await expect(page.locator('#modal-body').getByRole('button', { name: 'Delete sample data', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+  await page.getByLabel('Base currency').fill('USD');
+  await page.getByLabel('Forecast horizon (days)').fill('45');
+  await page.getByLabel('Default scope filter').selectOption('business');
+  await page.getByRole('button', { name: 'Apply preferences', exact: true }).click();
+  const preferenceImpact = page.getByLabel('Current preference impact');
+  await expect(preferenceImpact.getByText('USD', { exact: true })).toBeVisible();
+  await expect(preferenceImpact.getByText('45 days', { exact: true })).toBeVisible();
+  await expect(preferenceImpact.getByText('Business only', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Money Status', exact: true }).click();
+  await expect(page.getByLabel('Treasury scope')).toHaveValue('business');
+  await page.getByRole('button', { name: 'Cash Timeline', exact: true }).click();
+  await expect(page.getByLabel('Forecast horizon')).toHaveText('45d horizon');
+  await openSettingsPage(page);
 
   for (const mode of ['dark-editorial', 'dark-restrained', 'bright-editorial', 'bright-minimal', 'color-field', 'monochrome-focus']) {
     await openSettingsPage(page);
@@ -1590,6 +1635,7 @@ test('savings goal progress and weekly reconciliation complete the operating rit
   await expect(page.getByText('Reserve / burn check', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Saved checkpoints')).toBeVisible();
   await expect(page.getByText('Save a checkpoint to start the local review history.', { exact: true })).toBeVisible();
+  await expect(page.locator('.fin-review-final-action').getByRole('button', { name: 'Save checkpoint', exact: true })).toBeVisible();
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
   await page.getByRole('button', { name: 'Save checkpoint', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Confirm each account');
