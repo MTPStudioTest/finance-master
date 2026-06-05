@@ -947,6 +947,11 @@ window.FinancialMode = (function () {
         const selectedTransactionId = getSelectedLedgerTransactionId();
         const selectedTransaction = allTransactions.find((entry) => ledgerTransactionId(entry) === selectedTransactionId) || null;
         const recurringCandidates = buildLedgerRecurringCandidates(allTransactions);
+        const importState = window.Store && typeof window.Store.getImportState === 'function'
+            ? window.Store.getImportState()
+            : { batches: [], profiles: [] };
+        const importBatches = safeArray(importState.batches);
+        const importProfiles = safeArray(importState.profiles);
         const statusStrip = `
             <div class="fin-ledger-status-strip" aria-label="Record status">
                 <div><span>Records</span><strong>${transactions.length}</strong><small>${allTransactions.length} total</small></div>
@@ -1185,11 +1190,7 @@ window.FinancialMode = (function () {
                 <div class="fin-logbook-utility-card fin-board-panel">
                     <span class="fin-eyebrow">Import / Add Entry</span>
                     <strong>${allTransactions.length} records</strong>
-                    <p>Bring in CSV evidence or add one local transaction.</p>
-                    <div class="fin-action-row fin-action-row--inline">
-                        ${renderFinanceButton({ label: 'Import CSV', action: 'openEditModal', args: "'csvImport'", size: 'sm' })}
-                        ${renderFinanceButton({ label: 'Add transaction', action: 'openEditModal', args: "'transaction', 'expense'", size: 'sm' })}
-                    </div>
+                    <p>CSV evidence and manual records stay in this workspace.</p>
                 </div>
                 <div class="fin-logbook-utility-card fin-board-panel">
                     <span class="fin-eyebrow">Category Cleanup</span>
@@ -1205,6 +1206,21 @@ window.FinancialMode = (function () {
                 </div>
             </div>
         `;
+        const importHistory = importBatches.length || importProfiles.length ? `
+            <div class="fin-logbook-import-panel fin-board-panel" aria-label="Records import history">
+                <div class="fin-section-heading-row">
+                    <div>
+                        <div class="fin-eyebrow">Import history</div>
+                        <div class="fin-helper-text">CSV batches and saved mappings live with Records, not app preferences.</div>
+                    </div>
+                </div>
+                ${renderImportBatchRows(importBatches)}
+                <div class="fin-subsection-block">
+                    <div class="fin-eyebrow">Saved CSV profiles</div>
+                    ${renderImportProfileRows(importProfiles)}
+                </div>
+            </div>
+        ` : '';
         let panelHtml = '';
         if (view === 'work') {
             panelHtml = `
@@ -1242,6 +1258,7 @@ window.FinancialMode = (function () {
                         </div>
                     </div>
                     ${utilityStrip}
+                    ${importHistory}
                     ${statusStrip}
                     ${filtersHtml}
                     <div class="fin-tabs" role="tablist" aria-label="Records zones">
@@ -1873,11 +1890,6 @@ window.FinancialMode = (function () {
     }
 
     function renderDataSection() {
-        const importState = window.Store && typeof window.Store.getImportState === 'function'
-            ? window.Store.getImportState()
-            : { batches: [], profiles: [] };
-        const batches = safeArray(importState.batches);
-        const profiles = safeArray(importState.profiles);
         const dataHealth = window.Store && typeof window.Store.getLocalDataHealth === 'function'
             ? window.Store.getLocalDataHealth()
             : { ok: true, issues: [], eventCount: 0, latestEventAt: null, storageStatus: 'healthy', schemaLabel: 'unknown', backupVersion: 0, lastBackupAt: null, privateModeWarning: false, migrationStatus: 'current' };
@@ -1890,20 +1902,13 @@ window.FinancialMode = (function () {
                     <div class="widget ui-card glass fin-card fin-board-frame">
                         <div class="fin-section-heading-row">
                             <div>
-                                <div class="widget-title ui-title">Imports and Backups</div>
-                                <div class="fin-helper-text">Everything stays local. Use exports before big changes or device moves.</div>
+                                <div class="widget-title ui-title">Backups</div>
+                                <div class="fin-helper-text">Everything stays local. Export a backup before big changes or device moves. CSV import history lives in Records.</div>
                             </div>
                         </div>
-                        ${renderImportBatchRows(batches)}
                         <div class="fin-action-row">
-                            ${renderFinanceButton({ label: 'Import CSV', action: 'openEditModal', args: "'csvImport'" })}
-                            ${renderFinanceButton({ label: 'Export transactions CSV', action: 'exportTransactionsCsv' })}
                             ${renderFinanceButton({ label: 'Export backup', action: 'exportFinanceBackup' })}
                             ${renderFinanceButton({ label: 'Restore backup', action: 'openEditModal', args: "'backupRestore'" })}
-                        </div>
-                        <div class="fin-subsection-block">
-                            <div class="fin-eyebrow">Saved CSV profiles</div>
-                            ${renderImportProfileRows(profiles)}
                         </div>
                     </div>
                     <div class="widget ui-card glass fin-card fin-board-frame">
@@ -2774,7 +2779,7 @@ window.FinancialMode = (function () {
                         <div>
                             <div class="widget-title ui-title">Product boundaries</div>
                             <div class="fin-helper-text">
-                                Finance Master stays local-first. Backup, restore, CSV import, sample data, reset controls, and app preferences live in Settings.
+                                Finance Master stays local-first. Backup, restore, sample data, reset controls, and app preferences live in Settings. CSV records and import mappings live in Records.
                             </div>
                         </div>
                     </div>

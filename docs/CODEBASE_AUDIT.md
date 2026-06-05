@@ -264,7 +264,8 @@ Current coverage includes:
 - `src/dashboard/financial-mode.js` is very large and mixes rendering, routing, presentation logic, UI state, and action handling.
 - The global plus button now opens a predictable creation-focused Quick Add menu on every board. It uses existing workflows for transactions, income, cash accounts, recurring costs, debt items, reserve buckets, and CSV import; standalone obligation and decision-scenario creation remain deferred until product workflows exist.
 - Decision Lab layout/readability is a known roadmap-critical area to verify visually.
-- Settings now keeps one in-page Restore Backup action in Imports and Backups; import/add-entry adjacency may still belong closer to Records over time.
+- Settings now keeps backup/restore/reset/sample data and app preferences. CSV import actions, import history, and saved CSV profiles live with Records, where raw transaction utility belongs.
+- Records now has one header action cluster for Import CSV, Export, and Add transaction; duplicate utility-card import/add buttons were removed to improve action hierarchy.
 - `Store.seedDemoIfNeeded` can repopulate an empty deployed app even after a stale `deleted` demo flag; this is intentional per comment but should be reviewed against the roadmap's sample-data separation rule before changing behavior.
 - Schema migration has a registry but no historical migrations beyond current-shape clone.
 - Backup restore validation is strong, but future schema additions must update backup validation and migration fixtures.
@@ -280,11 +281,11 @@ Current coverage includes:
 
 ## Recommended Next Chunk
 
-### Phase 3 — Decision Lab responsiveness and Records drawer audit
+### Phase 4 — Board action hierarchy and design-system consolidation
 
-- Goal: Fix immediately visible layout issues before feature work, starting with Decision Lab readability at desktop/tablet widths and Records detail drawer behavior.
-- Files likely affected: `src/styles/finance-dashboard.css`, `src/dashboard/financial-mode.js`, and `tests/e2e/finance-master.spec.ts`.
-- Implementation steps: inspect Decision Lab grid/card rules at 1440px, 1024px, and 768px; add minimum widths or stacking breakpoints where text collapses; verify Records detail drawer opens, fits, and does not half-render.
-- Tests: targeted Playwright viewport checks plus `npm run test:e2e`; run `npm run typecheck`, `npm test`, and `npm run build` if code changes.
-- Acceptance criteria: Decision Lab cards remain readable; no text collapses into word columns; Records detail drawer behaves intentionally at common desktop/tablet widths.
-- Risks / notes: keep this to layout/responsiveness only; do not redesign board logic or add new feature behavior in this chunk.
+- Goal: Continue consolidating shared card/button/status patterns and reduce equal-weight board actions.
+- Files likely affected: `src/dashboard/finance-ui.js`, `src/dashboard/financial-mode.js`, `src/styles/finance-dashboard.css`, and `tests/e2e/finance-master.spec.ts`.
+- Implementation steps: identify repeated button/card variants already in use; choose one narrow board or component family; make one primary action visually and semantically dominant; keep secondary utilities quieter.
+- Tests: targeted Playwright checks for the touched board plus `npm run typecheck`, `npm test`, and `npm run build`; run full E2E when touching shared UI helpers.
+- Acceptance criteria: the touched board has one clear primary action per section, existing actions still work, and shared primitive usage increases without broad redesign.
+- Risks / notes: avoid a large design-system rewrite; keep changes incremental and product-boundary aware.

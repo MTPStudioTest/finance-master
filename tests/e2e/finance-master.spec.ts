@@ -235,7 +235,8 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Import CSV', exact: true })).toBeVisible();
+  await expect(page.locator('#fin-content-area').getByRole('button', { name: 'Import CSV', exact: true })).toHaveCount(0);
+  await expect(page.locator('#fin-content-area').getByLabel('Records import history')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Export backup', exact: true })).toBeVisible();
   await expect(page.locator('#fin-content-area').getByRole('button', { name: 'Restore backup', exact: true })).toHaveCount(1);
   await expect(page.getByText('App Preferences', { exact: true })).toBeVisible();
@@ -859,6 +860,9 @@ test('transactions page is the primary ledger workspace', async ({ page }) => {
   await expect(page.getByText('Transaction Log', { exact: true })).toBeVisible();
   await expect(page.getByText('Raw records live here for review, matching, categorization, import inspection, and detail checks.', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Records utilities')).toBeVisible();
+  await expect(workspace.getByRole('button', { name: 'Import CSV', exact: true })).toHaveCount(1);
+  await expect(workspace.getByRole('button', { name: 'Add transaction', exact: true })).toHaveCount(1);
+  await expect(page.getByLabel('Records utilities').getByRole('button', { name: /Import CSV|Add transaction/ })).toHaveCount(0);
   await expect(page.getByText('Import / Add Entry', { exact: true })).toBeVisible();
   await expect(page.getByText('Category Cleanup', { exact: true })).toBeVisible();
   await expect(page.getByText('Recurring Detection', { exact: true })).toBeVisible();
@@ -1181,6 +1185,10 @@ test('CSV import previews accepted, duplicate, and rejected rows and remains rev
   await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
 
   await page.getByRole('button', { name: 'Records', exact: true }).click();
+  await expect(page.getByLabel('Records import history')).toBeVisible();
+  await expect(page.getByLabel('Records import history').getByText('Latest CSV batch', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Records import history').getByText('release-bank.csv')).toBeVisible();
+  await expect(page.getByLabel('Records import history').getByText('Saved CSV profiles', { exact: true })).toBeVisible();
   await page.getByLabel('Search records').fill('Release deposit');
   await page.getByRole('button', { name: 'Apply filters', exact: true }).click();
   const releaseRow = page.locator('.fin-transaction-row').filter({ hasText: 'Release deposit' });
@@ -1240,17 +1248,18 @@ test('CSV import previews accepted, duplicate, and rejected rows and remains rev
   await expect(page.getByText('Imported 1 row · included 1 duplicate', { exact: false })).toBeVisible();
   await page.locator('#modal-body').getByRole('button', { name: 'Cancel', exact: true }).click();
 
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page.getByText('Latest CSV batch', { exact: true })).toBeVisible();
-  await expect(page.getByText('duplicate-bank.csv', { exact: false })).toBeVisible();
-  await expect(page.getByText('1 imported · 1 duplicate (duplicates imported) · 0 rejected', { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: 'Undo', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Records', exact: true }).click();
+  const importHistory = page.getByLabel('Records import history');
+  await expect(importHistory.getByText('Latest CSV batch', { exact: true })).toBeVisible();
+  await expect(importHistory.getByText('duplicate-bank.csv', { exact: false })).toBeVisible();
+  await expect(importHistory.getByText('1 imported · 1 duplicate (duplicates imported) · 0 rejected', { exact: false })).toBeVisible();
+  await importHistory.getByRole('button', { name: 'Undo', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: 'Undo CSV import', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Undo import', exact: true })).toBeDisabled();
   await page.getByLabel('Type UNDO CSV IMPORT to continue').fill('UNDO CSV IMPORT');
   await page.getByRole('button', { name: 'Undo import', exact: true }).click();
-  await expect(page.getByText('Saved CSV profiles', { exact: true })).toBeVisible();
-  const profileName = page.getByLabel('CSV profile name').first();
+  await expect(importHistory.getByText('Saved CSV profiles', { exact: true })).toBeVisible();
+  const profileName = importHistory.getByLabel('CSV profile name').first();
   await expect(profileName).toHaveValue(/bank\.csv$/);
   const savedProfileName = await profileName.inputValue();
   await profileName.fill('Studio bank CSV');
@@ -1326,6 +1335,8 @@ test('local data safety and appearance controls live on pages', async ({ page })
     await expect(settingsContent.getByRole('button', { name: 'Add debt', exact: true })).toHaveCount(0);
     await expect(settingsContent.getByRole('button', { name: 'Add reserve bucket', exact: true })).toHaveCount(0);
     await expect(settingsContent.getByRole('button', { name: 'Add expected income', exact: true })).toHaveCount(0);
+    await expect(settingsContent.getByRole('button', { name: 'Import CSV', exact: true })).toHaveCount(0);
+    await expect(settingsContent.getByLabel('Records import history')).toHaveCount(0);
     await expect(settingsContent.getByRole('button', { name: /Start review|Open review|Start close|Open Records|Save checkpoint/ })).toHaveCount(0);
     await page.getByLabel('Visual mode').selectOption(mode);
     await page.getByRole('button', { name: 'Apply preferences', exact: true }).click();
