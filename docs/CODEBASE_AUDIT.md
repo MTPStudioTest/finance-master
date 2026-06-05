@@ -263,11 +263,13 @@ Current coverage includes:
 - Visible board labels completed the Phase 2 rename to Money Status, Decision Lab, Cash Timeline, Money Plan, Risk Radar, Reality Check, Records, and Settings.
 - `src/dashboard/financial-mode.js` is very large and mixes rendering, routing, presentation logic, UI state, and action handling.
 - The global plus button now opens a predictable creation-focused Quick Add menu on every board. It uses existing workflows for transactions, income, cash accounts, recurring costs, debt items, reserve buckets, and CSV import; standalone obligation and decision-scenario creation remain deferred until product workflows exist.
-- Decision Lab layout/readability is a known roadmap-critical area to verify visually.
+- Decision Lab layout/readability is guarded by viewport E2E checks, its explanatory "why this board exists" copy now lives in the help layer instead of a prominent board card, and it can create saved planning drafts that reuse Scenario Lab 2.0 for non-mutating decision previews.
 - Settings now keeps backup/restore/reset/sample data and app preferences. CSV import actions, import history, and saved CSV profiles live with Records, where raw transaction utility belongs.
 - Records now has one header action cluster for Import CSV, Export, and Add transaction; duplicate utility-card import/add buttons were removed to improve action hierarchy.
 - Money Plan now labels protected account allocations and reserve bucket balances separately, uses readable debt plan counts, and gives Protected Money one primary creation action.
-- Money Status now raises Financial Weather directly below the Safe-to-Spend cockpit, keeps weather signals compact, and makes the daily focus action primary.
+- Money Status now raises Financial Weather directly below the Safe-to-Spend cockpit, keeps weather signals compact, renames the daily focus to Suggested Next Move, makes that action primary, and shows obligation due dates before type labels.
+- Cash Timeline now separates actual cash, available cash, and expected landing; expected income is visibly forecast-only, low points have risk labels, and Scenario Pressure uses simpler status cards.
+- Risk Radar Pattern Memory stays compact until 3 checkpoints exist and shows a clear unlock condition instead of a large locked list.
 - `Store.seedDemoIfNeeded` can repopulate an empty deployed app even after a stale `deleted` demo flag; this is intentional per comment but should be reviewed against the roadmap's sample-data separation rule before changing behavior.
 - Schema migration has a registry but no historical migrations beyond current-shape clone.
 - Backup restore validation is strong, but future schema additions must update backup validation and migration fixtures.

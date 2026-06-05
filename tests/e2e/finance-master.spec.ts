@@ -153,12 +153,16 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
   await expect(page.getByText('Decision cockpit', { exact: true })).toBeVisible();
   await expect(page.locator('#fin-content-area .fin-board-frame').first()).toBeVisible();
   await expect(page.getByText('Focus Queue', { exact: true })).toBeVisible();
-  await expect(page.getByText('Why This Board Exists', { exact: true })).toBeVisible();
+  await expect(page.getByText('Why This Board Exists', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Explain Decision Lab' })).toBeVisible();
+  await expect(page.getByText('Create Decision', { exact: true })).toBeVisible();
   await expect(page.getByText('Decision Cards', { exact: true })).toBeVisible();
   await expect(page.getByText('Pressure Timeline', { exact: true })).toBeVisible();
+  await expect(page.getByText('Scenario Lab 2.0', { exact: true })).toBeVisible();
+  await expect(page.locator('#fin-content-area [data-scenario-lab="v2"]')).toBeVisible();
   await expect(page.getByText('Scenario Shortcuts', { exact: true })).toBeVisible();
   await expect(page.getByText('Opportunity Signals', { exact: true })).toBeVisible();
-  await expect(page.getByText('Today’s Finance Focus', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Suggested Next Move', { exact: true })).toHaveCount(0);
   await expect(page.locator('#fin-content-area').getByText('Cash Timeline', { exact: true })).toHaveCount(0);
   await expect(page.locator('#fin-content-area').getByText('Money Plan', { exact: true })).toHaveCount(0);
 
@@ -166,8 +170,18 @@ test('consolidated boards keep clear product boundaries', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Cash Timeline', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Cash Timeline', exact: true })).toBeVisible();
   await expect(page.locator('#fin-content-area .fin-board-frame').first()).toBeVisible();
+  await expect(page.getByText('Actual vs forecast', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-flow-cash="actual"]')).toBeVisible();
+  await expect(page.locator('[data-flow-cash="available"]')).toBeVisible();
+  await expect(page.locator('[data-flow-cash="forecast"]')).toBeVisible();
   await expect(page.getByText('30-day expected landing', { exact: true })).toBeVisible();
+  await expect(page.getByText(/forecast income, not actual cash/)).toBeVisible();
+  await expect(page.locator('[data-flow-low="30"]')).toBeVisible();
+  await expect(page.locator('[data-flow-low="60"]')).toBeVisible();
+  await expect(page.locator('[data-flow-low="90"]')).toBeVisible();
   await expect(page.getByText('Scenario Pressure', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-flow-scenario="30"]')).toBeVisible();
+  await expect(page.locator('[data-flow-scenario="30"]').getByText(/Expected landing/)).toBeVisible();
   await expect(page.getByText('Runway Projection', { exact: true })).toBeVisible();
   await expect(page.getByText('Income Timing', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Edit Money Plan inputs', exact: true })).toBeVisible();
@@ -273,6 +287,22 @@ test('decisions board presents ranked guidance without mutating finance data', a
   await gotoApp(page);
   await page.getByRole('button', { name: 'Decision Lab', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Decision Lab', exact: true })).toBeVisible();
+  await expect(page.getByText('Why This Board Exists', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Explain Decision Lab' }).click();
+  await expect(page.getByRole('dialog', { name: 'Decision Lab' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Decision Lab' }).getByText('What it means', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close information' }).click();
+
+  const draftPanel = page.locator('[data-decision-scenario-draft]');
+  await expect(draftPanel).toBeVisible();
+  const savedDraftCountBefore = await page.evaluate(() => window.Store.getSavedScenarios().scenarios.length);
+  await draftPanel.locator('#decision-scenario-name').fill('Test extra retainer');
+  await draftPanel.locator('#decision-scenario-type').selectOption('add_recurring_income');
+  await draftPanel.locator('#decision-scenario-amount').fill('1200');
+  await draftPanel.locator('#decision-scenario-protect').fill('25');
+  await draftPanel.getByRole('button', { name: 'Save decision draft', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.Store.getSavedScenarios().scenarios.length)).toBeGreaterThan(savedDraftCountBefore);
+  await expect(page.locator('#fin-content-area [data-scenario-lab="v2"]').getByText('Test extra retainer', { exact: true }).first()).toBeVisible();
 
   const focusItems = page.locator('[data-decision-focus]');
   await expect(focusItems.first()).toBeVisible();
@@ -298,6 +328,15 @@ test('decisions board presents ranked guidance without mutating finance data', a
   expect(decisionTimelineSources.every((source) => flowTimelineSources.includes(source))).toBe(true);
   await page.getByRole('button', { name: 'Decision Lab', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Decision Lab', exact: true })).toBeVisible();
+
+  const decisionScenarioLab = page.locator('#fin-content-area [data-scenario-lab="v2"]');
+  await expect(decisionScenarioLab).toBeVisible();
+  await expect(decisionScenarioLab.getByText('Preview impact', { exact: true })).toBeVisible();
+  await expect(decisionScenarioLab.getByText('Monthly burn', { exact: true }).first()).toBeVisible();
+  const savedScenarioCountBefore = await page.evaluate(() => window.Store.getSavedScenarios().scenarios.length);
+  await decisionScenarioLab.locator('[data-scenario-choice]').nth(1).click();
+  await decisionScenarioLab.getByRole('button', { name: 'Save preview', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.Store.getSavedScenarios().scenarios.length)).toBeGreaterThan(savedScenarioCountBefore);
 
   const storedBefore = await page.evaluate(() => JSON.stringify({
     ledger: window.Store.getFinanceLedger(),
@@ -440,7 +479,9 @@ test('insights diagnosis and scenario lab 2.0 previews and saves without mutatin
   await expect(page.getByText('Main lever', { exact: true })).toBeVisible();
   await expect(page.getByText('Main opportunity', { exact: true })).toBeVisible();
   await expect(page.locator('.fin-insights-risk-row')).toHaveCount(7);
-  await expect(page.getByText('Not enough history yet', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-pattern-memory="locked"]')).toBeVisible();
+  await expect(page.getByText('Save 3 checkpoints to unlock trend memory.', { exact: true })).toBeVisible();
+  await expect(page.locator('.fin-insights-locked-rows')).toHaveCount(0);
   await expect(page.getByText('Scenario Lab 2.0', { exact: true })).toBeVisible();
   await expect(page.locator('[data-scenario-lab="v2"]')).toBeVisible();
 
@@ -762,7 +803,7 @@ test('overview prioritizes the money picture cockpit', async ({ page }) => {
   await expect(content.getByText('Safe-to-Spend', { exact: true }).first()).toBeVisible();
   await expect(content.getByText('Current cash', { exact: true })).toBeVisible();
   await expect(content.getByText('Runway', { exact: true }).first()).toBeVisible();
-  await expect(content.getByText('Today’s Finance Focus', { exact: true })).toBeVisible();
+  await expect(content.getByText('Suggested Next Move', { exact: true })).toBeVisible();
   await expect(content.getByText('Next Money In', { exact: true })).toBeVisible();
   await expect(content.getByText('Next Obligations', { exact: true })).toBeVisible();
   await expect(content.getByText('Financial Weather', { exact: true })).toBeVisible();
@@ -770,6 +811,9 @@ test('overview prioritizes the money picture cockpit', async ({ page }) => {
   await expect(content.locator('.obligation-row .fin-list-row-title').first()).toBeVisible();
   await expect(content.locator('.obligation-row .fin-list-row-meta').first()).toBeVisible();
   await expect(content.locator('.obligation-row .fin-list-row-amount').first()).toBeVisible();
+  const obligationMeta = await content.locator('.obligation-row .fin-list-row-meta').first().textContent();
+  expect(obligationMeta || '').toContain(' · ');
+  expect(obligationMeta || '').not.toMatch(/^(Debt payment plan|Recurring obligation)/);
   await expect(content.locator('.fin-financial-weather .fin-weather-icon-shell')).toBeVisible();
   await expect(content.locator('.fin-financial-weather .fin-weather-recommendation')).toBeVisible();
   await expect(content.locator('.fin-financial-weather .fin-weather-signal-icon').first()).toBeVisible();
@@ -791,7 +835,7 @@ test('overview prioritizes the money picture cockpit', async ({ page }) => {
   await expect(openFlowButton).toBeVisible();
 
   const order = await content.evaluate((root) => {
-    const labels = ['Safe-to-Spend', 'Financial Weather', 'Today’s Finance Focus', 'Next Money In', 'Tiny Trend Strip'];
+    const labels = ['Safe-to-Spend', 'Financial Weather', 'Suggested Next Move', 'Next Money In', 'Tiny Trend Strip'];
     return labels.map((label) => root.textContent?.indexOf(label) ?? -1);
   });
   expect(order.every((value) => value >= 0)).toBe(true);
@@ -799,7 +843,7 @@ test('overview prioritizes the money picture cockpit', async ({ page }) => {
   await expect(content.locator('.fin-financial-weather .fin-weather-signal')).toHaveCount(2);
   await expect(content.locator('.fin-today-decision .fin-button--primary').first()).toBeVisible();
 
-  for (const label of ['Safe-to-Spend', 'Current cash', 'Runway', 'Today’s Finance Focus', 'Next Money In', 'Next Obligations', 'Financial Weather'] as const) {
+  for (const label of ['Safe-to-Spend', 'Current cash', 'Runway', 'Suggested Next Move', 'Next Money In', 'Next Obligations', 'Financial Weather'] as const) {
     await expect(content.getByRole('button', { name: `Explain ${label}` }).first()).toBeVisible();
   }
 
@@ -1112,6 +1156,8 @@ test('income exposes open, settled, and all income views', async ({ page }) => {
   await page.getByRole('button', { name: 'Cash Timeline', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Cash Timeline', exact: true })).toBeVisible();
   await expect(page.getByText('Income Timing', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-flow-cash="actual"]')).toBeVisible();
+  await expect(page.locator('[data-flow-cash="forecast"]').getByText(/not actual cash/)).toBeVisible();
   await page.getByRole('button', { name: 'Open Income', exact: true }).click();
   await expect(page.getByText('Scenario Pressure', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Cash Timeline', exact: true })).toBeVisible();
