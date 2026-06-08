@@ -404,6 +404,16 @@ export const Store = {
     };
   },
 
+  getSampleDataStatus(): { isSampleData: boolean; seedState: string; eventCount: number } {
+    const seedState = String(repositoryGet(STORAGE_KEYS.demoSeed, '') || '');
+    const eventCount = getLedgerRaw().length;
+    return {
+      isSampleData: seedState === '1',
+      seedState,
+      eventCount,
+    };
+  },
+
   saveFinanceSettings(settings: Partial<FinanceSettings>): FinanceSettings {
     const current = this.getFinanceSettings();
     const next = {
@@ -1894,14 +1904,16 @@ export const Store = {
 
   seedDemoIfNeeded(force = false): void {
     const ledger = getLedgerRaw();
+    const seedState = String(repositoryGet(STORAGE_KEYS.demoSeed, '') || '');
     if (!force && ledger.length > 0) {
-      if (!repositoryGet(STORAGE_KEYS.demoSeed, '')) {
+      if (!seedState) {
         repositorySet(STORAGE_KEYS.demoSeed, 'existing-ledger');
       }
       return;
     }
-    // An empty ledger is never a stable operating state for the deployed app.
-    // Stale demo flags such as "deleted" must not keep GitHub Pages empty forever.
+    if (!force && ['deleted', 'restored-backup', 'existing-ledger', 'empty-setup'].includes(seedState)) {
+      return;
+    }
     const currency = this.getFinanceSettings().baseCurrency;
     const nowIso = new Date().toISOString();
     const drafts = createDemoDrafts(currency);

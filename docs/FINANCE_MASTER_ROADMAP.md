@@ -1440,6 +1440,9 @@ Acceptance criteria:
 - Sample data is clearly marked.
 - Onboarding does not block advanced users.
 
+Implementation note:
+- Seeded fictional sample data is labeled in Money Status. The Start Empty path uses the existing typed confirmation flow, and the `deleted` / backup-restored seed states are not silently reseeded on reload.
+
 ---
 
 ## Phase 20 — Final consolidation and documentation

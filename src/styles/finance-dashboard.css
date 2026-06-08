@@ -2248,6 +2248,139 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     color: var(--text-tertiary);
 }
 
+#dashboard-financial #fin-content-area .fin-minimum-setup {
+    display: grid;
+    gap: 12px;
+    margin-top: clamp(1rem, 2vw, 1.5rem);
+    padding-top: clamp(0.95rem, 1.6vw, 1.2rem);
+    border-top: 1px solid var(--ds-mode-surface-border);
+}
+
+#dashboard-financial #fin-content-area .fin-minimum-setup-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+#dashboard-financial #fin-content-area .fin-minimum-setup-head > div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+#dashboard-financial #fin-content-area .fin-minimum-setup-head strong {
+    color: var(--text-primary);
+    font-size: 0.94rem;
+}
+
+#dashboard-financial #fin-content-area .fin-minimum-setup-head span,
+#dashboard-financial #fin-content-area .fin-minimum-setup-head small {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    line-height: 1.35;
+}
+
+#dashboard-financial #fin-content-area .fin-minimum-setup-head small {
+    flex: 0 0 auto;
+    font-family: var(--font-mono);
+}
+
+#dashboard-financial #fin-content-area .fin-minimum-setup-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+}
+
+#dashboard-financial #fin-content-area .fin-minimum-setup-step {
+    display: grid;
+    gap: 5px;
+    min-height: 112px;
+    min-width: 0;
+    align-content: start;
+    padding: 10px;
+    border: 1px solid var(--ds-mode-surface-border);
+    border-radius: var(--ds-radius-sm);
+    background: rgba(255, 255, 255, 0.025);
+    color: var(--text-secondary);
+    text-align: left;
+    cursor: pointer;
+}
+
+#dashboard-financial #fin-content-area .fin-minimum-setup-step:hover,
+#dashboard-financial #fin-content-area .fin-minimum-setup-step:focus-visible {
+    border-color: color-mix(in srgb, var(--interactive-primary) 42%, var(--ds-mode-surface-border));
+    background: color-mix(in srgb, var(--interactive-primary) 7%, transparent);
+}
+
+#dashboard-financial #fin-content-area .fin-minimum-setup-step > span {
+    width: fit-content;
+    padding: 0.18rem 0.48rem;
+    border: 1px solid var(--ds-mode-surface-border);
+    border-radius: 999px;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+}
+
+#dashboard-financial #fin-content-area .fin-minimum-setup-step strong {
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    line-height: 1.25;
+}
+
+#dashboard-financial #fin-content-area .fin-minimum-setup-step small {
+    color: var(--text-secondary);
+    font-size: 0.74rem;
+    line-height: 1.3;
+}
+
+#dashboard-financial #fin-content-area .fin-minimum-setup-step.is-complete {
+    border-color: rgba(168, 230, 207, 0.28);
+}
+
+#dashboard-financial #fin-content-area .fin-minimum-setup-step.is-complete > span {
+    border-color: rgba(168, 230, 207, 0.28);
+    color: var(--fin-safe);
+}
+
+#dashboard-financial #fin-content-area .fin-sample-data-note {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: var(--space-4);
+    padding: 0.75rem 0.85rem;
+    border: 1px solid color-mix(in srgb, var(--fin-stress-med) 35%, var(--ds-mode-surface-border));
+    border-radius: var(--ds-radius-sm);
+    background: color-mix(in srgb, var(--fin-stress-med) 7%, transparent);
+}
+
+#dashboard-financial #fin-content-area .fin-sample-data-note > div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+#dashboard-financial #fin-content-area .fin-sample-data-note strong {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+#dashboard-financial #fin-content-area .fin-sample-data-note span {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    line-height: 1.35;
+}
+
+#dashboard-financial #fin-content-area .fin-sample-data-note-actions {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.45rem;
+}
+
 #dashboard-financial #fin-content-area .fin-calendar-lows {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4119,7 +4252,8 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     }
 
     #dashboard-financial #fin-content-area .fin-command-grid,
-    #dashboard-financial #fin-content-area .fin-outlook-grid {
+    #dashboard-financial #fin-content-area .fin-outlook-grid,
+    #dashboard-financial #fin-content-area .fin-minimum-setup-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
@@ -4218,12 +4352,15 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     }
 
     #dashboard-financial #fin-content-area .fin-command-grid,
-    #dashboard-financial #fin-content-area .fin-outlook-grid {
+    #dashboard-financial #fin-content-area .fin-outlook-grid,
+    #dashboard-financial #fin-content-area .fin-minimum-setup-grid {
         grid-template-columns: 1fr;
     }
 
     #dashboard-financial #fin-content-area .fin-money-picture-head,
-    #dashboard-financial #fin-content-area .fin-money-note {
+    #dashboard-financial #fin-content-area .fin-money-note,
+    #dashboard-financial #fin-content-area .fin-minimum-setup-head,
+    #dashboard-financial #fin-content-area .fin-sample-data-note {
         flex-direction: column;
         align-items: stretch;
     }

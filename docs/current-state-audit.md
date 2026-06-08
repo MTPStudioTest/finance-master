@@ -4,6 +4,8 @@ Source roadmap: `/Users/maximilianschertz/Downloads/finance-master-roadmap-for-c
 
 Audit date: 2026-06-04
 
+Status: historical snapshot. Visible board names, Settings boundaries, Records ownership, sample-data behavior, and several product surfaces have changed since this audit. Use `docs/CODEBASE_AUDIT.md`, `docs/PRODUCT_SPEC.md`, `docs/DATA_MODEL.md`, and `docs/FINANCE_MASTER_ROADMAP.md` for current state.
+
 ## Current Architecture
 
 Finance Master is a static Vite app with a TypeScript entry point and mostly JavaScript finance/dashboard modules.

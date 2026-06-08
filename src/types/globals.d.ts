@@ -113,6 +113,7 @@ declare global {
     getFinancialReadModel(force?: boolean, filter?: FinanceScopeFilter): Record<string, any>;
     getFinancialSnapshot(force?: boolean, filter?: FinanceScopeFilter): Record<string, any>;
     getImportState(): import('./finance').FinanceImportState;
+    getSampleDataStatus(): { isSampleData: boolean; seedState: string; eventCount: number };
     getGoals(): import('./finance').FinanceGoalState;
     getGoalProgress(filter?: FinanceScopeFilter): import('./finance').FinanceGoalProgress[];
     getSavedScenarios(): import('./finance').FinanceScenarioState;

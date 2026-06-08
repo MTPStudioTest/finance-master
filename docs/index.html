@@ -9,8 +9,8 @@
     />
     <link rel="icon" href="data:," />
     <title>Finance Master</title>
-    <script type="module" crossorigin src="/finance-master/assets/index-DoIy6oIE.js"></script>
-    <link rel="stylesheet" crossorigin href="/finance-master/assets/index-CCdCjHdG.css">
+    <script type="module" crossorigin src="/finance-master/assets/index-CuXrlR84.js"></script>
+    <link rel="stylesheet" crossorigin href="/finance-master/assets/index-BPkwJgoO.css">
   </head>
   <body class="mode-financial">
     <div class="finance-master-atmosphere" aria-hidden="true"></div>
@@ -41,39 +41,25 @@
         </div>
         <nav class="finance-master-nav" id="primary-finance-navigation" aria-label="Primary finance navigation">
           <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'dashboard'" data-fin-nav="dashboard">
-            Overview
+            Money Status
           </button>
-          
-          <div class="fin-nav-group-label" style="margin-top: 1rem;">Operate</div>
-          <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'ledger'" data-fin-nav="ledger">
-            Transactions
+          <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'decisions'" data-fin-nav="decisions">
+            Decision Lab
           </button>
-          <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'invoices'" data-fin-nav="invoices">
-            Income
+          <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'flow'" data-fin-nav="flow">
+            Cash Timeline
           </button>
-          <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'planning'" data-fin-nav="planning">
-            Cashflow
+          <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'plan'" data-fin-nav="plan">
+            Money Plan
+          </button>
+          <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'radar'" data-fin-nav="radar">
+            Risk Radar
           </button>
           <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'review'" data-fin-nav="review">
-            Monthly Review
+            Reality Check
           </button>
-
-          <div class="fin-nav-group-label" style="margin-top: 1rem;">Treasury</div>
-          <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'reserves'" data-fin-nav="reserves">
-            Reserves
-          </button>
-          <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'fixedCosts'" data-fin-nav="fixedCosts">
-            Obligations
-          </button>
-          
-          <div class="fin-nav-group-label" style="margin-top: 1rem;">Understand</div>
-          <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'reports'" data-fin-nav="reports">
-            Reports
-          </button>
-          
-          <div class="fin-nav-group-label" style="margin-top: 1rem;">System</div>
-          <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'data'" data-fin-nav="data">
-            Import & Backup
+          <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'logbook'" data-fin-nav="logbook">
+            Records
           </button>
           <button class="finance-master-button" type="button" data-action="FinancialMode.setSection" data-action-args="'settings'" data-fin-nav="settings">
             Settings
@@ -93,12 +79,14 @@
       </div>
 
       <!-- Floating Action Button -->
-      <button class="fin-fab-add" type="button" data-action="openEditModal" data-action-args="'quickAdd'" aria-label="New entry">
+      <button class="fin-fab-add" type="button" data-action="toggleQuickActionMenu" aria-label="New entry" aria-expanded="false" aria-controls="quick-action-menu">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="12" y1="5" x2="12" y2="19"></line>
           <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
       </button>
+      <div class="fin-quick-action-menu" id="quick-action-menu" aria-hidden="true">
+      </div>
 
     </div>
 

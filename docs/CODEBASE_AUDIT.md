@@ -44,11 +44,12 @@ There is no separate lint script in `package.json`.
 
 Last run during this audit:
 
-- `npm run typecheck`: passed.
-- `npm test`: passed, 54 tests.
-- `npm run build`: passed.
+- `npm run typecheck`: passed via `npm run build`.
+- `npm test`: passed, 59 tests.
+- `npm run build`: passed with the known Vite chunk-size warning.
+- `npm run test:e2e`: passed, 29 tests.
 
-`npm run test:e2e` was not run for this documentation-only Phase 1 change. It should be run before or after UI phases that touch navigation, layout, modals, storage workflows, or primary user actions.
+Use `docs/QA_CHECKLIST.md` for the current command, data safety, calculation, board, responsive, and documentation handoff checklist.
 
 ## Navigation And Routing
 
@@ -136,7 +137,7 @@ Additional layout keys are read directly in `src/dashboard/financial-mode.js`, i
 
 Demo data comes from `src/data/demo-data.ts` via `createDemoDrafts(currency)`.
 
-Demo seeding is controlled by `Store.seedDemoIfNeeded(force = false)`. Current behavior seeds demo data when the ledger is empty. The implementation comment says an empty ledger is not considered a stable deployed state, so stale demo flags such as `deleted` do not keep GitHub Pages empty forever.
+Demo seeding is controlled by `Store.seedDemoIfNeeded(force = false)`. Current behavior seeds fictional demo data only on true first run or explicit sample restore. User-selected empty setup states such as `deleted`, `restored-backup`, `existing-ledger`, and `empty-setup` are not silently reseeded on reload. `Store.getSampleDataStatus()` exposes the seed flag so the dashboard can visibly label the fictional sample ledger without affecting finance calculations.
 
 Destructive or replacement methods in `Store`:
 
@@ -259,7 +260,7 @@ Current coverage includes:
 - Forecast expected landing, forecast low points, reserve health, weather, and signals.
 - Weekly checkpoint normalization, replacement, and history retention.
 - Decision engine and scenario lab behavior.
-- E2E navigation, data safety, backup/restore, repair-query preservation, forms, settings preference propagation, and UI boundaries.
+- E2E navigation, data safety, backup/restore, repair-query preservation, forms, settings preference propagation, empty-ledger first-run guidance, and UI boundaries.
 
 ## Suspicious Or Known Roadmap Areas
 
@@ -272,11 +273,14 @@ Current coverage includes:
 - Records now keeps search always visible, moves account/category/date/source filters into collapsed advanced filters, and exposes common filter chips for review/link/type states.
 - Money Plan now labels protected account allocations and reserve bucket balances separately, uses readable debt plan counts, and gives Protected Money one primary creation action.
 - Money Status now raises Financial Weather directly below the Safe-to-Spend cockpit, keeps weather signals compact, renames the daily focus to Suggested Next Move, makes that action primary, and shows obligation due dates before type labels.
+- Money Status now shows a non-blocking minimum useful setup checklist when local data is empty or incomplete, with first-run actions for cash accounts, recurring costs, upcoming obligations, expected income, and reserve protection.
+- Money Status now marks the seeded fictional sample ledger with a clear note, a confirmation-gated Start Empty action, and a Settings route; empty local setup is not labeled as sample data.
 - Primary board copy now uses "Needs confirmation" and "Reality check suggested" instead of the older "Unreviewed" / "Review due today" wording.
 - Cash Timeline now separates actual cash, available cash, and expected landing; expected income is visibly forecast-only, low points have risk labels, and Scenario Pressure uses simpler status cards.
 - Risk Radar rows now show status, reason, impact, and a route to the relevant source board; Pattern Memory stays compact until 3 checkpoints exist and shows a clear unlock condition instead of a large locked list.
 - Reality Check now keeps Review Queue as the actionable source of truth, uses compact obligation/payment checks to reduce duplicate lists, and places Save Checkpoint as the final action.
-- `Store.seedDemoIfNeeded` can repopulate an empty deployed app even after a stale `deleted` demo flag; this is intentional per comment but should be reviewed against the roadmap's sample-data separation rule before changing behavior.
+- The deployable `docs/index.html` and `docs/assets/` GitHub Pages artifact has been refreshed from the current Vite build so it no longer carries old navigation or obsolete bundle hashes.
+- `Store.seedDemoIfNeeded` still auto-seeds first-run sample data when no local seed state exists; a fuller first-run chooser remains a future onboarding refinement.
 - Schema migration has a registry but no historical migrations beyond current-shape clone.
 - Backup restore validation is strong, but future schema additions must update backup validation and migration fixtures.
 - Central protected cash can come from protected account allocations while explicit reserve buckets are tracked separately; future calculation work should decide whether reserve bucket balances should become canonical protected cash inputs or remain planning containers.
@@ -285,6 +289,9 @@ Current coverage includes:
 ## Phase 1 Acceptance Criteria
 
 - `docs/CODEBASE_AUDIT.md` exists.
+- `docs/QA_CHECKLIST.md` exists.
+- `docs/PRODUCT_SPEC.md` exists.
+- `docs/DATA_MODEL.md` exists.
 - Boards, major components, data models, and calculation paths are listed.
 - Known broken or suspicious areas are identified.
 - Exact build/test/typecheck commands are documented.

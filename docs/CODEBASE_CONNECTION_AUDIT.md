@@ -2,6 +2,8 @@
 
 Audit date: 2026-06-04
 
+Status: historical snapshot. For current architecture and completed roadmap status, use `docs/CODEBASE_AUDIT.md`, `docs/PRODUCT_SPEC.md`, `docs/DATA_MODEL.md`, and `docs/QA_CHECKLIST.md`. Several debt/payment-plan and navigation findings below have since been implemented and tested.
+
 ## Executive Summary
 
 Finance Master is a local-first Vite app with an event-sourced finance ledger, an IndexedDB/localStorage repository adapter, a derived read model, and centralized treasury calculations. The safety and calculation foundation is stronger than the incoming brief assumed: URL repair/reset behavior is covered by e2e tests, backup restore uses validation/preview, cash accounts are editable, and actual/protected/available cash plus burn/runway are computed centrally.

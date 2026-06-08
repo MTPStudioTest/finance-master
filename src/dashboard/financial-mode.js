@@ -4506,6 +4506,96 @@ window.FinancialMode = (function () {
         `;
     }
 
+    function renderMinimumSetupChecklist() {
+        const accounts = safeArray(currentData && currentData.fiatAccounts);
+        const recurringCosts = safeArray(currentData && currentData.recurringExpenses);
+        const obligations = safeArray(currentTreasury && currentTreasury.obligations);
+        const expectedIncome = safeArray(currentData && currentData.pipelineDeals)
+            .filter((deal) => !['paid', 'cancelled', 'lost'].includes(String(deal && deal.status || '').toLowerCase()));
+        const reserveBuckets = safeArray(currentData && currentData.reserveBuckets);
+        const hasProtectedCash = treasuryNumber('protectedCash', treasuryNumber('reservedCash', 0)) > 0
+            || reserveBuckets.some((bucket) => (Number(bucket && bucket.currentAmount) || 0) > 0 || (Number(bucket && bucket.targetAmount) || 0) > 0);
+        const items = [
+            {
+                label: 'Add cash account',
+                copy: 'Start with the real liquid balance.',
+                complete: accounts.length > 0,
+                action: 'FinancialMode.openAddModal',
+                args: "'fiatAccount'"
+            },
+            {
+                label: 'Add recurring costs',
+                copy: 'Normalize the monthly pressure.',
+                complete: recurringCosts.length > 0,
+                action: 'FinancialMode.openAddModal',
+                args: "'expense'"
+            },
+            {
+                label: 'Add upcoming obligations',
+                copy: 'Confirm due dates and payment plans.',
+                complete: obligations.some((entry) => String(entry && entry.status || '') !== 'paid'),
+                action: 'FinancialMode.setSection',
+                args: "'plan'"
+            },
+            {
+                label: 'Add expected income',
+                copy: 'Keep forecasts separate from cash.',
+                complete: expectedIncome.length > 0,
+                action: 'FinancialMode.openAddModal',
+                args: "'income'"
+            },
+            {
+                label: 'Add reserve protection',
+                copy: 'Protect tax, VAT, health, or buffer cash.',
+                complete: hasProtectedCash,
+                action: 'FinancialMode.openAddModal',
+                args: "'reserveBucket'"
+            }
+        ];
+        const completedCount = items.filter((item) => item.complete).length;
+        if (currentHasFinanceData && completedCount === items.length) return '';
+
+        return `
+            <div class="fin-minimum-setup" aria-label="Minimum useful setup checklist">
+                <div class="fin-minimum-setup-head">
+                    <div>
+                        <strong>Minimum useful setup</strong>
+                        <span>Enough inputs to make Safe-to-Spend, burn, runway, and forecast confidence useful.</span>
+                    </div>
+                    <small>${completedCount}/${items.length} ready</small>
+                </div>
+                <div class="fin-minimum-setup-grid">
+                    ${items.map((item) => `
+                        <button type="button" class="fin-minimum-setup-step${item.complete ? ' is-complete' : ''}" data-action="${escapeHtml(item.action)}" data-action-args="${escapeHtml(item.args)}">
+                            <span>${item.complete ? 'Ready' : 'Needed'}</span>
+                            <strong>${escapeHtml(item.label)}</strong>
+                            <small>${escapeHtml(item.copy)}</small>
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    function renderSampleDataNotice() {
+        const status = window.Store && typeof window.Store.getSampleDataStatus === 'function'
+            ? window.Store.getSampleDataStatus()
+            : null;
+        if (!status || !status.isSampleData) return '';
+        return `
+            <div class="fin-sample-data-note" role="note">
+                <div>
+                    <strong>Fictional sample data</strong>
+                    <span>This dashboard is using the local sample ledger. Replace it with your own entries or restore a backup when you are ready.</span>
+                </div>
+                <div class="fin-sample-data-note-actions">
+                    ${renderFinanceButton({ label: 'Start empty', action: 'deleteDemoData', size: 'sm', variant: 'ghost' })}
+                    ${renderFinanceButton({ label: 'Open Settings', action: 'FinancialMode.setSection', args: "'settings'", size: 'sm', variant: 'ghost' })}
+                </div>
+            </div>
+        `;
+    }
+
     function renderDashboardCockpit() {
         const totalCash = treasuryNumber('actualCash', treasuryNumber('totalCash', Number(currentSnapshot?.realBalance) || 0));
         const reservedCash = treasuryNumber('protectedCash', treasuryNumber('reservedCash', Number(currentSnapshot?.reservedCash) || 0));
@@ -4552,6 +4642,7 @@ window.FinancialMode = (function () {
             <section class="fin-section">
                 <div class="widget ui-card glass fin-card fin-money-picture fin-pulse-hero" data-fin-command-summary>
                     ${safeHeader}
+                    ${renderSampleDataNotice()}
                     <div class="fin-money-picture-grid">
                         <div class="fin-money-safe ${safeClass}">
                             <span>Safe to spend</span>
@@ -4574,6 +4665,7 @@ window.FinancialMode = (function () {
                             </div>
                         </div>
                     </div>
+                    ${renderMinimumSetupChecklist()}
                 </div>
             </section>
         `;

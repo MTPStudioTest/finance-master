@@ -37,7 +37,8 @@ npm run build
 - Use Conservative, Expected, and Optimistic scenarios to understand the next 90 days.
 - Use Records as a searchable raw log, not the emotional center of the app.
 - Use Reality Check to resolve unclear, overdue, risky, or uncategorized items.
-- Use Settings only for currency, forecast horizon, entities by scope, cash accounts, reserve buckets, recurring costs, debt, local import/export, and reset.
+- Use Money Plan for cash accounts, reserve buckets, recurring costs, debt, and goals.
+- Use Settings only for app preferences, backup/restore, local data health, sample data controls, and reset.
 
 ## Included
 
@@ -88,6 +89,13 @@ tests/
   trust-hardening.test.mjs
   e2e/
 ```
+
+## Documentation
+
+- `docs/PRODUCT_SPEC.md` explains the product promise, boards, first-run behavior, core vocabulary, safety rules, and non-goals.
+- `docs/DATA_MODEL.md` explains local storage, ledger events, read models, treasury calculations, backups, and sample-data seed state.
+- `docs/CODEBASE_AUDIT.md` records the current architecture and roadmap implementation notes.
+- `docs/QA_CHECKLIST.md` lists automated checks, data safety smoke tests, board smoke tests, and handoff expectations.
 
 ## Intentionally Excluded
 

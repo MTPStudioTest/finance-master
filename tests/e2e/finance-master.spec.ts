@@ -830,6 +830,13 @@ test('overview prioritizes the money picture cockpit', async ({ page }) => {
   await expect(content.getByText('Unreviewed:', { exact: false })).toHaveCount(0);
   await expect(content.getByText('Review due today', { exact: true })).toHaveCount(0);
   await expect(content.getByText('Safe-to-Spend', { exact: true }).first()).toBeVisible();
+  await expect(content.getByText('Fictional sample data', { exact: true })).toBeVisible();
+  await expect(content.getByRole('button', { name: 'Start empty', exact: true })).toBeVisible();
+  await content.getByRole('button', { name: 'Start empty', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Delete sample data', exact: true })).toBeVisible();
+  await expect(page.locator('#modal-body').getByRole('button', { name: 'Delete sample data', exact: true })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
   await expect(content.getByText('Current cash', { exact: true })).toBeVisible();
   await expect(content.getByText('Runway', { exact: true }).first()).toBeVisible();
   await expect(content.getByText('Suggested Next Move', { exact: true })).toBeVisible();
@@ -1129,6 +1136,19 @@ test('empty ledger can create and persist the first manual transaction', async (
     window.Store.deleteSampleData();
     window.FinancialMode?.render?.();
   });
+  await expect(page.locator('#fin-content-area').getByText('Fictional sample data', { exact: true })).toHaveCount(0);
+  const setupChecklist = page.locator('.fin-minimum-setup');
+  await expect(setupChecklist.getByText('Minimum useful setup', { exact: true })).toBeVisible();
+  await expect(setupChecklist.getByText('0/5 ready', { exact: true })).toBeVisible();
+  for (const label of [
+    'Add cash account',
+    'Add recurring costs',
+    'Add upcoming obligations',
+    'Add expected income',
+    'Add reserve protection',
+  ] as const) {
+    await expect(setupChecklist.getByRole('button', { name: new RegExp(label) })).toBeVisible();
+  }
   await page.getByRole('button', { name: 'Records', exact: true }).click();
   await expect(page.getByLabel('Record status').getByText('Records', { exact: true })).toBeVisible();
   await expect(page.locator('#fin-content-area').getByText('0', { exact: true }).first()).toBeVisible();
@@ -1152,7 +1172,7 @@ test('empty ledger can create and persist the first manual transaction', async (
   expect(errors).toEqual([]);
 });
 
-test('stale deleted demo flag cannot keep the deployed app empty after reload', async ({ page }) => {
+test('deleted sample data stays empty after reload until sample data is restored', async ({ page }) => {
   const errors = monitorConsole(page);
   await gotoApp(page);
   await page.evaluate(async () => {
@@ -1167,9 +1187,9 @@ test('stale deleted demo flag cannot keep the deployed app empty after reload', 
     });
   });
   await reloadApp(page);
-  await page.getByRole('button', { name: 'Cash Timeline', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => window.Store.getFinanceLedger().length)).toBeGreaterThan(0);
-  await expect(page.locator('#fin-content-area').getByText('Audit log is clean.', { exact: true })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.Store.getFinanceLedger().length)).toBe(0);
+  await expect(page.locator('#fin-content-area').getByText('Minimum useful setup', { exact: true })).toBeVisible();
+  await expect(page.locator('#fin-content-area').getByText('Fictional sample data', { exact: true })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -1239,7 +1259,7 @@ test('income exposes open, settled, and all income views', async ({ page }) => {
   await expect(incomeModal.locator('#modal-income-title')).toHaveValue('Retainer forecast only');
   await expect(page.locator('#modal-income-duration-value')).toHaveValue('');
   await incomeModal.locator('#modal-income-status').selectOption('confirmed');
-  await incomeModal.locator('#modal-income-probability').fill('0.95');
+  await fillAndExpect(incomeModal.locator('#modal-income-probability'), '0.95');
   await incomeModal.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
   await expect.poll(() => page.evaluate((incomeId) => {

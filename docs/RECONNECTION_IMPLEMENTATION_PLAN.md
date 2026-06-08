@@ -1,5 +1,7 @@
 # Finance Master Reconnection Implementation Plan
 
+Status: historical implementation plan. Debt/payment-plan domain, calculation, lifecycle UI, actions, and tests have since been implemented in the current codebase. Use `docs/CODEBASE_AUDIT.md`, `docs/DATA_MODEL.md`, and the current test suite as the authoritative source before treating any item below as open work.
+
 ## Summary
 
 Execute the reconnection work in small reviewable slices. The first implementation slice is Debt & Payment Plans because it is the clearest confirmed disconnect between the current app and the product promise. Preserve the event-sourced local-first architecture and keep all new debt behavior backward compatible with existing `debt.plan_updated` events.
