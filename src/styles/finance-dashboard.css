@@ -962,25 +962,6 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     color: var(--fin-stress-high);
 }
 
-/* Buttons */
-.fin-action-btn {
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    color: var(--text-secondary);
-    padding: 6px 12px;
-    border-radius: 8px;
-    font-size: 0.75rem;
-    font-family: var(--font-mono);
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.fin-action-btn:hover {
-    background: var(--glass-bg-hover);
-    color: var(--text-primary);
-    border-color: var(--text-accent);
-}
-
 /* ========================================
    Financial Mode UI Refinement (No Logic Changes)
    Scope: #dashboard-financial #fin-content-area
@@ -1300,19 +1281,6 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     border-radius: 10px;
 }
 
-#dashboard-financial #fin-content-area .fin-action-btn {
-    width: 100%;
-    min-height: 40px;
-    margin-top: 10px;
-    padding: 0 12px;
-    border-radius: 10px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    transition: background 220ms ease, border-color 220ms ease, color 220ms ease;
-}
-
 #dashboard-financial #fin-content-area .fin-action-row {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1343,11 +1311,6 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
 
 #dashboard-financial #fin-content-area .fin-section-heading-row > .fin-action-row .fin-button {
     width: auto;
-}
-
-#dashboard-financial #fin-content-area .fin-action-row--inline .fin-action-btn {
-    width: auto;
-    min-width: 128px;
 }
 
 #dashboard-financial #fin-content-area .fin-ledger-toolbar {
@@ -1534,7 +1497,9 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
 }
 
 #dashboard-financial #fin-content-area .fin-tabs {
+    max-width: 100%;
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 4px;
     padding: 4px;
@@ -1545,6 +1510,7 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
 }
 
 #dashboard-financial #fin-content-area .fin-tab-btn {
+    min-width: 0;
     min-height: 34px;
     padding: 0 12px;
     border-radius: 999px;
@@ -1554,6 +1520,7 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
     font-family: var(--font-mono);
     font-size: 0.64rem;
     letter-spacing: 0.08em;
+    line-height: 1.15;
     text-transform: uppercase;
     transition: background 220ms ease, color 220ms ease;
 }
@@ -4347,10 +4314,6 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
         flex-direction: column;
     }
 
-    #dashboard-financial #fin-content-area .fin-action-row--inline .fin-action-btn {
-        width: 100%;
-    }
-
     #dashboard-financial #fin-content-area .fin-command-grid,
     #dashboard-financial #fin-content-area .fin-outlook-grid,
     #dashboard-financial #fin-content-area .fin-minimum-setup-grid {
@@ -4383,14 +4346,18 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
 
     #dashboard-financial #fin-content-area .fin-list-row {
         align-items: flex-start;
+        flex-wrap: wrap;
     }
 
     #dashboard-financial #fin-content-area .fin-list-row-amount {
         margin-left: auto;
+        text-align: left;
     }
 
     #dashboard-financial #fin-content-area .fin-list-row-right {
-        width: 100%;
+        flex: 1 1 calc(100% - 44px);
+        width: calc(100% - 44px);
+        max-width: calc(100% - 44px);
         align-items: flex-start;
         flex-direction: column;
         margin-left: 44px;
@@ -4481,7 +4448,15 @@ input[type="range"].fin-range::-webkit-slider-thumb:hover {
 
     #dashboard-financial #fin-content-area .fin-tabs {
         width: 100%;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        border-radius: 16px;
+    }
+
+    #dashboard-financial #fin-content-area .fin-tab-btn {
+        width: 100%;
+        padding-inline: 8px;
+        white-space: normal;
     }
 
     #dashboard-financial #fin-content-area .fin-transaction-row {

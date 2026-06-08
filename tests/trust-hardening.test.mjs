@@ -21,6 +21,7 @@ import {
 import {
   evaluateMigrationStatus,
   inspectRepositoryMigration,
+  migrateRepositorySnapshot,
 } from '../src/persistence/schema-migration.js';
 import {
   buildWeeklyReviewState,
@@ -347,6 +348,30 @@ test('migration guardrails report current schema and future schema safely', () =
     status: 'failed',
     safeToMigrate: false,
     errors: ['Ledger events must be stored as a list.'],
+  });
+});
+
+test('legacy repository migration fills newer local state buckets safely', () => {
+  const legacySnapshot = {
+    ledger: validBackup().ledger,
+    settings: validBackup().financeSettings,
+    ui: validBackup().uiSettings,
+    review: migrateFinanceBackupV1(validBackup()).review,
+    goals: { goals: [] },
+    imports: { batches: [] },
+  };
+
+  const result = migrateRepositorySnapshot(legacySnapshot, 'finance-master.local-first.v0');
+  assert.equal(result.status, 'current');
+  assert.equal(result.safeToMigrate, true);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.snapshot.scenarios, { scenarios: [] });
+  assert.deepEqual(result.snapshot.priceCache, { quotes: {} });
+  assert.deepEqual(result.snapshot.backupMeta, { lastBackupAt: null });
+  assert.deepEqual(inspectRepositoryMigration(legacySnapshot, 'finance-master.local-first.v0'), {
+    status: 'current',
+    safeToMigrate: true,
+    errors: [],
   });
 });
 

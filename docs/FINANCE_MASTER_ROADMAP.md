@@ -1503,38 +1503,39 @@ If a command fails because the repo has no such script, document that instead of
 
 ---
 
-# 8. Known current issues from screenshot review
+# 8. Historical screenshot findings and current status
 
-These are confirmed visual/product issues from the current state.
+This section started as a screenshot-review issue list. It now tracks which findings are resolved, which remain open, and which need a fresh manual QA pass before more UI work is scheduled.
 
-## Critical
-1. Decision Lab layout breaks; focus cards become unreadable vertical word columns.
-2. Board actions lack clear hierarchy.
-3. Global plus button is semantically unclear.
+## Resolved or covered by implementation
+1. Decision Lab layout/readability is covered by viewport E2E checks, and the board no longer uses the unreadable vertical focus-card layout.
+2. Board action hierarchy has been tightened across the main boards. Shared board actions use `renderFinanceButton`, and legacy `.fin-action-btn` runtime markup is guarded against by E2E.
+3. The global plus button now opens a creation-focused Quick Add menu instead of board-navigation or restore actions.
+4. Financial Weather is raised directly below the Money Status safe-to-spend cockpit.
+5. Money Plan labels protected account allocations and reserve bucket balances separately.
+6. Debt plan count display now uses clearer confirmed-plan language.
+7. Core financial inputs moved to their responsible boards; Settings is limited to app-level preferences, backup/restore, data health, sample data, and reset.
+8. Payment plan pause/start/no-deadline behavior is implemented and covered by E2E.
+9. Risk Radar rows now include status, reason, impact, and source-board routes.
+10. Pattern Memory stays compact until enough checkpoints exist.
+11. Reality Check keeps Review Queue as the primary actionable source and reduces duplicate item lists.
+12. Records search stays visible while advanced filters are collapsed, with common filter chips exposed.
+13. Settings has one backup/restore flow and a distinct typed-confirmation safety zone.
+14. Destructive reset and sample-data actions use explicit confirmation flows.
 
-## High
-4. Money Status is strong but too long for a daily cockpit.
-5. Financial Weather / Money Weather is too low and should be more prominent.
-6. Money Plan protected cash vs reserve buckets is unclear.
-7. Debt plan count display is ambiguous.
-8. Core financial inputs must be editable from the correct boards.
-9. Payment plan pause/start/no-deadline logic must be reliable.
+## Still open or intentionally deferred
+1. `src/dashboard/financial-mode.js` remains very large and mixes rendering, UI state, action handling, and persistence-facing orchestration.
+2. A fuller first-run chooser remains deferred; the current state supports labeled sample data plus a confirmation-gated empty setup path.
+3. Standalone upcoming-obligation creation from Quick Add remains deferred until the product has a dedicated workflow distinct from recurring costs and debt plans.
+4. Standalone decision-scenario creation remains deferred; current decision drafts reuse Scenario Lab 2.0 for non-mutating previews.
+5. Future schema changes still need explicit version-aware migrations and fixtures beyond the historical v0 repository migration.
+6. Reserve bucket balances and protected account allocations are documented separately; future calculation work should decide whether reserve buckets become canonical protected cash inputs or remain planning containers.
 
-## Medium
-10. Risk Radar repeats generic reason copy.
-11. Risk Rails need stronger actionability.
-12. Pattern Memory takes too much room while locked.
-13. Reality Check duplicates items between queue and details.
-14. Records filters are heavy.
-15. Records detail drawer may be visually wrong.
-16. Settings has duplicate Restore Backup action.
-17. Destructive actions need clearer confirmation.
-
-## Low
-18. Some microcopy is too abstract.
-19. Some uppercase labels reduce readability.
-20. Some buttons are visually too similar.
-21. Icon usage could reduce text load.
+## Needs fresh QA before more redesign
+1. Money Status may still need a daily-use compression pass after a fresh desktop/mobile review.
+2. Risk Rails actionability should be reassessed against current Risk Radar rows.
+3. Records detail drawer should be manually checked on desktop and mobile.
+4. Some microcopy, uppercase labels, and icon/text balance may still benefit from a focused polish pass.
 
 ---
 

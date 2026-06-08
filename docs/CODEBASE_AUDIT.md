@@ -169,7 +169,7 @@ Backup behavior:
 
 Schema migration is currently minimal:
 
-- `src/persistence/schema-migration.js` has a registry containing the current schema only.
+- `src/persistence/schema-migration.js` has a registry for the current schema plus a legacy `finance-master.local-first.v0` repository snapshot migration that fills newer local buckets such as scenarios, price cache, and backup metadata.
 - `inspectRepositoryMigration` validates snapshots before and after migration.
 - Future schema changes need explicit version-aware migrations.
 
@@ -267,6 +267,7 @@ Current coverage includes:
 - Visible board labels completed the Phase 2 rename to Money Status, Decision Lab, Cash Timeline, Money Plan, Risk Radar, Reality Check, Records, and Settings.
 - `src/dashboard/financial-mode.js` is very large and mixes rendering, routing, presentation logic, UI state, and action handling.
 - The global plus button now opens a predictable creation-focused Quick Add menu on every board. It uses existing workflows for transactions, income, cash accounts, recurring costs, debt items, reserve buckets, and CSV import; standalone obligation and decision-scenario creation remain deferred until product workflows exist.
+- Shared board actions use the `renderFinanceButton` primitive. Legacy `.fin-action-btn` markup is covered by E2E absence checks and its dead CSS has been removed.
 - Decision Lab layout/readability is guarded by viewport E2E checks, its explanatory "why this board exists" copy now lives in the help layer instead of a prominent board card, and it can create saved planning drafts that reuse Scenario Lab 2.0 for non-mutating decision previews.
 - Settings now keeps app preferences, one backup/restore flow, local data health, a visible preference-impact summary, reduced-motion persistence, and a distinct typed-confirmation safety zone for reset/sample-data actions. CSV import actions, import history, and saved CSV profiles live with Records, where raw transaction utility belongs.
 - Records now has one header action cluster for Import CSV, Export, and Add transaction; duplicate utility-card import/add buttons were removed to improve action hierarchy.
@@ -275,16 +276,17 @@ Current coverage includes:
 - Money Status now raises Financial Weather directly below the Safe-to-Spend cockpit, keeps weather signals compact, renames the daily focus to Suggested Next Move, makes that action primary, and shows obligation due dates before type labels.
 - Money Status now shows a non-blocking minimum useful setup checklist when local data is empty or incomplete, with first-run actions for cash accounts, recurring costs, upcoming obligations, expected income, and reserve protection.
 - Money Status now marks the seeded fictional sample ledger with a clear note, a confirmation-gated Start Empty action, and a Settings route; empty local setup is not labeled as sample data.
+- Mobile shell surfaces now use theme-controlled sidebar, control, nav-pill, and selected-row tokens instead of hard-coded pale navigation colors.
 - Primary board copy now uses "Needs confirmation" and "Reality check suggested" instead of the older "Unreviewed" / "Review due today" wording.
 - Cash Timeline now separates actual cash, available cash, and expected landing; expected income is visibly forecast-only, low points have risk labels, and Scenario Pressure uses simpler status cards.
 - Risk Radar rows now show status, reason, impact, and a route to the relevant source board; Pattern Memory stays compact until 3 checkpoints exist and shows a clear unlock condition instead of a large locked list.
 - Reality Check now keeps Review Queue as the actionable source of truth, uses compact obligation/payment checks to reduce duplicate lists, and places Save Checkpoint as the final action.
 - The deployable `docs/index.html` and `docs/assets/` GitHub Pages artifact has been refreshed from the current Vite build so it no longer carries old navigation or obsolete bundle hashes.
 - `Store.seedDemoIfNeeded` still auto-seeds first-run sample data when no local seed state exists; a fuller first-run chooser remains a future onboarding refinement.
-- Schema migration has a registry but no historical migrations beyond current-shape clone.
+- Schema migration has a small historical v0 repository migration, but future schema additions still need explicit version-aware migrations and fixtures.
 - Backup restore validation is strong, but future schema additions must update backup validation and migration fixtures.
 - Central protected cash can come from protected account allocations while explicit reserve buckets are tracked separately; future calculation work should decide whether reserve bucket balances should become canonical protected cash inputs or remain planning containers.
-- Debt/payment-plan UI still needs explicit lifecycle affordances and labels even though the calculation layer has status support.
+- Debt/payment-plan lifecycle affordances are implemented and covered by E2E; future debt work should focus on copy and archive/delete product semantics rather than rebuilding the lifecycle model.
 
 ## Phase 1 Acceptance Criteria
 
@@ -298,11 +300,11 @@ Current coverage includes:
 
 ## Recommended Next Chunk
 
-### Phase 4 — Board action hierarchy and design-system consolidation
+### Phase 16 — Fresh desktop/mobile interaction QA
 
-- Goal: Continue consolidating shared card/button/status patterns and reduce equal-weight board actions.
-- Files likely affected: `src/dashboard/finance-ui.js`, `src/dashboard/financial-mode.js`, `src/styles/finance-dashboard.css`, and `tests/e2e/finance-master.spec.ts`.
-- Implementation steps: identify repeated button/card variants already in use; choose one narrow board or component family; make one primary action visually and semantically dominant; keep secondary utilities quieter.
-- Tests: targeted Playwright checks for the touched board plus `npm run typecheck`, `npm test`, and `npm run build`; run full E2E when touching shared UI helpers.
-- Acceptance criteria: the touched board has one clear primary action per section, existing actions still work, and shared primitive usage increases without broad redesign.
-- Risks / notes: avoid a large design-system rewrite; keep changes incremental and product-boundary aware.
+- Goal: Run a current interaction and screenshot QA pass against the remaining open/polish items in the roadmap.
+- Files likely affected: `docs/FINANCE_MASTER_ROADMAP.md`, `docs/QA_CHECKLIST.md`, `tests/e2e/finance-master.spec.ts`, and any narrowly touched board markup/CSS if QA finds a concrete regression.
+- Implementation steps: exercise Money Status, Risk Radar, Records detail drawer, and the mobile layout; compare findings against the roadmap's remaining QA list; open new focused chunks only for still-reproducible problems.
+- Tests: `npm test`, `npm run build`, targeted Playwright checks for any touched board, and full E2E if shared UI or navigation changes.
+- Acceptance criteria: manual QA findings are documented, deferred work is explicit, and no new critical visual or interaction issue remains without a reproduction.
+- Risks / notes: do not turn the QA pass into a broad redesign; fix only high-confidence regressions in small follow-up chunks.

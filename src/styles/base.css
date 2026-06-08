@@ -366,7 +366,7 @@ textarea:focus-visible,
   height: 44px;
   border: 1px solid var(--ui-control-border);
   border-radius: 0.85rem;
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--ui-control-bg);
   color: var(--text-secondary);
   display: inline-flex;
   flex-direction: column;
@@ -555,15 +555,15 @@ body.finance-nav-open .finance-master-menu-toggle span:nth-child(3) {
 
 .finance-master-button--accent,
 .ui-btn--primary {
-  border-color: rgba(178, 226, 242, 0.36);
-  background: rgba(178, 226, 242, 0.13);
+  border-color: var(--fm-selected-row-border);
+  background: var(--fm-selected-row-bg);
   color: var(--text-primary);
 }
 
 .finance-master-button.active,
 .finance-master-button[aria-current='page'] {
-  border-color: rgba(178, 226, 242, 0.42);
-  background: rgba(178, 226, 242, 0.16);
+  border-color: var(--fm-selected-row-border);
+  background: var(--fm-selected-row-bg);
   color: var(--text-primary);
 }
 
@@ -1210,7 +1210,11 @@ textarea:focus {
     gap: 0.75rem;
     border-bottom: 1px solid var(--ds-mode-surface-border);
     background:
-      linear-gradient(180deg, rgba(238, 246, 241, 0.96), rgba(238, 246, 241, 0.88)),
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--fm-sidebar-background) 96%, var(--ds-color-bg-base)),
+        color-mix(in srgb, var(--fm-sidebar-background) 88%, transparent)
+      ),
       var(--ds-color-bg-base);
     backdrop-filter: blur(var(--glass-blur));
     -webkit-backdrop-filter: blur(var(--glass-blur));
@@ -1222,7 +1226,7 @@ textarea:focus {
     z-index: 34;
     display: block;
     border: 0;
-    background: rgba(5, 10, 10, 0.42);
+    background: color-mix(in srgb, var(--ds-color-bg-base) 62%, transparent);
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--motion-fast) var(--ease);
@@ -1250,7 +1254,11 @@ textarea:focus {
     border-right: 1px solid var(--ds-mode-surface-border);
     border-bottom: 0;
     background:
-      linear-gradient(180deg, rgba(238, 246, 241, 0.96), rgba(238, 246, 241, 0.9)),
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--fm-sidebar-background) 96%, var(--ds-color-bg-base)),
+        color-mix(in srgb, var(--fm-sidebar-background) 90%, transparent)
+      ),
       var(--ds-color-bg-base);
     backdrop-filter: blur(var(--glass-blur));
     -webkit-backdrop-filter: blur(var(--glass-blur));
@@ -1275,6 +1283,15 @@ textarea:focus {
 
   .finance-master-nav .finance-master-button {
     min-height: 44px;
+    border-color: var(--nav-pill-border);
+    background: var(--nav-pill-bg);
+  }
+
+  .finance-master-nav .finance-master-button.active,
+  .finance-master-nav .finance-master-button[aria-current='page'] {
+    border-color: var(--fm-selected-row-border);
+    background: var(--fm-selected-row-bg);
+    color: var(--text-primary);
   }
 
   .finance-master-sidebar-foot span {

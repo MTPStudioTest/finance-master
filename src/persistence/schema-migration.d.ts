@@ -12,3 +12,10 @@ export function inspectRepositoryMigration(snapshot: unknown, schemaLabel?: stri
   safeToMigrate: boolean;
   errors: string[];
 };
+
+export function migrateRepositorySnapshot(snapshot: unknown, schemaLabel?: string): {
+  status: FinanceMigrationStatus;
+  safeToMigrate: boolean;
+  errors: string[];
+  snapshot: unknown | null;
+};

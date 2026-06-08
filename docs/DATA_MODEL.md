@@ -115,6 +115,17 @@ A backup includes:
 
 Backup restore validates and migrates input before replacing local state. Restoring sets the sample seed state to `restored-backup`, which prevents silent sample reseeding if the restored backup is intentionally empty.
 
+## Repository Schema Migration
+
+Current repository schema label: `finance-master.local-first.v1`.
+
+`src/persistence/schema-migration.js` keeps a small migration registry:
+
+- `finance-master.local-first.v0` normalizes older local snapshots by adding missing `scenarios`, `priceCache`, and `backupMeta` buckets.
+- `finance-master.local-first.v1` validates and clones the current shape.
+
+Future schema changes should add a named schema label, migration function, before/after validation, and a fixture in `tests/trust-hardening.test.mjs`.
+
 ## Sample Data Seed State
 
 `finance-master.demo-seeded.v1` controls sample ledger behavior:
