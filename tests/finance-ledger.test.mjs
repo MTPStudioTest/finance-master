@@ -821,6 +821,87 @@ test('linked received income is not double-counted in forecast pipeline totals',
   assert.equal(result.treasury.incomeThisMonth.received, 1200);
 });
 
+test('expected income settlement becomes actual cash and leaves forecast assumptions', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-02T10:00:00.000Z';
+  const settlementIso = '2026-06-05T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-main-before',
+      type: 'asset.account_set',
+      amount: 3000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating cash', balance: 3000, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'income-project-created',
+      type: 'pipeline.created',
+      amount: 1200,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'income-project',
+      metadata: { title: 'Settled launch project', value: 1200, probability: 0.9, status: 'confirmed', expectedDateISO: '2026-06-20', destinationAccountId: 'cash-main', scope: 'business' },
+    },
+    {
+      id: 'income-project-stage-paid',
+      type: 'pipeline.stage_changed',
+      amount: 0,
+      currency: 'EUR',
+      timestamp: settlementIso,
+      related_entity_id: 'income-project',
+      metadata: { title: 'Settled launch project', stage: 'paid', status: 'paid', destinationAccountId: 'cash-main', scope: 'business' },
+    },
+    {
+      id: 'income-project-invoice-paid',
+      type: 'invoice.paid',
+      amount: 1200,
+      currency: 'EUR',
+      timestamp: settlementIso,
+      related_entity_id: 'income-project',
+      metadata: { client: 'Settled launch project', amount: 1200, expectedDate: '2026-06-20', destinationAccountId: 'cash-main', scope: 'business' },
+    },
+    {
+      id: 'income-project-received',
+      type: 'income.received',
+      amount: 1200,
+      currency: 'EUR',
+      timestamp: settlementIso,
+      related_entity_id: 'income-project',
+      metadata: { description: 'Invoice paid: Settled launch project', invoiceId: 'income-project', accountId: 'cash-main', accountName: 'Operating cash', categoryId: 'client-income', scope: 'business', source: 'pipeline-settlement' },
+    },
+    {
+      id: 'cash-main-after-settlement',
+      type: 'asset.account_set',
+      amount: 4200,
+      currency: 'EUR',
+      timestamp: '2026-06-05T10:00:01.000Z',
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating cash', balance: 4200, scope: 'business', bucket: 'available', invoiceId: 'income-project', settlementTransfer: true },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso: settlementIso,
+  });
+  const settledDeal = result.readModel.pipelineDeals.find((entry) => entry.id === 'income-project');
+  const settlementTransaction = result.readModel.transactions.find((entry) => entry.id === 'income-project-received');
+  const paidInvoice = result.readModel.invoices.find((entry) => entry.id === 'income-project');
+
+  assert.equal(settledDeal.status, 'paid');
+  assert.equal(result.treasury.income.some((entry) => entry.id === 'income-project'), false);
+  assert.equal(result.snapshot.weightedPipeline, 0);
+  assert.equal(result.treasury.actualCash, 4200);
+  assert.equal(result.snapshot.realBalance, 4200);
+  assert.equal(result.treasury.incomeThisMonth.received, 1200);
+  assert.equal(settlementTransaction.linkedIncomeId, 'income-project');
+  assert.equal(settlementTransaction.source, 'pipeline-settlement');
+  assert.equal(paidInvoice.status, 'Paid');
+});
+
 test('date utilities preserve date-only values and recurring due dates exactly', () => {
   const finance = loadFinance();
   assert.equal(finance.FinanceDates.toDateOnly('2026-06-05'), '2026-06-05');
@@ -1358,6 +1439,72 @@ test('debt payment plan status controls current pressure without breaking legacy
   assert.equal(result.treasury.totalMonthlyBurn, 450);
   assert.equal(result.treasury.debtPaymentsDueSoon, 350);
   assert.equal(result.readModel.recurringExpenses.find((entry) => entry.id === 'linked-legacy-cost').monthlyAmount, 200);
+});
+
+test('debt without due date or payment plan stays out of burn and creates review pressure', () => {
+  const finance = loadFinance();
+  const nowIso = '2026-06-03T10:00:00.000Z';
+  const events = append(finance, [
+    {
+      id: 'cash-main',
+      type: 'asset.account_set',
+      amount: 5000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'cash-main',
+      metadata: { name: 'Operating', balance: 5000, scope: 'business', bucket: 'available' },
+    },
+    {
+      id: 'tax-reserve',
+      type: 'asset.reserve_set',
+      amount: 1000,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'tax-reserve',
+      metadata: { name: 'Tax reserve', currentAmount: 1000, targetAmount: 1000, scope: 'business' },
+    },
+    {
+      id: 'baseline-burn',
+      type: 'expense.recurring_set',
+      amount: 600,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'baseline-burn',
+      metadata: { category: 'Studio rent', monthlyAmount: 600, dueDay: 20, frequency: 'monthly', scope: 'business' },
+    },
+    {
+      id: 'no-deadline-debt',
+      type: 'debt.added',
+      amount: 2400,
+      currency: 'EUR',
+      timestamp: nowIso,
+      related_entity_id: 'no-deadline-debt',
+      metadata: { name: 'No deadline debt', scope: 'business' },
+    },
+  ], nowIso);
+
+  const result = finance.FinanceCompute.computeFinancialContext(events, {
+    baseCurrency: 'EUR',
+    forecastDays: 90,
+    nowIso,
+  });
+  const debt = result.readModel.debtAccounts.find((entry) => entry.id === 'no-deadline-debt');
+  const obligation = result.treasury.obligations.find((entry) => entry.id === 'no-deadline-debt');
+  const attention = result.snapshot.attentionQueue.find((entry) => entry.id === 'no-deadline-debt');
+
+  assert.equal(debt.outstanding, 2400);
+  assert.equal(debt.dueDate, '');
+  assert.equal(debt.planStatus, 'missing');
+  assert.equal(debt.minimumPaymentMonthly, 0);
+  assert.equal(result.explanations.debtPressure.value, 0);
+  assert.equal(result.treasury.totalMonthlyBurn, 600);
+  assert.equal(result.treasury.runwayMonths, 7.33);
+  assert.equal(obligation.status, 'needs_review');
+  assert.equal(obligation.dueDate, '');
+  assert.equal(obligation.amount, 2400);
+  assert.equal(attention.type, 'Missing plan');
+  assert.equal(result.explanations.safeToSpend.warnings.includes('Some debt items still need payment plans.'), true);
+  assert.equal(result.explanations.debtPressure.warnings.includes('Some debt items still need payment plans.'), true);
 });
 
 test('ledger transaction read model supports explicit income, expense, transfer, and adjustment semantics', () => {

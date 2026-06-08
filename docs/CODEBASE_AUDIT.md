@@ -172,7 +172,7 @@ Schema migration is currently minimal:
 - `inspectRepositoryMigration` validates snapshots before and after migration.
 - Future schema changes need explicit version-aware migrations.
 
-Data health is in `src/persistence/data-health.js` and reports storage availability, corrupted local shapes, event counts, latest event timestamps, schema label, backup version, last backup time, migration status, and storage keys.
+Data health is in `src/persistence/data-health.js` and reports storage availability, corrupted local shapes, incomplete ledger events, duplicate IDs, orphaned ledger/goal links, event counts, latest event timestamps, schema label, backup version, last backup time, migration status, and storage keys.
 
 ## Data Model
 
@@ -250,13 +250,16 @@ Current coverage includes:
 - Project treasury tags.
 - Recurrence normalization.
 - Treasury separation.
+- Expected income settlement into actual cash without forecast double-counting.
+- No-deadline debt review pressure without hidden burn/runway distortion.
 - CSV import parsing and validation.
 - Backup validation/migration/rejection.
-- Data health for corrupt storage.
+- Data health for corrupt storage, duplicate IDs, and orphaned links.
 - Repository migration inspection.
-- Forecast, reserve health, weather, and signals.
+- Forecast expected landing, forecast low points, reserve health, weather, and signals.
+- Weekly checkpoint normalization, replacement, and history retention.
 - Decision engine and scenario lab behavior.
-- E2E navigation, data safety, backup/restore, repair-query preservation, forms, and UI boundaries.
+- E2E navigation, data safety, backup/restore, repair-query preservation, forms, settings preference propagation, and UI boundaries.
 
 ## Suspicious Or Known Roadmap Areas
 
@@ -264,11 +267,12 @@ Current coverage includes:
 - `src/dashboard/financial-mode.js` is very large and mixes rendering, routing, presentation logic, UI state, and action handling.
 - The global plus button now opens a predictable creation-focused Quick Add menu on every board. It uses existing workflows for transactions, income, cash accounts, recurring costs, debt items, reserve buckets, and CSV import; standalone obligation and decision-scenario creation remain deferred until product workflows exist.
 - Decision Lab layout/readability is guarded by viewport E2E checks, its explanatory "why this board exists" copy now lives in the help layer instead of a prominent board card, and it can create saved planning drafts that reuse Scenario Lab 2.0 for non-mutating decision previews.
-- Settings now keeps app preferences, one backup/restore flow, local data health, a visible preference-impact summary, and a distinct typed-confirmation safety zone for reset/sample-data actions. CSV import actions, import history, and saved CSV profiles live with Records, where raw transaction utility belongs.
+- Settings now keeps app preferences, one backup/restore flow, local data health, a visible preference-impact summary, reduced-motion persistence, and a distinct typed-confirmation safety zone for reset/sample-data actions. CSV import actions, import history, and saved CSV profiles live with Records, where raw transaction utility belongs.
 - Records now has one header action cluster for Import CSV, Export, and Add transaction; duplicate utility-card import/add buttons were removed to improve action hierarchy.
 - Records now keeps search always visible, moves account/category/date/source filters into collapsed advanced filters, and exposes common filter chips for review/link/type states.
 - Money Plan now labels protected account allocations and reserve bucket balances separately, uses readable debt plan counts, and gives Protected Money one primary creation action.
 - Money Status now raises Financial Weather directly below the Safe-to-Spend cockpit, keeps weather signals compact, renames the daily focus to Suggested Next Move, makes that action primary, and shows obligation due dates before type labels.
+- Primary board copy now uses "Needs confirmation" and "Reality check suggested" instead of the older "Unreviewed" / "Review due today" wording.
 - Cash Timeline now separates actual cash, available cash, and expected landing; expected income is visibly forecast-only, low points have risk labels, and Scenario Pressure uses simpler status cards.
 - Risk Radar rows now show status, reason, impact, and a route to the relevant source board; Pattern Memory stays compact until 3 checkpoints exist and shows a clear unlock condition instead of a large locked list.
 - Reality Check now keeps Review Queue as the actionable source of truth, uses compact obligation/payment checks to reduce duplicate lists, and places Save Checkpoint as the final action.

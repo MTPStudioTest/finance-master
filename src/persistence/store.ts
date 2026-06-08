@@ -40,7 +40,7 @@ import type {
 } from '../types/finance';
 import { createPriceProvider } from '../integrations/crypto-prices';
 import { assertFinanceBackup, validateFinanceBackup } from './backup-validation.js';
-import { calculateGoalProgress, normalizeGoalState, normalizeReviewState } from '../finance/goals.js';
+import { buildWeeklyReviewState, calculateGoalProgress, normalizeGoalState, normalizeReviewState } from '../finance/goals.js';
 import { buildMonthCloseSummary } from '../finance/month-close.js';
 import { buildFinanceForecast } from '../finance/forecast.js';
 import type { BrowserStorageStatus } from './data-health.js';
@@ -1431,10 +1431,6 @@ export const Store = {
       forecast,
       nowIso,
     });
-    const accountReconciliations = Object.fromEntries(submittedAccounts.map((account: { accountId: string; balance: number }) => [
-      String(account.accountId),
-      { accountId: String(account.accountId), balance: Number(account.balance), reviewedAt: nowIso },
-    ]));
     const checklist = {
       unresolvedItems: input.unresolvedItems !== false,
       matchPayments: input.matchPayments !== false,
@@ -1442,33 +1438,15 @@ export const Store = {
       reviewSignals: input.reviewSignals !== false,
       closeMonth: input.closeMonth !== false,
     };
-    const previousReview = this.getReviewState();
-    const historyEntry = {
-      id: `${summary.monthKey}-${nowIso}`,
-      monthKey: summary.monthKey,
-      closedAt: nowIso,
-      notes: String(input.notes || ''),
-      accountReconciliations,
-      checklist,
-      chosenFocus: input.chosenFocus && String(input.chosenFocus.id || '').trim()
-        ? { id: String(input.chosenFocus.id), title: String(input.chosenFocus.title || 'Weekly focus') }
-        : undefined,
+    const review = buildWeeklyReviewState({
+      previousReview: this.getReviewState(),
       summary,
-    };
-    const history = [
-      historyEntry,
-      ...(previousReview.history || []).filter((entry) => entry.monthKey !== summary.monthKey),
-    ].slice(0, 24);
-    const review: FinanceReviewState = {
-      lastReviewedAt: nowIso,
-      accountReconciliations,
+      accounts: submittedAccounts,
       checklist,
-      notes: String(input.notes || ''),
-      chosenFocus: input.chosenFocus && String(input.chosenFocus.id || '').trim()
-        ? { id: String(input.chosenFocus.id), title: String(input.chosenFocus.title || 'Weekly focus') }
-        : undefined,
-      history,
-    };
+      nowIso,
+      notes: input.notes,
+      chosenFocus: input.chosenFocus,
+    });
     setJson(STORAGE_KEYS.review, review);
     emitFinanceUpdated(this.getFinancialSnapshot(true), 'completeWeeklyReview');
     return review;

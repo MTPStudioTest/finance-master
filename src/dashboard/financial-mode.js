@@ -3578,7 +3578,7 @@ window.FinancialMode = (function () {
             .slice(0, 3)
             .map((risk) => `${risk.name}: ${risk.explanation}`);
         while (forces.length < 3) {
-            const fallback = buildStrategicAdviceItems()[forces.length] || 'Keep the review loop current.';
+            const fallback = buildStrategicAdviceItems()[forces.length] || 'Confirm the current cash picture in Reality Check.';
             forces.push(fallback);
         }
 
@@ -4242,8 +4242,8 @@ window.FinancialMode = (function () {
                 <div class="fin-ui-toolbar">
                     <div class="fin-operating-meta">
                         <span>Last updated: ${formatShortDate(currentDiagnostics.latestEventTimestamp) || 'Never'}</span>
-                        <span>Unreviewed: ${reviewCount}</span>
-                        ${reviewDue ? '<span class="fin-text-high">Review due today</span>' : ''}
+                        <span>Needs confirmation: ${reviewCount}</span>
+                        ${reviewDue ? '<span class="fin-text-high">Reality check suggested</span>' : ''}
                         <span>Data: Local only</span>
                     </div>
                     <div class="fin-toolbar-actions">

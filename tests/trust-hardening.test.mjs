@@ -23,6 +23,7 @@ import {
   inspectRepositoryMigration,
 } from '../src/persistence/schema-migration.js';
 import {
+  buildWeeklyReviewState,
   calculateGoalProgress,
   isWeeklyReviewDue,
   normalizeReviewState,
@@ -220,6 +221,81 @@ test('local data health reports corrupt Finance Master storage without throwing'
   assert.equal(latestLedgerTimestamp(validBackup().ledger), '2026-06-02T09:00:00.000Z');
 });
 
+test('local data health reports duplicate IDs and orphaned links', () => {
+  const backup = validBackup();
+  const ledger = [
+    backup.ledger[0],
+    {
+      id: 'duplicate-event',
+      type: 'asset.reserve_set',
+      amount: 250,
+      currency: 'EUR',
+      timestamp: '2026-06-02T09:05:00.000Z',
+      related_entity_id: 'tax-reserve',
+      metadata: { name: 'Tax reserve', balance: 250 },
+    },
+    {
+      id: 'debt-main',
+      type: 'debt.added',
+      amount: 500,
+      currency: 'EUR',
+      timestamp: '2026-06-02T09:06:00.000Z',
+      related_entity_id: 'debt-main',
+      metadata: { name: 'Credit line', balance: 500 },
+    },
+    {
+      id: 'income-main',
+      type: 'pipeline.expected',
+      amount: 900,
+      currency: 'EUR',
+      timestamp: '2026-06-02T09:07:00.000Z',
+      related_entity_id: 'income-main',
+      metadata: { title: 'Client project', status: 'expected' },
+    },
+    {
+      id: 'duplicate-event',
+      type: 'expense.recorded',
+      amount: -40,
+      currency: 'EUR',
+      timestamp: '2026-06-02T09:10:00.000Z',
+      related_entity_id: 'txn-software',
+      metadata: {
+        description: 'Software',
+        accountId: 'missing-cash-account',
+        linkedReserveId: 'missing-reserve',
+        linkedDebtId: 'missing-debt',
+        linkedIncomeId: 'missing-income',
+        reversed_event_id: 'missing-event',
+      },
+    },
+  ];
+  const health = inspectFinanceStorage({
+    ledger: { present: true, value: ledger },
+    settings: { present: true, value: backup.financeSettings },
+    ui: { present: true, value: backup.uiSettings },
+    review: { present: true, value: { lastReviewedAt: null } },
+    goals: { present: true, value: { goals: [
+      { id: 'goal-buffer', name: 'Buffer', linkedAccountIds: ['missing-cash-account'] },
+      { id: 'goal-buffer', name: 'Duplicate Buffer', linkedAccountIds: ['cash-main'] },
+    ] } },
+    imports: { present: true, value: { batches: [{ id: 'batch-1' }, { id: 'batch-1' }], profiles: [{ id: 'profile-1' }, { id: 'profile-1' }] } },
+    scenarios: { present: true, value: { scenarios: [{ id: 'scenario-1' }, { id: 'scenario-1' }] } },
+    priceCache: { present: true, value: { quotes: {} } },
+  });
+
+  assert.equal(health.ok, false);
+  assert.equal(health.issues.some((entry) => entry.label === 'Duplicate IDs' && entry.message.includes('duplicate-event')), true);
+  assert.equal(health.issues.some((entry) => entry.label === 'Orphaned links' && entry.message.includes('missing-event')), true);
+  assert.equal(health.issues.some((entry) => entry.label === 'Orphaned links' && entry.message.includes('missing-cash-account')), true);
+  assert.equal(health.issues.some((entry) => entry.label === 'Orphaned links' && entry.message.includes('missing-reserve')), true);
+  assert.equal(health.issues.some((entry) => entry.label === 'Orphaned links' && entry.message.includes('missing-debt')), true);
+  assert.equal(health.issues.some((entry) => entry.label === 'Orphaned links' && entry.message.includes('missing-income')), true);
+  assert.equal(health.issues.some((entry) => entry.key === 'goals' && entry.message.includes('missing-cash-account')), true);
+  assert.equal(health.issues.some((entry) => entry.key === 'imports' && entry.message.includes('batch-1')), true);
+  assert.equal(health.issues.some((entry) => entry.key === 'imports' && entry.message.includes('profile-1')), true);
+  assert.equal(health.issues.some((entry) => entry.key === 'scenarios' && entry.message.includes('scenario-1')), true);
+});
+
 test('storage health distinguishes healthy, limited, and unavailable browser storage', () => {
   assert.deepEqual(evaluateStorageStatus({
     indexedDbAvailable: true,
@@ -369,6 +445,69 @@ test('weekly review normalization keeps legacy reads useful and marks stale revi
   assert.equal(isWeeklyReviewDue('2026-06-03T10:00:00.000Z', '2026-06-10T10:00:00.000Z'), true);
 });
 
+test('weekly review checkpoint state replaces same-month history and keeps recent evidence', () => {
+  const summary = {
+    monthKey: '2026-06',
+    netMovement: 700,
+    incomeReceived: 1200,
+    expensesPaid: 500,
+    obligationsReviewed: 2,
+    reserveMovements: 1,
+    runwayNow: 4.5,
+    unresolvedItems: 0,
+    protectedCash: 1600,
+    monthlyBurn: 900,
+    forecastHorizonDays: 30,
+    forecastExpectedCash: 2400,
+    forecastLowestCash: 1800,
+    forecastWarning: '',
+    mainRisk: 'No major checkpoint risk detected.',
+    mainAction: 'Keep next month reviewed on the same cadence.',
+  };
+  const previousReview = {
+    lastReviewedAt: '2026-06-01T10:00:00.000Z',
+    history: Array.from({ length: 25 }, (_, index) => {
+      const month = index === 0 ? '2026-06' : `2025-${String(index).padStart(2, '0')}`;
+      return {
+        id: `checkpoint-${index}`,
+        monthKey: month,
+        closedAt: '2026-06-01T10:00:00.000Z',
+        notes: index === 0 ? 'Older June note' : '',
+        accountReconciliations: {},
+        checklist: { unresolvedItems: true, matchPayments: true, confirmObligations: true, reviewSignals: true, closeMonth: true },
+        summary: { ...summary, monthKey: month },
+      };
+    }),
+  };
+
+  const review = buildWeeklyReviewState({
+    previousReview,
+    summary,
+    accounts: [
+      { accountId: 'cash-main', balance: 3200 },
+      { accountId: 'cash-buffer', balance: 1500 },
+    ],
+    checklist: { unresolvedItems: true, matchPayments: true, confirmObligations: true, reviewSignals: true, closeMonth: true },
+    nowIso: '2026-06-10T09:30:00.000Z',
+    notes: 'Balances checked before invoice week.',
+    chosenFocus: { id: 'focus-income', title: 'Confirm invoice timing' },
+  });
+
+  assert.equal(review.lastReviewedAt, '2026-06-10T09:30:00.000Z');
+  assert.equal(review.history.length, 24);
+  assert.equal(review.history[0].monthKey, '2026-06');
+  assert.equal(review.history.filter((entry) => entry.monthKey === '2026-06').length, 1);
+  assert.equal(review.history.some((entry) => entry.notes === 'Older June note'), false);
+  assert.deepEqual(review.accountReconciliations['cash-main'], {
+    accountId: 'cash-main',
+    balance: 3200,
+    reviewedAt: '2026-06-10T09:30:00.000Z',
+  });
+  assert.deepEqual(review.chosenFocus, { id: 'focus-income', title: 'Confirm invoice timing' });
+  assert.equal(review.history[0].summary.forecastExpectedCash, 2400);
+  assert.equal(review.history[0].notes, 'Balances checked before invoice week.');
+});
+
 test('month close summary is deterministic and uses existing ledger evidence', () => {
   const forecast = buildFinanceForecast({
     nowIso: '2026-06-15T10:00:00.000Z',
@@ -445,6 +584,38 @@ test('finance forecast builds deterministic horizon scenarios from canonical inp
   assert.equal(forecast.byHorizon['60'].components.expectedIncome, 1980);
   assert.equal(Object.keys(forecast.byHorizon).join('|'), '7|30|60|90|180');
   assert.equal(forecast.warnings.some((warning) => warning.includes('Forecast confidence is low')), true);
+});
+
+test('forecast expected landing and low point ignore optimistic-only income', () => {
+  const forecast = buildFinanceForecast({
+    nowIso: '2026-06-01T10:00:00.000Z',
+    readModel: {
+      pipelineDeals: [
+        { id: 'confirmed', title: 'Confirmed work', value: 600, status: 'confirmed', probability: 0.9, expectedDateISO: '2026-06-10' },
+        { id: 'short-retainer', title: 'Short retainer', value: 300, status: 'expected', probability: 0.6, incomeType: 'retainer', durationValue: 2, durationUnit: 'months', expectedDateISO: '2026-06-01' },
+        { id: 'proposal', title: 'Upside proposal', value: 5000, status: 'proposal', probability: 0.4, expectedDateISO: '2026-06-15' },
+      ],
+      reserveBuckets: [],
+      debtAccounts: [],
+    },
+    snapshot: { availableCash: 1000, monthlyBurn: 900, confidenceScore: 0.8 },
+    treasury: { availableCash: 1000, totalMonthlyBurn: 900 },
+    horizons: [30, 60, 90],
+  });
+  const danger = buildDangerZoneForecast(forecast);
+
+  assert.equal(forecast.byHorizon['30'].components.expectedIncome, 900);
+  assert.equal(forecast.byHorizon['30'].components.optimisticIncome, 2900);
+  assert.equal(forecast.byHorizon['30'].expected, 1000);
+  assert.equal(forecast.byHorizon['30'].optimistic, 3000);
+  assert.equal(forecast.byHorizon['60'].expected, 100);
+  assert.equal(forecast.byHorizon['90'].expected, -800);
+  assert.equal(forecast.lowestExpected, -800);
+  assert.equal(danger.status, 'shortfall');
+  assert.equal(danger.lowestAmount, -800);
+  assert.equal(danger.lowestDate, '2026-08-30');
+  assert.equal(danger.horizonDays, 90);
+  assert.equal(danger.suggestedAction, 'Pull confirmed income forward or reduce near-term obligations.');
 });
 
 test('roadmap finance metrics derive weather, signals, reserve health, and danger zone from canonical inputs', () => {

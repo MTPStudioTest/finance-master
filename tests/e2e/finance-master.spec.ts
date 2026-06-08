@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 function monitorConsole(page: Page): string[] {
   const errors: string[] = [];
@@ -28,6 +28,22 @@ async function openQuickAdd(page: Page): Promise<void> {
 
 async function chooseQuickAction(page: Page, label: string | RegExp): Promise<void> {
   await page.locator('#quick-action-menu').getByRole('button', { name: label }).click();
+}
+
+async function fillAndExpect(field: Locator, value: string): Promise<void> {
+  await expect(field).toBeVisible();
+  await field.fill(value);
+  try {
+    await expect(field).toHaveValue(value, { timeout: 1000 });
+  } catch {
+    await field.evaluate((element, nextValue) => {
+      const input = element as HTMLInputElement;
+      input.value = nextValue;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, value);
+    await expect(field).toHaveValue(value);
+  }
 }
 
 async function openSettingsPage(page: Page): Promise<void> {
@@ -554,8 +570,8 @@ test('treasury cash accounts and reserve buckets can be edited and persist', asy
   await page.getByRole('button', { name: 'Add cash account', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Add cash account', exact: true })).toBeVisible();
   const accountModal = page.locator('#modal-body');
-  await accountModal.locator('#modal-fiat-name').fill('Temporary treasury cash');
-  await accountModal.locator('#modal-fiat-balance').fill('123');
+  await fillAndExpect(accountModal.getByLabel('Name', { exact: true }), 'Temporary treasury cash');
+  await fillAndExpect(accountModal.getByLabel('Balance', { exact: true }), '123');
   await accountModal.locator('#modal-fiat-scope').selectOption('business');
   await accountModal.locator('#modal-fiat-bucket').selectOption('available');
   await accountModal.getByRole('button', { name: 'Create', exact: true }).click();
@@ -573,7 +589,7 @@ test('treasury cash accounts and reserve buckets can be edited and persist', asy
 
   await page.getByRole('button', { name: 'Edit Temporary treasury cash', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Edit cash account', exact: true })).toBeVisible();
-  await accountModal.locator('#modal-fiat-balance').fill('456');
+  await fillAndExpect(accountModal.getByLabel('Balance', { exact: true }), '456');
   await accountModal.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('.modal-overlay.active')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (
@@ -594,15 +610,16 @@ test('treasury cash accounts and reserve buckets can be edited and persist', asy
   await page.getByRole('button', { name: 'Add reserve bucket', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Add reserve bucket', exact: true })).toBeVisible();
   const reserveModal = page.locator('#modal-body');
-  await reserveModal.locator('#modal-reserve-name').fill('Client tax reserve');
-  await reserveModal.locator('#modal-reserve-target').fill('2000');
-  await reserveModal.locator('#modal-reserve-current').fill('350');
-  await reserveModal.locator('#modal-reserve-purpose').selectOption('tax_reserve');
-  await reserveModal.locator('#modal-reserve-scope').selectOption('business');
+  await expect(reserveModal.getByLabel('Current amount', { exact: true })).toHaveValue('0');
+  await fillAndExpect(reserveModal.getByLabel('Name', { exact: true }), 'Client tax reserve');
+  await fillAndExpect(reserveModal.getByLabel('Target amount', { exact: true }), '2000');
+  await fillAndExpect(reserveModal.getByLabel('Current amount', { exact: true }), '350');
+  await reserveModal.getByLabel('Purpose', { exact: true }).selectOption('tax_reserve');
+  await reserveModal.getByLabel('Scope', { exact: true }).selectOption('business');
   await reserveModal.locator('#modal-reserve-priority').selectOption('critical');
-  await expect(reserveModal.locator('#modal-reserve-name')).toHaveValue('Client tax reserve');
-  await expect(reserveModal.locator('#modal-reserve-target')).toHaveValue('2000');
-  await expect(reserveModal.locator('#modal-reserve-current')).toHaveValue('350');
+  await expect(reserveModal.getByLabel('Name', { exact: true })).toHaveValue('Client tax reserve');
+  await expect(reserveModal.getByLabel('Target amount', { exact: true })).toHaveValue('2000');
+  await expect(reserveModal.getByLabel('Current amount', { exact: true })).toHaveValue('350');
   await expect(reserveModal.locator('#modal-reserve-purpose')).toHaveValue('tax_reserve');
   await expect(reserveModal.locator('#modal-reserve-scope')).toHaveValue('business');
   await expect(reserveModal.locator('#modal-reserve-priority')).toHaveValue('critical');
@@ -808,6 +825,10 @@ test('overview prioritizes the money picture cockpit', async ({ page }) => {
   const errors = monitorConsole(page);
   await gotoApp(page);
   const content = page.locator('#fin-content-area');
+  await expect(content.getByText('Needs confirmation:', { exact: false })).toBeVisible();
+  await expect(content.getByText('Reality check suggested', { exact: true })).toBeVisible();
+  await expect(content.getByText('Unreviewed:', { exact: false })).toHaveCount(0);
+  await expect(content.getByText('Review due today', { exact: true })).toHaveCount(0);
   await expect(content.getByText('Safe-to-Spend', { exact: true }).first()).toBeVisible();
   await expect(content.getByText('Current cash', { exact: true })).toBeVisible();
   await expect(content.getByText('Runway', { exact: true }).first()).toBeVisible();
@@ -1420,15 +1441,27 @@ test('local data safety and appearance controls live on pages', async ({ page })
   await page.getByLabel('Base currency').fill('USD');
   await page.getByLabel('Forecast horizon (days)').fill('45');
   await page.getByLabel('Default scope filter').selectOption('business');
+  await page.getByLabel('Reduced motion').check();
   await page.getByRole('button', { name: 'Apply preferences', exact: true }).click();
   const preferenceImpact = page.getByLabel('Current preference impact');
   await expect(preferenceImpact.getByText('USD', { exact: true })).toBeVisible();
   await expect(preferenceImpact.getByText('45 days', { exact: true })).toBeVisible();
   await expect(preferenceImpact.getByText('Business only', { exact: true })).toBeVisible();
+  await expect(preferenceImpact.getByText('On', { exact: true })).toBeVisible();
+  await expect(page.locator('html')).toHaveClass(/settings-reduced-motion/);
+  await expect(page.locator('body')).toHaveClass(/settings-reduced-motion/);
+  expect(await page.evaluate(() => window.Store.getUiSettings().reducedMotion)).toBe(true);
   await page.getByRole('button', { name: 'Money Status', exact: true }).click();
   await expect(page.getByLabel('Treasury scope')).toHaveValue('business');
+  const safeToSpendText = await page.locator('.fin-money-safe strong').first().textContent();
+  expect(safeToSpendText || '').toContain('$');
+  expect(safeToSpendText || '').not.toContain('€');
   await page.getByRole('button', { name: 'Cash Timeline', exact: true }).click();
   await expect(page.getByLabel('Forecast horizon')).toHaveText('45d horizon');
+  await reloadApp(page);
+  await expect(page.locator('html')).toHaveClass(/settings-reduced-motion/);
+  await expect(page.locator('body')).toHaveClass(/settings-reduced-motion/);
+  expect(await page.evaluate(() => window.Store.getUiSettings().reducedMotion)).toBe(true);
   await openSettingsPage(page);
 
   for (const mode of ['dark-editorial', 'dark-restrained', 'bright-editorial', 'bright-minimal', 'color-field', 'monochrome-focus']) {

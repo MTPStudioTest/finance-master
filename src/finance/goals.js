@@ -5,6 +5,10 @@ function isObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function financeScope(value, fallback = 'shared') {
   return SCOPES.includes(value) ? value : fallback;
 }
@@ -94,6 +98,59 @@ export function normalizeReviewState(input) {
     normalized.chosenFocus = { id: String(source.chosenFocus.id), title: String(source.chosenFocus.title || 'Weekly focus') };
   }
   return normalized;
+}
+
+export function buildWeeklyReviewState({
+  previousReview = {},
+  summary = {},
+  accounts = [],
+  checklist = {},
+  nowIso = new Date().toISOString(),
+  notes = '',
+  chosenFocus = null,
+} = {}) {
+  const normalizedPrevious = normalizeReviewState(previousReview);
+  const timestamp = Number.isFinite(Date.parse(String(nowIso || ''))) ? String(nowIso) : new Date().toISOString();
+  const monthKey = String(summary && summary.monthKey || timestamp.slice(0, 7));
+  const accountReconciliations = Object.fromEntries(safeArray(accounts).flatMap((account) => {
+    const accountId = String(account && account.accountId || '').trim();
+    const balance = Number(account && account.balance);
+    if (!accountId || !Number.isFinite(balance)) return [];
+    return [[accountId, { accountId, balance, reviewedAt: timestamp }]];
+  }));
+  const normalizedChecklist = {
+    unresolvedItems: checklist.unresolvedItems === true,
+    matchPayments: checklist.matchPayments === true,
+    confirmObligations: checklist.confirmObligations === true,
+    reviewSignals: checklist.reviewSignals === true,
+    closeMonth: checklist.closeMonth === true,
+  };
+  const focus = isObject(chosenFocus) && String(chosenFocus.id || '').trim()
+    ? { id: String(chosenFocus.id), title: String(chosenFocus.title || 'Weekly focus') }
+    : undefined;
+  const historyEntry = {
+    id: `${monthKey}-${timestamp}`,
+    monthKey,
+    closedAt: timestamp,
+    notes: String(notes || ''),
+    accountReconciliations,
+    checklist: normalizedChecklist,
+    summary,
+  };
+  if (focus) historyEntry.chosenFocus = focus;
+  const history = [
+    historyEntry,
+    ...normalizedPrevious.history.filter((entry) => entry.monthKey !== monthKey),
+  ].slice(0, REVIEW_HISTORY_LIMIT);
+  const review = {
+    lastReviewedAt: timestamp,
+    accountReconciliations,
+    checklist: normalizedChecklist,
+    notes: String(notes || ''),
+    history,
+  };
+  if (focus) review.chosenFocus = focus;
+  return normalizeReviewState(review);
 }
 
 export function normalizeGoalState(input) {
